@@ -17,7 +17,7 @@
 
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import {
     ComponentRunStatusRequest,
     CreateComponentRequest,
@@ -27,6 +27,9 @@ import {
     CreateProcessorRequest,
     CreateRemoteProcessGroupRequest,
     DeleteComponentRequest,
+    DownloadFlowRequest,
+    FlowComparisonEntity,
+    FlowUpdateRequestEntity,
     GoToRemoteProcessGroupRequest,
     ProcessGroupRunStatusRequest,
     ReplayLastProvenanceEventRequest,
@@ -45,6 +48,7 @@ import {
 import { ComponentType, PropertyDescriptorRetriever } from '../../../state/shared';
 import { Client } from '../../../service/client.service';
 import { NiFiCommon } from '../../../service/nifi-common.service';
+import { ClusterConnectionService } from '../../../service/cluster-connection.service';
 
 @Injectable({ providedIn: 'root' })
 export class FlowService implements PropertyDescriptorRetriever {
@@ -53,7 +57,8 @@ export class FlowService implements PropertyDescriptorRetriever {
     constructor(
         private httpClient: HttpClient,
         private client: Client,
-        private nifiCommon: NiFiCommon
+        private nifiCommon: NiFiCommon,
+        private clusterConnectionService: ClusterConnectionService
     ) {}
 
     getFlow(processGroupId = 'root'): Observable<any> {
@@ -110,6 +115,7 @@ export class FlowService implements PropertyDescriptorRetriever {
     createFunnel(processGroupId = 'root', createFunnel: CreateComponentRequest): Observable<any> {
         return this.httpClient.post(`${FlowService.API}/process-groups/${processGroupId}/funnels`, {
             revision: createFunnel.revision,
+            disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged(),
             component: {
                 position: createFunnel.position
             }
@@ -119,6 +125,7 @@ export class FlowService implements PropertyDescriptorRetriever {
     createLabel(processGroupId = 'root', createLabel: CreateComponentRequest): Observable<any> {
         return this.httpClient.post(`${FlowService.API}/process-groups/${processGroupId}/labels`, {
             revision: createLabel.revision,
+            disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged(),
             component: {
                 position: createLabel.position
             }
@@ -132,6 +139,7 @@ export class FlowService implements PropertyDescriptorRetriever {
     createProcessor(processGroupId = 'root', createProcessor: CreateProcessorRequest): Observable<any> {
         return this.httpClient.post(`${FlowService.API}/process-groups/${processGroupId}/processors`, {
             revision: createProcessor.revision,
+            disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged(),
             component: {
                 position: createProcessor.position,
                 type: createProcessor.processorType,
@@ -150,6 +158,7 @@ export class FlowService implements PropertyDescriptorRetriever {
     createProcessGroup(processGroupId = 'root', createProcessGroup: CreateProcessGroupRequest): Observable<any> {
         const payload: any = {
             revision: createProcessGroup.revision,
+            disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged(),
             component: {
                 position: createProcessGroup.position,
                 name: createProcessGroup.name
@@ -171,6 +180,7 @@ export class FlowService implements PropertyDescriptorRetriever {
     ): Observable<any> {
         const payload: any = {
             revision: createRemoteProcessGroup.revision,
+            disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged(),
             component: {
                 position: createRemoteProcessGroup.position,
                 targetUris: createRemoteProcessGroup.targetUris,
@@ -198,6 +208,10 @@ export class FlowService implements PropertyDescriptorRetriever {
         payload.append('positionX', uploadProcessGroup.position.x.toString());
         payload.append('positionY', uploadProcessGroup.position.y.toString());
         payload.append('clientId', uploadProcessGroup.revision.clientId);
+        payload.append(
+            'disconnectedNodeAcknowledged',
+            String(this.clusterConnectionService.isDisconnectionAcknowledged())
+        );
         payload.append('file', uploadProcessGroup.flowDefinition);
 
         return this.httpClient.post(
@@ -220,6 +234,7 @@ export class FlowService implements PropertyDescriptorRetriever {
         const portType: string = ComponentType.InputPort == createPort.type ? 'input-ports' : 'output-ports';
         return this.httpClient.post(`${FlowService.API}/process-groups/${processGroupId}/${portType}`, {
             revision: createPort.revision,
+            disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged(),
             component: {
                 position: createPort.position,
                 name: createPort.name,
@@ -233,17 +248,25 @@ export class FlowService implements PropertyDescriptorRetriever {
     }
 
     deleteComponent(deleteComponent: DeleteComponentRequest): Observable<any> {
-        const revision: any = this.client.getRevision(deleteComponent.entity);
-        return this.httpClient.delete(this.nifiCommon.stripProtocol(deleteComponent.uri), { params: revision });
+        const params = new HttpParams({
+            fromObject: {
+                ...this.client.getRevision(deleteComponent.entity),
+                disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged()
+            }
+        });
+        return this.httpClient.delete(this.nifiCommon.stripProtocol(deleteComponent.uri), { params });
     }
 
     createSnippet(snippet: Snippet): Observable<any> {
-        return this.httpClient.post(`${FlowService.API}/snippets`, { snippet });
+        return this.httpClient.post(`${FlowService.API}/snippets`, {
+            disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged(),
+            snippet
+        });
     }
 
     moveSnippet(snippetId: string, groupId: string): Observable<any> {
         const payload: any = {
-            // 'disconnectedNodeAcknowledged': nfStorage.isDisconnectionAcknowledged(),
+            disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged(),
             snippet: {
                 id: snippetId,
                 parentGroupId: groupId
@@ -253,7 +276,12 @@ export class FlowService implements PropertyDescriptorRetriever {
     }
 
     deleteSnippet(snippetId: string): Observable<any> {
-        return this.httpClient.delete(`${FlowService.API}/snippets/${snippetId}`);
+        const params = new HttpParams({
+            fromObject: {
+                disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged()
+            }
+        });
+        return this.httpClient.delete(`${FlowService.API}/snippets/${snippetId}`, { params });
     }
 
     replayLastProvenanceEvent(request: ReplayLastProvenanceEventRequest): Observable<any> {
@@ -263,7 +291,7 @@ export class FlowService implements PropertyDescriptorRetriever {
     runOnce(request: RunOnceRequest): Observable<any> {
         const startRequest: ComponentRunStatusRequest = {
             revision: request.revision,
-            disconnectedNodeAcknowledged: false,
+            disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged(),
             state: 'RUN_ONCE'
         };
         return this.httpClient.put(`${this.nifiCommon.stripProtocol(request.uri)}/run-status`, startRequest);
@@ -272,7 +300,7 @@ export class FlowService implements PropertyDescriptorRetriever {
     startComponent(request: StartComponentRequest): Observable<any> {
         const startRequest: ComponentRunStatusRequest = {
             revision: request.revision,
-            disconnectedNodeAcknowledged: false,
+            disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged(),
             state: request.type === ComponentType.RemoteProcessGroup ? 'TRANSMITTING' : 'RUNNING'
         };
         return this.httpClient.put(`${this.nifiCommon.stripProtocol(request.uri)}/run-status`, startRequest);
@@ -281,7 +309,7 @@ export class FlowService implements PropertyDescriptorRetriever {
     stopComponent(request: StopComponentRequest): Observable<any> {
         const stopRequest: ComponentRunStatusRequest = {
             revision: request.revision,
-            disconnectedNodeAcknowledged: false,
+            disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged(),
             state: 'STOPPED'
         };
         return this.httpClient.put(`${this.nifiCommon.stripProtocol(request.uri)}/run-status`, stopRequest);
@@ -290,7 +318,7 @@ export class FlowService implements PropertyDescriptorRetriever {
     startProcessGroup(request: StartProcessGroupRequest): Observable<any> {
         const startRequest: ProcessGroupRunStatusRequest = {
             id: request.id,
-            disconnectedNodeAcknowledged: false,
+            disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged(),
             state: 'RUNNING'
         };
         return this.httpClient.put(`${FlowService.API}/flow/process-groups/${request.id}`, startRequest);
@@ -298,7 +326,7 @@ export class FlowService implements PropertyDescriptorRetriever {
 
     startRemoteProcessGroupsInProcessGroup(request: StartProcessGroupRequest): Observable<any> {
         const startRequest = {
-            disconnectedNodeAcknowledged: false,
+            disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged(),
             state: 'TRANSMITTING'
         };
         return this.httpClient.put(
@@ -310,7 +338,7 @@ export class FlowService implements PropertyDescriptorRetriever {
     stopProcessGroup(request: StopProcessGroupRequest): Observable<any> {
         const stopRequest: ProcessGroupRunStatusRequest = {
             id: request.id,
-            disconnectedNodeAcknowledged: false,
+            disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged(),
             state: 'STOPPED'
         };
         return this.httpClient.put(`${FlowService.API}/flow/process-groups/${request.id}`, stopRequest);
@@ -318,7 +346,7 @@ export class FlowService implements PropertyDescriptorRetriever {
 
     stopRemoteProcessGroupsInProcessGroup(request: StopProcessGroupRequest): Observable<any> {
         const stopRequest = {
-            disconnectedNodeAcknowledged: false,
+            disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged(),
             state: 'STOPPED'
         };
         return this.httpClient.put(
@@ -336,7 +364,7 @@ export class FlowService implements PropertyDescriptorRetriever {
     saveToFlowRegistry(request: SaveToVersionControlRequest): Observable<VersionControlInformationEntity> {
         const saveRequest = {
             ...request,
-            disconnectedNodeAcknowledged: false
+            disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged()
         };
 
         return this.httpClient.post(
@@ -349,10 +377,70 @@ export class FlowService implements PropertyDescriptorRetriever {
         const params: any = {
             version: request.revision.version,
             clientId: request.revision.clientId,
-            disconnectedNodeAcknowledged: false
+            disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged()
         };
         return this.httpClient.delete(`${FlowService.API}/versions/process-groups/${request.processGroupId}`, {
             params
         }) as Observable<VersionControlInformationEntity>;
+    }
+
+    initiateChangeVersionUpdate(request: VersionControlInformationEntity) {
+        return this.httpClient.post(
+            `${FlowService.API}/versions/update-requests/process-groups/${request.versionControlInformation?.groupId}`,
+            {
+                ...request
+            }
+        ) as Observable<FlowUpdateRequestEntity>;
+    }
+
+    getChangeVersionUpdateRequest(requestId: string) {
+        return this.httpClient.get(
+            `${FlowService.API}/versions/update-requests/${requestId}`
+        ) as Observable<FlowUpdateRequestEntity>;
+    }
+
+    deleteChangeVersionUpdateRequest(requestId: string) {
+        const params = {
+            disconnectedNodeAcknowledged: false
+        };
+        return this.httpClient.delete(`${FlowService.API}/versions/update-requests/${requestId}`, {
+            params
+        }) as Observable<FlowUpdateRequestEntity>;
+    }
+
+    initiateRevertFlowVersion(request: VersionControlInformationEntity) {
+        return this.httpClient.post(
+            `${FlowService.API}/versions/revert-requests/process-groups/${request.versionControlInformation?.groupId}`,
+            {
+                ...request
+            }
+        ) as Observable<FlowUpdateRequestEntity>;
+    }
+
+    getRevertChangesUpdateRequest(requestId: string) {
+        return this.httpClient.get(
+            `${FlowService.API}/versions/revert-requests/${requestId}`
+        ) as Observable<FlowUpdateRequestEntity>;
+    }
+
+    deleteRevertChangesUpdateRequest(requestId: string) {
+        const params = {
+            disconnectedNodeAcknowledged: false
+        };
+        return this.httpClient.delete(`${FlowService.API}/versions/revert-requests/${requestId}`, {
+            params
+        }) as Observable<FlowUpdateRequestEntity>;
+    }
+
+    getLocalModifications(processGroupId: string): Observable<FlowComparisonEntity> {
+        return this.httpClient.get(
+            `${FlowService.API}/process-groups/${processGroupId}/local-modifications`
+        ) as Observable<FlowComparisonEntity>;
+    }
+
+    downloadFlow(downloadFlowRequest: DownloadFlowRequest): void {
+        window.open(
+            `${FlowService.API}/process-groups/${downloadFlowRequest.processGroupId}/download?includeReferencedServices=${downloadFlowRequest.includeReferencedServices}`
+        );
     }
 }

@@ -1263,9 +1263,9 @@ export class CanvasUtils {
                 })
                 .attr('class', function () {
                     if (terminatedThreads > 0) {
-                        return `active-thread-count-icon warn-default`;
+                        return `active-thread-count-icon mat-warn`;
                     } else {
-                        return `active-thread-count-icon primary-default`;
+                        return `active-thread-count-icon primary-color`;
                     }
                 })
                 .style('display', 'block')
@@ -1693,5 +1693,22 @@ export class CanvasUtils {
             const pgData = selection.datum();
             return pgData.component.versionControlInformation || null;
         }
+    }
+
+    /**
+     * Returns whether the process group supports downloading the current flow.
+     *
+     * @argument {d3.Selection} selection      The selection
+     * @returns {boolean}
+     */
+    public supportsDownloadFlow(selection: d3.Selection<any, any, any, any>): boolean {
+        // download is allowed when either nothing is selected or a single readable process group is selected
+        if (selection.empty()) {
+            return this.canvasPermissions.canRead;
+        } else if (selection.size() === 1) {
+            return this.isProcessGroup(selection) && this.canRead(selection);
+        }
+
+        return false;
     }
 }

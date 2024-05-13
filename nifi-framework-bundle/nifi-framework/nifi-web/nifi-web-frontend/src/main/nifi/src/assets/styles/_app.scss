@@ -65,12 +65,52 @@
         opacity: 0.8;
     }
 
+    .context-logo {
+        text-align: start;
+        height: 40px;
+        line-height: 40px;
+
+        .icon {
+            font-size: 32px;
+        }
+    }
+
+    .context-name {
+        font-size: 15px;
+        line-height: 15px;
+        height: 15px;
+        width: 225px;
+        text-overflow: ellipsis;
+        overflow: hidden;
+        white-space: nowrap;
+    }
+
+    .context-type {
+        font-size: 12px;
+        line-height: 12px;
+    }
+
+    .context-id {
+        font-size: 12px;
+        line-height: 12px;
+    }
+
+    .refresh-container {
+        line-height: normal;
+        font-size: 12px;
+    }
+
     .hidden {
         display: none;
     }
 
     .pointer {
         cursor: pointer;
+    }
+
+    .dialog-tab-content,
+    .dialog-content {
+        height: 50vh;
     }
 
     .flex-2 {
@@ -164,6 +204,10 @@
 
     .mat-mdc-paginator {
         background-color: unset !important;
+    }
+
+    .mdc-dialog__content {
+        font-size: 14px !important;
     }
 }
 
@@ -290,6 +334,22 @@
     .mat-typography h4 {
         // Because angular material typography adds bottom margin
         margin: unset;
+    }
+
+    .mat-mdc-menu-panel {
+        max-width: 420px;
+
+        .fa {
+            width: 14px;
+            height: 14px;
+            text-align: center;
+        }
+
+        .icon {
+            display: inline-block;
+            width: 14px;
+            text-align: center;
+        }
     }
 
     .cdk-drop-list {

@@ -37,7 +37,8 @@ import {
     switchMap,
     take,
     takeUntil,
-    tap
+    tap,
+    throttleTime
 } from 'rxjs';
 import {
     CopyComponentRequest,
@@ -85,6 +86,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { CreatePort } from '../../ui/canvas/items/port/create-port/create-port.component';
 import { EditPort } from '../../ui/canvas/items/port/edit-port/edit-port.component';
 import {
+    BranchEntity,
     BucketEntity,
     ComponentType,
     isDefinedAndNotNull,
@@ -131,6 +133,8 @@ import { SnippetService } from '../../service/snippet.service';
 import { selectTransform } from '../transform/transform.selectors';
 import { EditLabel } from '../../ui/canvas/items/label/edit-label/edit-label.component';
 import { ErrorHelper } from '../../../../service/error-helper.service';
+import { selectConnectedStateChanged } from '../../../../state/cluster-summary/cluster-summary.selectors';
+import { resetConnectedStateChanged } from '../../../../state/cluster-summary/cluster-summary.actions';
 
 @Injectable()
 export class FlowEffects {
@@ -158,6 +162,7 @@ export class FlowEffects {
     reloadFlow$ = createEffect(() =>
         this.actions$.pipe(
             ofType(FlowActions.reloadFlow),
+            throttleTime(1000),
             concatLatestFrom(() => this.store.select(selectCurrentProcessGroupId)),
             switchMap(([, processGroupId]) => {
                 return of(
@@ -176,8 +181,12 @@ export class FlowEffects {
         this.actions$.pipe(
             ofType(FlowActions.loadProcessGroup),
             map((action) => action.request),
-            concatLatestFrom(() => this.store.select(selectFlowLoadingStatus)),
-            switchMap(([request, status]) =>
+            concatLatestFrom(() => [
+                this.store.select(selectFlowLoadingStatus),
+                this.store.select(selectConnectedStateChanged)
+            ]),
+            tap(() => this.store.dispatch(resetConnectedStateChanged())),
+            switchMap(([request, status, connectedStateChanged]) =>
                 combineLatest([
                     this.flowService.getFlow(request.id),
                     this.flowService.getFlowStatus(),
@@ -189,7 +198,8 @@ export class FlowEffects {
                                 id: request.id,
                                 flow: flow,
                                 flowStatus: flowStatus,
-                                controllerBulletins: controllerBulletins
+                                controllerBulletins: controllerBulletins,
+                                connectedStateChanged
                             }
                         });
                     }),
@@ -800,10 +810,29 @@ export class FlowEffects {
                             data: request
                         });
 
-                        dialogReference.componentInstance.getBuckets = (
+                        dialogReference.componentInstance.getBranches = (
                             registryId: string
+                        ): Observable<BranchEntity[]> => {
+                            return this.registryService.getBranches(registryId).pipe(
+                                take(1),
+                                map((response) => response.branches),
+                                tap({
+                                    error: (errorResponse: HttpErrorResponse) => {
+                                        this.store.dispatch(
+                                            FlowActions.flowBannerError({
+                                                error: this.errorHelper.getErrorString(errorResponse)
+                                            })
+                                        );
+                                    }
+                                })
+                            );
+                        };
+
+                        dialogReference.componentInstance.getBuckets = (
+                            registryId: string,
+                            branch?: string
                         ): Observable<BucketEntity[]> => {
-                            return this.registryService.getBuckets(registryId).pipe(
+                            return this.registryService.getBuckets(registryId, branch).pipe(
                                 take(1),
                                 map((response) => response.buckets),
                                 tap({
@@ -820,9 +849,10 @@ export class FlowEffects {
 
                         dialogReference.componentInstance.getFlows = (
                             registryId: string,
-                            bucketId: string
+                            bucketId: string,
+                            branch?: string
                         ): Observable<VersionedFlowEntity[]> => {
-                            return this.registryService.getFlows(registryId, bucketId).pipe(
+                            return this.registryService.getFlows(registryId, bucketId, branch).pipe(
                                 take(1),
                                 map((response) => response.versionedFlows),
                                 tap({
@@ -840,9 +870,10 @@ export class FlowEffects {
                         dialogReference.componentInstance.getFlowVersions = (
                             registryId: string,
                             bucketId: string,
-                            flowId: string
+                            flowId: string,
+                            branch?: string
                         ): Observable<VersionedFlowSnapshotMetadataEntity[]> => {
-                            return this.registryService.getFlowVersions(registryId, bucketId, flowId).pipe(
+                            return this.registryService.getFlowVersions(registryId, bucketId, flowId, branch).pipe(
                                 take(1),
                                 map((response) => response.versionedFlowSnapshotMetadataSet),
                                 tap({
@@ -1918,6 +1949,9 @@ export class FlowEffects {
     updatePositionComplete$ = createEffect(() =>
         this.actions$.pipe(
             ofType(FlowActions.updatePositionComplete),
+            tap(() => {
+                this.birdseyeView.refresh();
+            }),
             map((action) => action.response),
             switchMap((response) =>
                 of(FlowActions.renderConnectionsForComponent({ id: response.id, updatePath: true, updateLabel: false }))
@@ -2909,6 +2943,66 @@ export class FlowEffects {
         )
     );
 
+    enableControllerServicesInCurrentProcessGroup$ = createEffect(() =>
+        this.actions$.pipe(
+            ofType(FlowActions.enableControllerServicesInCurrentProcessGroup),
+            concatLatestFrom(() => this.store.select(selectCurrentProcessGroupId)),
+            switchMap(([, id]) =>
+                from(
+                    this.flowService.enableAllControllerServices(id).pipe(
+                        map(() => FlowActions.reloadFlow()),
+                        catchError((errorResponse) => of(this.snackBarOrFullScreenError(errorResponse)))
+                    )
+                )
+            )
+        )
+    );
+
+    disableControllerServicesInCurrentProcessGroup$ = createEffect(() =>
+        this.actions$.pipe(
+            ofType(FlowActions.disableControllerServicesInCurrentProcessGroup),
+            concatLatestFrom(() => this.store.select(selectCurrentProcessGroupId)),
+            switchMap(([, id]) =>
+                from(
+                    this.flowService.disableAllControllerServices(id).pipe(
+                        map(() => FlowActions.reloadFlow()),
+                        catchError((errorResponse) => of(this.snackBarOrFullScreenError(errorResponse)))
+                    )
+                )
+            )
+        )
+    );
+
+    enableControllerServicesInProcessGroup$ = createEffect(() =>
+        this.actions$.pipe(
+            ofType(FlowActions.enableControllerServicesInProcessGroup),
+            map((action) => action.id),
+            switchMap((id) =>
+                from(
+                    this.flowService.enableAllControllerServices(id).pipe(
+                        map(() => FlowActions.loadChildProcessGroup({ request: { id } })),
+                        catchError((errorResponse) => of(this.snackBarOrFullScreenError(errorResponse)))
+                    )
+                )
+            )
+        )
+    );
+
+    disableControllerServicesInProcessGroup$ = createEffect(() =>
+        this.actions$.pipe(
+            ofType(FlowActions.disableControllerServicesInProcessGroup),
+            map((action) => action.id),
+            switchMap((id) =>
+                from(
+                    this.flowService.disableAllControllerServices(id).pipe(
+                        map(() => FlowActions.loadChildProcessGroup({ request: { id } })),
+                        catchError((errorResponse) => of(this.snackBarOrFullScreenError(errorResponse)))
+                    )
+                )
+            )
+        )
+    );
+
     stopComponents$ = createEffect(() =>
         this.actions$.pipe(
             ofType(FlowActions.stopComponents),
@@ -3120,8 +3214,29 @@ export class FlowEffects {
                         data: request
                     });
 
-                    dialogReference.componentInstance.getBuckets = (registryId: string): Observable<BucketEntity[]> => {
-                        return this.registryService.getBuckets(registryId).pipe(
+                    dialogReference.componentInstance.getBranches = (
+                        registryId: string
+                    ): Observable<BranchEntity[]> => {
+                        return this.registryService.getBranches(registryId).pipe(
+                            take(1),
+                            map((response) => response.branches),
+                            tap({
+                                error: (errorResponse: HttpErrorResponse) => {
+                                    this.store.dispatch(
+                                        FlowActions.flowBannerError({
+                                            error: this.errorHelper.getErrorString(errorResponse)
+                                        })
+                                    );
+                                }
+                            })
+                        );
+                    };
+
+                    dialogReference.componentInstance.getBuckets = (
+                        registryId: string,
+                        branch?: string
+                    ): Observable<BucketEntity[]> => {
+                        return this.registryService.getBuckets(registryId, branch).pipe(
                             take(1),
                             map((response) => response.buckets),
                             tap({

@@ -1306,7 +1306,7 @@
 
                 // determine if the property is sensitive
                 if (nfCommon.isSensitiveProperty(propertyDescriptor)) {
-                    valueMarkup = '<span class="table-cell sensitive">' + nfCommon.getSensitiveDisplayValue(value, 'Sensitive value set') + '</span>';
+                    valueMarkup = '<span class="table-cell sensitive">' + nfCommon.isDisplayableSensitiveValue(value) ? value : 'Sensitive value set' + '</span>';
                 } else {
                     var resolvedAllowableValue = false;
 

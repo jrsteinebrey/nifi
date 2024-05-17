@@ -1113,17 +1113,13 @@
         },
 
         /**
-         * Returns display text to show in the ui for sensitive property values
+         * Returns true if the sensitive value is safe to display without obfuscating it
          *
          * @argument {string} rawValue         The property raw value
-         * @argument {string} obscuredValue    The property obscured text or description
          */
-        getSensitiveDisplayValue: function (rawValue, obscuredValue) {
-            if (/^\s*#\{.*}\s*$/.test(rawValue)) {
-                return rawValue;
-            } else {
-                return obscuredValue;   // For debugging obscuredValue + ':' + rawValue;
-            }
+        isDisplayableSensitiveValue: function (rawValue) {
+            // Return true if the value is a parameter reference ignoring leading and trailing spaces
+            return /^\s*#\{.*}\s*$/.test(rawValue);
         },
 
         /**

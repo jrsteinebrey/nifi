@@ -721,12 +721,12 @@ public final class PropertyDescriptor implements Comparable<PropertyDescriptor> 
     }
 
     // Pattern to match a parameter reference i.e. "leading_spaces#{anything}trailing_spaces"
-    private static final Pattern PARAMETER_REFERENCE = Pattern.compile("^\\s*#\\{.*}\\s*$");
+    private static final Pattern PARAMETER_REFERENCE = Pattern.compile("^#\\{.*}$");
 
-    public static boolean isDisplayableSensitiveValue(String value) {
-        // If the value is a parameter reference (ignoring leading and trailing spaces), then it is safe to display the parameter name.
-        // The parameter name is safe to display to users because the sensitive info is stored in the parameter value.
-        return value != null && !value.isEmpty() && PARAMETER_REFERENCE.matcher(value).matches();
+    public static boolean isSensitiveValueSafeToDisplay(String value) {
+        // If the value is a parameter reference, then it is safe to display the parameter name.
+        // A parameter name is safe to display to users because the sensitive info is stored in the parameter value.
+        return value != null && PARAMETER_REFERENCE.matcher(value).matches();
     }
 
     public boolean isDynamic() {

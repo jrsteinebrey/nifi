@@ -1117,9 +1117,9 @@
          *
          * @argument {string} rawValue         The property raw value
          */
-        isDisplayableSensitiveValue: function (rawValue) {
-            // Return true if the value is a parameter reference ignoring leading and trailing spaces
-            return /^\s*#\{.*}\s*$/.test(rawValue);
+        isSensitiveValueSafeToDisplay: function (rawValue) {
+            // A parameter name is safe to display to users because the sensitive info is stored in the parameter value.
+            return /^#\{.*}$/.test(rawValue);
         },
 
         /**

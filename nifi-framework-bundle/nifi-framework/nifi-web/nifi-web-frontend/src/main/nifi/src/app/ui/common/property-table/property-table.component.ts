@@ -398,10 +398,10 @@ export class PropertyTable implements AfterViewInit, ControlValueAccessor {
         return descriptor.sensitive;
     }
 
-    isDisplayableSensitiveValue(rawValue: string): boolean {
+    isSensitiveValueSafeToDisplay(rawValue: string): boolean {
         // Return true if the sensitive value is safe to display without obfuscating it.
-        // Return true if the value is a parameter reference ignoring leading and trailing spaces.
-        return /^\s*#\{.*}\s*$/.test(rawValue);
+        // A parameter name is safe to display to users because the sensitive info is stored in the parameter value.
+        return /^#\{.*}$/.test(rawValue);
     }
 
     isNull(value: string): boolean {

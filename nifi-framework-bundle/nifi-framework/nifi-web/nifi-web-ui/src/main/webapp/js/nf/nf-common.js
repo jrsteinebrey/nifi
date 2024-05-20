@@ -1106,10 +1106,20 @@
          */
         isSensitiveProperty: function (propertyDescriptor) {
             if (nfCommon.isDefinedAndNotNull(propertyDescriptor)) {
-                return propertyDescriptor.sensitive === true;
+                return propertyDescriptor.sensitive === true;    // changeisSensitiveProperty
             } else {
                 return false;
             }
+        },
+
+        /**
+         * Returns true if the sensitive value is safe to display without obfuscating it
+         *
+         * @argument {string} rawValue         The property raw value
+         */
+        isSensitiveValueSafeToDisplay: function (rawValue) {
+            // A parameter name is safe to display to users because the sensitive info is stored in the parameter value.
+            return /^#\{.*}$/.test(rawValue);
         },
 
         /**

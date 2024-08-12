@@ -47,11 +47,11 @@ import java.io.InputStream;
 import java.net.URI;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.stream.Collectors;
 
 @Tags({"http", "post", "record", "sink"})
 @CapabilityDescription("Format and send Records to a configured uri using HTTP post. The Record Writer formats the records which are sent as the body of the http post request. " +
@@ -166,27 +166,23 @@ public class HttpRecordSink extends AbstractControllerService implements RecordS
         maxBatchSize = context.getProperty(MAX_BATCH_SIZE).evaluateAttributeExpressions().asInteger();
         writerFactory = context.getProperty(RECORD_WRITER_FACTORY).asControllerService(RecordSetWriterFactory.class);
         webClientServiceProvider = context
-                .getProperty(WEB_SERVICE_CLIENT_PROVIDER)
-                .asControllerService(WebClientServiceProvider.class);
+                .getProperty(WEB_SERVICE_CLIENT_PROVIDER).asControllerService(WebClientServiceProvider.class);
 
         if (context.getProperty(OAUTH2_ACCESS_TOKEN_PROVIDER).isSet()) {
-            OAuth2AccessTokenProvider oauth2AccessTokenProvider = context.getProperty(OAUTH2_ACCESS_TOKEN_PROVIDER).asControllerService(OAuth2AccessTokenProvider.class);
+            OAuth2AccessTokenProvider oauth2AccessTokenProvider = context
+                    .getProperty(OAUTH2_ACCESS_TOKEN_PROVIDER).asControllerService(OAuth2AccessTokenProvider.class);
             oauth2AccessTokenProvider.getAccessDetails();
             oauth2AccessTokenProviderOptional = Optional.of(oauth2AccessTokenProvider);
         } else {
             oauth2AccessTokenProviderOptional = Optional.empty();
         }
 
-        // Non-blank dynamic properties are sent as http headers on the post request.
-        dynamicHttpHeaders = new HashMap<>();
-        context.getProperties().keySet().stream()
-                .filter(p -> p.isDynamic() && StringUtils.isNotBlank(p.getName()))
-                .forEach(p -> {
-                    final String propValue = context.getProperty(p).evaluateAttributeExpressions().getValue();
-                    if (StringUtils.isNotBlank(propValue)) {
-                        dynamicHttpHeaders.put(p.getName(), propValue);
-                    }
-                });
+        // Dynamic properties are sent as http headers on the post request.
+        dynamicHttpHeaders = context.getProperties().keySet().stream()
+                .filter(PropertyDescriptor::isDynamic)
+                .collect(Collectors.toMap(
+                        PropertyDescriptor::getName,
+                        p -> context.getProperty(p).evaluateAttributeExpressions().getValue()));
     }
 
     @Override

@@ -80,8 +80,7 @@ public class TestListFile {
     // age#filter are filter label strings for the filter properties
     private Long syncTime = getTestModifiedTime();
     private Long time0millis, time1millis, time2millis, time3millis, time4millis, time5millis;
-    private Long age0millis, age1millis, age2millis, age3millis, age4millis, age5millis;
-    private String age0, age1, age2, age3, age4, age5;
+    private String age0, age2, age4, age5;
 
     @RegisterExtension
     private final ListProcessorTestWatcher dumpState = new ListProcessorTestWatcher(
@@ -258,27 +257,26 @@ public class TestListFile {
 
     @Test
     public void testFilterAge() throws Exception {
-
-        final File file1 = new File(TESTDIR + "/age1.txt");
-        assertTrue(file1.createNewFile());
+        final File file0 = new File(TESTDIR + "/age0.txt");
+        assertTrue(file0.createNewFile());
 
         final File file2 = new File(TESTDIR + "/age2.txt");
         assertTrue(file2.createNewFile());
 
-        final File file3 = new File(TESTDIR + "/age3.txt");
-        assertTrue(file3.createNewFile());
+        final File file4 = new File(TESTDIR + "/age4.txt");
+        assertTrue(file4.createNewFile());
 
         final Function<Boolean, Object> runNext = resetAges -> {
             if (resetAges) {
                 resetAges();
-                assertTrue(file1.setLastModified(time0millis));
+                assertTrue(file0.setLastModified(time0millis));
                 assertTrue(file2.setLastModified(time2millis));
-                assertTrue(file3.setLastModified(time4millis));
+                assertTrue(file4.setLastModified(time4millis));
             }
 
-            assertTrue(file1.lastModified() > time3millis && file1.lastModified() <= time0millis);
+            assertTrue(file0.lastModified() > time3millis && file0.lastModified() <= time0millis);
             assertTrue(file2.lastModified() > time3millis && file2.lastModified() < time1millis);
-            assertTrue(file3.lastModified() < time3millis);
+            assertTrue(file4.lastModified() < time3millis);
 
             try {
                 runNext();
@@ -300,36 +298,35 @@ public class TestListFile {
 
         // exclude oldest
         runner.setProperty(ListFile.MIN_AGE, age0);
-        runner.setProperty(ListFile.MAX_AGE, age3);
+        runner.setProperty(ListFile.MAX_AGE, age4);
         runNext.apply(true);
         runner.assertAllFlowFilesTransferred(ListFile.REL_SUCCESS);
         final List<MockFlowFile> successFiles2 = runner.getFlowFilesForRelationship(ListFile.REL_SUCCESS);
         assertEquals(2, successFiles2.size());
         assertEquals(file2.getName(), successFiles2.get(0).getAttribute("filename"));
-        assertEquals(file1.getName(), successFiles2.get(1).getAttribute("filename"));
+        assertEquals(file0.getName(), successFiles2.get(1).getAttribute("filename"));
         assertVerificationOutcome(Outcome.SUCCESSFUL, "Successfully listed .* Found 3 objects.  Of those, 2 match the filter.");
 
         // exclude newest
-        runner.setProperty(ListFile.MIN_AGE, age1);
+        runner.setProperty(ListFile.MIN_AGE, age2);
         runner.setProperty(ListFile.MAX_AGE, age5);
         runNext.apply(true);
         runner.assertAllFlowFilesTransferred(ListFile.REL_SUCCESS);
         final List<MockFlowFile> successFiles3 = runner.getFlowFilesForRelationship(ListFile.REL_SUCCESS);
         assertEquals(2, successFiles3.size());
-        assertEquals(file3.getName(), successFiles3.get(0).getAttribute("filename"));
+        assertEquals(file4.getName(), successFiles3.get(0).getAttribute("filename"));
         assertEquals(file2.getName(), successFiles3.get(1).getAttribute("filename"));
         assertVerificationOutcome(Outcome.SUCCESSFUL, "Successfully listed .* Found 3 objects.  Of those, 2 match the filter.");
 
         // exclude oldest and newest
-        runner.setProperty(ListFile.MIN_AGE, age1);
-        runner.setProperty(ListFile.MAX_AGE, age3);
+        runner.setProperty(ListFile.MIN_AGE, age2);
+        runner.setProperty(ListFile.MAX_AGE, age4);
         runNext.apply(true);
         runner.assertAllFlowFilesTransferred(ListFile.REL_SUCCESS);
         final List<MockFlowFile> successFiles4 = runner.getFlowFilesForRelationship(ListFile.REL_SUCCESS);
         assertEquals(1, successFiles4.size());
         assertEquals(file2.getName(), successFiles4.get(0).getAttribute("filename"));
         assertVerificationOutcome(Outcome.SUCCESSFUL, "Successfully listed .* Found 3 objects.  Of those, 1 matches the filter.");
-
     }
 
     @Test
@@ -883,20 +880,12 @@ public class TestListFile {
     private void resetAges() {
         syncTime = getTestModifiedTime();
 
-        age0millis = 0L;
-        age1millis = 5000L;
-        age2millis = 10000L;
-        age3millis = 15000L;
-        age4millis = 20000L;
-        age5millis = 100000L;
-
-        // Allow for bigger gaps since the lag is 2s w/o milliseconds.
-        if (!isMillisecondSupported) {
-            age1millis *= 2;
-            age2millis *= 2;
-            age3millis *= 2;
-            age4millis *= 2;
-        }
+        final long age0millis = 0L;
+        final long age1millis = 10000L;
+        final long age2millis = 20000L;
+        final long age3millis = 30000L;
+        final long age4millis = 40000L;
+        final long age5millis = 100000L;
 
         time0millis = syncTime - age0millis;
         time1millis = syncTime - age1millis;
@@ -906,9 +895,7 @@ public class TestListFile {
         time5millis = syncTime - age5millis;
 
         age0 = Long.toString(age0millis) + " millis";
-        age1 = Long.toString(age1millis) + " millis";
         age2 = Long.toString(age2millis) + " millis";
-        age3 = Long.toString(age3millis) + " millis";
         age4 = Long.toString(age4millis) + " millis";
         age5 = Long.toString(age5millis) + " millis";
     }

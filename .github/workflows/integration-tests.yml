@@ -16,9 +16,6 @@
 name: integration-tests
 
 on:
-  workflow_run:
-    branches: [ support/nifi-1.x ]
-
   push:
     paths:
       - '.github/workflows/integration-tests.yml'

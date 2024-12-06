@@ -16,7 +16,8 @@
 name: integration-tests
 
 on:
-  workflow_dispatch:
+  workflow_run:
+    branches: [ support/nifi-1.x ]
 
   push:
     paths:

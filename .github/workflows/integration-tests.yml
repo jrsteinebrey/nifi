@@ -16,6 +16,8 @@
 name: integration-tests
 
 on:
+  workflow_dispatch:
+
   push:
     paths:
       - '.github/workflows/integration-tests.yml'

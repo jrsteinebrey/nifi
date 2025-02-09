@@ -24,7 +24,6 @@ import {
     SelectedComponent
 } from '../../../../../state/flow';
 import { Store } from '@ngrx/store';
-import { ExtensionCreation } from '../../../../../../../ui/common/extension-creation/extension-creation.component';
 import { selectBreadcrumbs, selectSaving } from '../../../../../state/flow/flow.selectors';
 import { AsyncPipe } from '@angular/common';
 import { FormBuilder, FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -35,8 +34,7 @@ import { MatOptionModule } from '@angular/material/core';
 import { MatSelectModule } from '@angular/material/select';
 import { NifiSpinnerDirective } from '../../../../../../../ui/common/spinner/nifi-spinner.directive';
 import { MatTabsModule } from '@angular/material/tabs';
-import { TextTip, NifiTooltipDirective, CloseOnEscapeDialog } from '@nifi/shared';
-import { ComponentType } from 'libs/shared/src';
+import { ComponentType, TextTip, NifiTooltipDirective, CloseOnEscapeDialog } from '@nifi/shared';
 import { NiFiState } from '../../../../../../../state';
 import { selectPrioritizerTypes } from '../../../../../../../state/extension-types/extension-types.selectors';
 import { Prioritizers } from '../prioritizers/prioritizers.component';
@@ -56,15 +54,12 @@ import { DestinationRemoteProcessGroup } from '../destination/destination-remote
 import { BreadcrumbEntity } from '../../../../../state/shared';
 import { ClusterConnectionService } from '../../../../../../../service/cluster-connection.service';
 import { CanvasUtils } from '../../../../../service/canvas-utils.service';
-import { ErrorBanner } from '../../../../../../../ui/common/error-banner/error-banner.component';
 import { ErrorContextKey } from '../../../../../../../state/error';
 import { ContextErrorBanner } from '../../../../../../../ui/common/context-error-banner/context-error-banner.component';
 
 @Component({
     selector: 'create-connection',
-    standalone: true,
     imports: [
-        ExtensionCreation,
         AsyncPipe,
         FormsModule,
         MatButtonModule,
@@ -88,7 +83,6 @@ import { ContextErrorBanner } from '../../../../../../../ui/common/context-error
         DestinationProcessGroup,
         SourceRemoteProcessGroup,
         DestinationRemoteProcessGroup,
-        ErrorBanner,
         ContextErrorBanner
     ],
     templateUrl: './create-connection.component.html',

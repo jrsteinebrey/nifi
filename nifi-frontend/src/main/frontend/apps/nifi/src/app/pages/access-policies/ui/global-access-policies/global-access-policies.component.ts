@@ -38,8 +38,7 @@ import {
 import { distinctUntilChanged } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, FormGroup, Validators } from '@angular/forms';
-import { NiFiCommon, TextTip } from '@nifi/shared';
-import { ComponentType, isDefinedAndNotNull, SelectOption } from 'libs/shared/src';
+import { ComponentType, isDefinedAndNotNull, NiFiCommon, SelectOption, TextTip } from '@nifi/shared';
 import { RequiredPermission } from '../../../../state/shared';
 import { AccessPolicyEntity, Action, PolicyStatus } from '../../state/shared';
 import { loadExtensionTypesForPolicies } from '../../../../state/extension-types/extension-types.actions';
@@ -53,7 +52,8 @@ import { ErrorContextKey } from '../../../../state/error';
 @Component({
     selector: 'global-access-policies',
     templateUrl: './global-access-policies.component.html',
-    styleUrls: ['./global-access-policies.component.scss']
+    styleUrls: ['./global-access-policies.component.scss'],
+    standalone: false
 })
 export class GlobalAccessPolicies implements OnInit, OnDestroy {
     flowConfiguration$ = this.store.select(selectFlowConfiguration);

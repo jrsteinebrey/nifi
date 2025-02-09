@@ -22,8 +22,7 @@ import { SummaryTableFilterColumn } from '../../common/summary-table-filter/summ
 import { RouterLink } from '@angular/router';
 import { SummaryTableFilterModule } from '../../common/summary-table-filter/summary-table-filter.module';
 import { NgClass } from '@angular/common';
-import { ComponentType } from 'libs/shared/src';
-import { NiFiCommon } from '@nifi/shared';
+import { ComponentType, NiFiCommon } from '@nifi/shared';
 import { MatPaginatorModule } from '@angular/material/paginator';
 import { ProcessorStatusSnapshot, ProcessorStatusSnapshotEntity } from '../../../state';
 import { ComponentStatusTable } from '../../common/component-status-table/component-status-table.component';
@@ -36,7 +35,6 @@ export type SupportedColumns = 'name' | 'type' | 'processGroup' | 'runStatus' | 
     selector: 'processor-status-table',
     templateUrl: './processor-status-table.component.html',
     styleUrls: ['./processor-status-table.component.scss'],
-    standalone: true,
     imports: [
         RouterLink,
         SummaryTableFilterModule,

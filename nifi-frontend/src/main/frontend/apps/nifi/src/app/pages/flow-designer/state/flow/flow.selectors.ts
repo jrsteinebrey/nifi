@@ -18,8 +18,7 @@
 import { flowFeatureKey, FlowState, SelectedComponent } from './index';
 import { createSelector } from '@ngrx/store';
 import { CanvasState, selectCanvasState } from '../index';
-import { selectCurrentRoute } from '@nifi/shared';
-import { ComponentType } from 'libs/shared/src';
+import { ComponentType, selectCurrentRoute } from '@nifi/shared';
 
 export const selectFlowState = createSelector(selectCanvasState, (state: CanvasState) => state[flowFeatureKey]);
 
@@ -252,6 +251,8 @@ export const selectControllerBulletins = createSelector(
     selectFlowState,
     (state: FlowState) => state.controllerBulletins.bulletins // TODO - include others?
 );
+
+export const selectRegistryClients = createSelector(selectFlowState, (state: FlowState) => state.registryClients);
 
 export const selectNavigationCollapsed = createSelector(
     selectFlowState,

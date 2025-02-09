@@ -17,21 +17,24 @@
 
 import { BreadcrumbEntity, Position } from '../shared';
 import {
-    BulletinEntity,
     Bundle,
     ComponentHistory,
     DocumentedType,
     ParameterContextEntity,
-    ParameterContextReferenceEntity,
-    Permissions,
     RegistryClientEntity,
-    Revision,
     SparseVersionedFlow,
     VersionedFlowSnapshotMetadataEntity
 } from '../../../../state/shared';
 import { HttpErrorResponse } from '@angular/common/http';
 import { BackNavigation } from '../../../../state/navigation';
-import { ComponentType, SelectOption } from 'libs/shared/src';
+import {
+    BulletinEntity,
+    ComponentType,
+    ParameterContextReferenceEntity,
+    Permissions,
+    Revision,
+    SelectOption
+} from '@nifi/shared';
 import { CopyResponseEntity, PasteRequestStrategy } from '../../../../state/copy';
 
 export const flowFeatureKey = 'flowState';
@@ -69,6 +72,7 @@ export interface LoadProcessGroupResponse {
     flowStatus: ControllerStatusEntity;
     controllerBulletins: ControllerBulletinsEntity;
     connectedStateChanged: boolean;
+    registryClients: RegistryClientEntity[];
 }
 
 export interface LoadConnectionSuccess {
@@ -355,6 +359,7 @@ export interface EditComponentDialogRequest {
     uri: string;
     entity: any;
     history?: ComponentHistory;
+    parameterContexts?: ParameterContextEntity[];
 }
 
 export interface EditRemotePortDialogRequest extends EditComponentDialogRequest {
@@ -553,6 +558,7 @@ export interface CopiedSnippet {
 
 export interface VersionControlTipInput {
     versionControlInformation: VersionControlInformation;
+    registryClients?: RegistryClientEntity[];
 }
 
 /*
@@ -649,6 +655,7 @@ export interface FlowState {
     flowStatus: ControllerStatusEntity;
     refreshRpgDetails: RefreshRemoteProcessGroupPollingDetailsRequest | null;
     controllerBulletins: ControllerBulletinsEntity;
+    registryClients: RegistryClientEntity[];
     dragging: boolean;
     transitionRequired: boolean;
     skipTransform: boolean;

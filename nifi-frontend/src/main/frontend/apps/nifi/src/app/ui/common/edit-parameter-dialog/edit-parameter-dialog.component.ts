@@ -17,7 +17,7 @@
 
 import { Component, EventEmitter, Inject, Input, Output } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
-import { EditParameterRequest, EditParameterResponse, Parameter } from '../../../state/shared';
+import { EditParameterRequest, EditParameterResponse } from '../../../state/shared';
 import { MatButtonModule } from '@angular/material/button';
 import {
     AbstractControl,
@@ -37,11 +37,10 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { NifiSpinnerDirective } from '../spinner/nifi-spinner.directive';
 import { AsyncPipe } from '@angular/common';
 import { Observable } from 'rxjs';
-import { NifiTooltipDirective, TextTip, CloseOnEscapeDialog } from '@nifi/shared';
+import { NifiTooltipDirective, TextTip, CloseOnEscapeDialog, Parameter } from '@nifi/shared';
 
 @Component({
     selector: 'edit-parameter-dialog',
-    standalone: true,
     imports: [
         MatDialogModule,
         MatButtonModule,
@@ -61,7 +60,7 @@ import { NifiTooltipDirective, TextTip, CloseOnEscapeDialog } from '@nifi/shared
 export class EditParameterDialog extends CloseOnEscapeDialog {
     @Input() saving$!: Observable<boolean>;
     @Output() editParameter: EventEmitter<EditParameterResponse> = new EventEmitter<EditParameterResponse>();
-    @Output() cancel: EventEmitter<void> = new EventEmitter<void>();
+    @Output() close: EventEmitter<void> = new EventEmitter<void>();
 
     name: FormControl;
     sensitive: FormControl;
@@ -181,7 +180,7 @@ export class EditParameterDialog extends CloseOnEscapeDialog {
     }
 
     cancelClicked(): void {
-        this.cancel.next();
+        this.close.next();
     }
 
     private valueChanged(enteredValue: string | null): boolean {

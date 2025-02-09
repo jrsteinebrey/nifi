@@ -24,13 +24,11 @@ import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { CodemirrorModule } from '@ctrl/ngx-codemirror';
 import { MatButton } from '@angular/material/button';
 import { MatCheckbox } from '@angular/material/checkbox';
-import { NifiTooltipDirective } from '../../../../directives';
 import { Resizable } from '../../../resizable/resizable.component';
-import { MapTableItem } from '../../../../index';
+import { MapTableItem } from '../../../../types';
 
 @Component({
     selector: 'text-editor',
-    standalone: true,
     imports: [
         CommonModule,
         CdkDrag,
@@ -38,7 +36,6 @@ import { MapTableItem } from '../../../../index';
         CodemirrorModule,
         MatButton,
         MatCheckbox,
-        NifiTooltipDirective,
         ReactiveFormsModule,
         Resizable
     ],
@@ -57,7 +54,7 @@ export class TextEditor {
     @Input() readonly: boolean = false;
 
     @Output() ok: EventEmitter<string | null> = new EventEmitter<string | null>();
-    @Output() cancel: EventEmitter<void> = new EventEmitter<void>();
+    @Output() close: EventEmitter<void> = new EventEmitter<void>();
 
     textEditorForm: FormGroup;
     editor!: Editor;
@@ -76,7 +73,7 @@ export class TextEditor {
     }
 
     cancelClicked(): void {
-        this.cancel.next();
+        this.close.next();
     }
 
     okClicked(): void {

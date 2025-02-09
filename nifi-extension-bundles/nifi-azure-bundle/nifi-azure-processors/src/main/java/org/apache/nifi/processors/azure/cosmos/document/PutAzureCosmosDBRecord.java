@@ -92,20 +92,28 @@ public class PutAzureCosmosDBRecord extends AbstractAzureCosmosDBProcessor {
             .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
             .build();
 
-    private final static Set<Relationship> relationships = Set.of(REL_SUCCESS, REL_FAILURE);
-    private final static List<PropertyDescriptor> propertyDescriptors = Stream.concat(
-            descriptors.stream(),
-            Stream.of(RECORD_READER_FACTORY, INSERT_BATCH_SIZE, CONFLICT_HANDLE_STRATEGY)
+    private final static Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS,
+            REL_FAILURE
+    );
+
+    private final static List<PropertyDescriptor> PROPERTY_DESCRIPTORS = Stream.concat(
+            getCommonPropertyDescriptors().stream(),
+            Stream.of(
+                    RECORD_READER_FACTORY,
+                    INSERT_BATCH_SIZE,
+                    CONFLICT_HANDLE_STRATEGY
+            )
     ).toList();
 
     @Override
     public Set<Relationship> getRelationships() {
-        return relationships;
+        return RELATIONSHIPS;
     }
 
     @Override
     public List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return propertyDescriptors;
+        return PROPERTY_DESCRIPTORS;
     }
 
     protected void bulkInsert(final List<Map<String, Object>> records) throws CosmosException {

@@ -27,23 +27,19 @@ import {
     Output,
     ViewChild
 } from '@angular/core';
-
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatOptionModule } from '@angular/material/core';
 import { MatSelectModule } from '@angular/material/select';
 import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { NiFiCommon } from '@nifi/shared';
+import { BulletinEntity, ComponentType, NiFiCommon } from '@nifi/shared';
 import { BulletinBoardEvent, BulletinBoardFilterArgs, BulletinBoardItem } from '../../../state/bulletin-board';
-import { ComponentType } from 'libs/shared/src';
-import { BulletinEntity } from '../../../../../state/shared';
 import { debounceTime, delay, Subject } from 'rxjs';
 import { RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
     selector: 'bulletin-board-list',
-    standalone: true,
     imports: [MatFormFieldModule, MatInputModule, MatOptionModule, MatSelectModule, ReactiveFormsModule, RouterLink],
     templateUrl: './bulletin-board-list.component.html',
     styleUrls: ['./bulletin-board-list.component.scss']

@@ -21,7 +21,6 @@ import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } 
 import { MatInputModule } from '@angular/material/input';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatButtonModule } from '@angular/material/button';
-import { AsyncPipe } from '@angular/common';
 import {
     ProvenanceRequest,
     ProvenanceSearchDialogRequest,
@@ -29,14 +28,12 @@ import {
 } from '../../../state/provenance-event-listing';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { NiFiCommon, TextTip, NifiTooltipDirective } from '@nifi/shared';
-import { SelectOption } from 'libs/shared/src';
 import { MatOption } from '@angular/material/autocomplete';
 import { MatSelect } from '@angular/material/select';
-import { CloseOnEscapeDialog } from '@nifi/shared';
+import { CloseOnEscapeDialog, SelectOption } from '@nifi/shared';
 
 @Component({
     selector: 'provenance-search-dialog',
-    standalone: true,
     templateUrl: './provenance-search-dialog.component.html',
     imports: [
         ReactiveFormsModule,
@@ -44,7 +41,6 @@ import { CloseOnEscapeDialog } from '@nifi/shared';
         MatInputModule,
         MatCheckboxModule,
         MatButtonModule,
-        AsyncPipe,
         MatDatepickerModule,
         MatOption,
         MatSelect,

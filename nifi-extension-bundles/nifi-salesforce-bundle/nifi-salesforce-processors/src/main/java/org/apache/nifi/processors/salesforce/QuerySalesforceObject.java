@@ -85,7 +85,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -275,6 +274,7 @@ public class QuerySalesforceObject extends AbstractProcessor {
     private static final JsonFactory JSON_FACTORY = OBJECT_MAPPER.getFactory();
     private static final String TOTAL_RECORD_COUNT_ATTRIBUTE = "total.record.count";
     private static final int MAX_RECORD_COUNT = 2000;
+    private static final JsonParserFactory jsonParserFactory = new JsonParserFactory();
 
     private volatile SalesforceToRecordSchemaConverter salesForceToRecordSchemaConverter;
     private volatile SalesforceRestClient salesforceRestService;
@@ -307,7 +307,7 @@ public class QuerySalesforceObject extends AbstractProcessor {
         salesforceRestService = new SalesforceRestClient(salesforceConfiguration);
     }
 
-    private static final List<PropertyDescriptor> PROPERTIES = Collections.unmodifiableList(Arrays.asList(
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
             SALESFORCE_INSTANCE_URL,
             API_VERSION,
             QUERY_TYPE,
@@ -323,15 +323,17 @@ public class QuerySalesforceObject extends AbstractProcessor {
             READ_TIMEOUT,
             CREATE_ZERO_RECORD_FILES,
             TOKEN_PROVIDER
-    ));
+    );
 
-    private static final Set<Relationship> RELATIONSHIPS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            REL_SUCCESS, REL_FAILURE, REL_ORIGINAL
-    )));
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS,
+            REL_FAILURE,
+            REL_ORIGINAL
+    );
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return PROPERTIES;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -507,9 +509,7 @@ public class QuerySalesforceObject extends AbstractProcessor {
                 STARTING_FIELD_NAME,
                 SchemaApplicationStrategy.SELECTED_PART,
                 CAPTURE_PREDICATE,
-                false,
-                null,
-                new JsonParserFactory()
+                jsonParserFactory
         );
     }
 

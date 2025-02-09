@@ -17,39 +17,34 @@
 
 import { Component, EventEmitter, Input, OnDestroy, Output, Renderer2, ViewContainerRef } from '@angular/core';
 import { PropertyItem } from '../../property-table.component';
-import { CdkDrag, CdkDragHandle } from '@angular/cdk/drag-drop';
+import { CdkDrag } from '@angular/cdk/drag-drop';
 import { AbstractControl, FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
-import { NgTemplateOutlet } from '@angular/common';
-import { NifiTooltipDirective, Resizable } from '@nifi/shared';
-import { PropertyHintTip } from '../../../tooltips/property-hint-tip/property-hint-tip.component';
-import { Parameter, ParameterConfig, PropertyHintTipInput } from '../../../../../state/shared';
+import { Resizable, Parameter, PropertyHint } from '@nifi/shared';
+import { ParameterConfig } from '../../../../../state/shared';
 import { A11yModule } from '@angular/cdk/a11y';
 import { CodemirrorModule } from '@ctrl/ngx-codemirror';
+import { Editor } from 'codemirror';
 import { NfEl } from './modes/nfel';
 import { NfPr } from './modes/nfpr';
-import { Editor } from 'codemirror';
 
 @Component({
     selector: 'nf-editor',
-    standalone: true,
     templateUrl: './nf-editor.component.html',
     imports: [
         CdkDrag,
-        CdkDragHandle,
         ReactiveFormsModule,
         MatDialogModule,
         MatInputModule,
         MatButtonModule,
         MatCheckboxModule,
-        NgTemplateOutlet,
-        NifiTooltipDirective,
         A11yModule,
         CodemirrorModule,
-        Resizable
+        Resizable,
+        PropertyHint
     ],
     styleUrls: ['./nf-editor.component.scss']
 })
@@ -90,9 +85,7 @@ export class NfEditor implements OnDestroy {
     @Input() readonly: boolean = false;
 
     @Output() ok: EventEmitter<string | null> = new EventEmitter<string | null>();
-    @Output() cancel: EventEmitter<void> = new EventEmitter<void>();
-
-    protected readonly PropertyHintTip = PropertyHintTip;
+    @Output() close: EventEmitter<void> = new EventEmitter<void>();
 
     itemSet = false;
     getParametersSet = false;
@@ -198,14 +191,6 @@ export class NfEditor implements OnDestroy {
         };
     }
 
-    getPropertyHintTipData(): PropertyHintTipInput {
-        return {
-            supportsEl: this.supportsEl,
-            supportsParameters: this.supportsParameters,
-            hasParameterContext: this.parameters !== null
-        };
-    }
-
     resized(event: any): void {
         // Note: We calculate the height of the codemirror to fit into an `.nf-editor` overlay. The
         // height of the codemirror needs to be set in order to handle large amounts of text in the codemirror editor.
@@ -260,7 +245,7 @@ export class NfEditor implements OnDestroy {
     }
 
     cancelClicked(): void {
-        this.cancel.next();
+        this.close.next();
     }
 
     ngOnDestroy(): void {

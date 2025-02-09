@@ -19,7 +19,6 @@ import { Component, DestroyRef, inject, Inject, Input, OnInit } from '@angular/c
 import { CommonModule } from '@angular/common';
 import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ErrorBanner } from '../../../../../ui/common/error-banner/error-banner.component';
 import { MatButtonModule } from '@angular/material/button';
 import { NifiSpinnerDirective } from '../../../../../ui/common/spinner/nifi-spinner.directive';
 import {
@@ -34,14 +33,13 @@ import {
     ParameterStatusEntity
 } from '../../../state/parameter-providers';
 import { debounceTime, Observable, Subject } from 'rxjs';
-import { TextTip, NiFiCommon, NifiTooltipDirective, PipesModule } from '@nifi/shared';
+import { TextTip, NiFiCommon, NifiTooltipDirective, AffectedComponentEntity, SortPipe, JoinPipe } from '@nifi/shared';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatSortModule, Sort } from '@angular/material/sort';
 import { ParameterGroupsTable } from './parameter-groups-table/parameter-groups-table.component';
 import { MatCheckboxChange, MatCheckboxModule } from '@angular/material/checkbox';
 import { MatInputModule } from '@angular/material/input';
 import { ParameterReferences } from '../../../../../ui/common/parameter-references/parameter-references.component';
-import { AffectedComponentEntity } from '../../../../../state/shared';
 import * as ParameterProviderActions from '../../../state/parameter-providers/parameter-providers.actions';
 import { Store } from '@ngrx/store';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -52,12 +50,10 @@ import { ContextErrorBanner } from '../../../../../ui/common/context-error-banne
 
 @Component({
     selector: 'fetch-parameter-provider-parameters',
-    standalone: true,
     imports: [
         CommonModule,
         MatDialogModule,
         ReactiveFormsModule,
-        ErrorBanner,
         MatButtonModule,
         NifiSpinnerDirective,
         NifiTooltipDirective,
@@ -67,7 +63,8 @@ import { ContextErrorBanner } from '../../../../../ui/common/context-error-banne
         MatCheckboxModule,
         MatInputModule,
         ParameterReferences,
-        PipesModule,
+        SortPipe,
+        JoinPipe,
         ContextErrorBanner
     ],
     templateUrl: './fetch-parameter-provider-parameters.component.html',

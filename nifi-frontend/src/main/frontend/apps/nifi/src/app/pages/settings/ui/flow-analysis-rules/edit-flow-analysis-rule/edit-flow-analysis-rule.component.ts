@@ -27,7 +27,7 @@ import { AbstractControl, FormBuilder, FormControl, FormGroup, ReactiveFormsModu
 import { Observable, of } from 'rxjs';
 import { Client } from '../../../../../service/client.service';
 import { InlineServiceCreationRequest, InlineServiceCreationResponse, Property } from '../../../../../state/shared';
-import { CopyDirective, NiFiCommon, NifiTooltipDirective, TextTip } from '@nifi/shared';
+import { CopyDirective, NiFiCommon, NifiTooltipDirective, TextTip, SelectOption } from '@nifi/shared';
 import { PropertyTable } from '../../../../../ui/common/property-table/property-table.component';
 import { NifiSpinnerDirective } from '../../../../../ui/common/spinner/nifi-spinner.directive';
 import {
@@ -35,8 +35,6 @@ import {
     FlowAnalysisRuleEntity,
     UpdateFlowAnalysisRuleRequest
 } from '../../../state/flow-analysis-rules';
-import { FlowAnalysisRuleTable } from '../flow-analysis-rule-table/flow-analysis-rule-table.component';
-import { ErrorBanner } from '../../../../../ui/common/error-banner/error-banner.component';
 import { ClusterConnectionService } from '../../../../../service/cluster-connection.service';
 import {
     ConfigVerificationResult,
@@ -45,13 +43,11 @@ import {
 } from '../../../../../state/property-verification';
 import { PropertyVerification } from '../../../../../ui/common/property-verification/property-verification.component';
 import { TabbedDialog } from '../../../../../ui/common/tabbed-dialog/tabbed-dialog.component';
-import { SelectOption } from 'libs/shared/src';
 import { ErrorContextKey } from '../../../../../state/error';
 import { ContextErrorBanner } from '../../../../../ui/common/context-error-banner/context-error-banner.component';
 
 @Component({
     selector: 'edit-flow-analysis-rule',
-    standalone: true,
     templateUrl: './edit-flow-analysis-rule.component.html',
     imports: [
         ReactiveFormsModule,
@@ -65,8 +61,6 @@ import { ContextErrorBanner } from '../../../../../ui/common/context-error-banne
         AsyncPipe,
         NifiSpinnerDirective,
         NifiTooltipDirective,
-        FlowAnalysisRuleTable,
-        ErrorBanner,
         PropertyVerification,
         ContextErrorBanner,
         CopyDirective

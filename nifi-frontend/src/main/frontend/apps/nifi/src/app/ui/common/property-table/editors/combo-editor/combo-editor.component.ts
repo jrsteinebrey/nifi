@@ -24,10 +24,10 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { NgForOf, NgIf } from '@angular/common';
-import { AllowableValue, Parameter, ParameterConfig, PropertyDescriptor } from '../../../../../state/shared';
+import { AllowableValue, ParameterConfig, PropertyDescriptor } from '../../../../../state/shared';
 import { MatOptionModule } from '@angular/material/core';
 import { MatSelectModule } from '@angular/material/select';
-import { TextTip, NifiTooltipDirective, NiFiCommon } from '@nifi/shared';
+import { TextTip, NifiTooltipDirective, NiFiCommon, Parameter } from '@nifi/shared';
 import { A11yModule } from '@angular/cdk/a11y';
 import { NgxSkeletonLoaderModule } from 'ngx-skeleton-loader';
 
@@ -38,7 +38,6 @@ export interface AllowableValueItem extends AllowableValue {
 
 @Component({
     selector: 'combo-editor',
-    standalone: true,
     templateUrl: './combo-editor.component.html',
     imports: [
         CdkDrag,
@@ -82,7 +81,7 @@ export class ComboEditor {
     @Input() readonly: boolean = false;
 
     @Output() ok: EventEmitter<any> = new EventEmitter<any>();
-    @Output() cancel: EventEmitter<void> = new EventEmitter<void>();
+    @Output() close: EventEmitter<void> = new EventEmitter<void>();
 
     protected readonly TextTip = TextTip;
 
@@ -291,6 +290,6 @@ export class ComboEditor {
     }
 
     cancelClicked(): void {
-        this.cancel.next();
+        this.close.next();
     }
 }

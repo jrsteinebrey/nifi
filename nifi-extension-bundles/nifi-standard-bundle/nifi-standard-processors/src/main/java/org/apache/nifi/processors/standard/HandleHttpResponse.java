@@ -82,7 +82,7 @@ public class HandleHttpResponse extends AbstractProcessor {
             .required(false)
             .build();
 
-    private static final List<PropertyDescriptor> PROPERTIES = List.of(
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
             STATUS_CODE,
             HTTP_CONTEXT_MAP,
             ATTRIBUTES_AS_HEADERS_REGEX
@@ -98,11 +98,14 @@ public class HandleHttpResponse extends AbstractProcessor {
                     + "for instance, if the connection times out or if NiFi is restarted before responding to the HTTP Request.")
             .build();
 
-    private static final Set<Relationship> RELATIONSHIPS = Set.of(REL_SUCCESS, REL_FAILURE);
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS,
+            REL_FAILURE
+    );
 
     @Override
     public final List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return PROPERTIES;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -148,7 +151,7 @@ public class HandleHttpResponse extends AbstractProcessor {
         final HttpServletResponse response = contextMap.getResponse(contextIdentifier);
         if (response == null) {
             getLogger().error("Failed to respond to HTTP request for {} because FlowFile had an '{}' attribute of {} but could not find an HTTP Response Object for this identifier",
-                    new Object[]{flowFile, HTTPUtils.HTTP_CONTEXT_ID, contextIdentifier});
+                    flowFile, HTTPUtils.HTTP_CONTEXT_ID, contextIdentifier);
             session.transfer(flowFile, REL_FAILURE);
             return;
         }

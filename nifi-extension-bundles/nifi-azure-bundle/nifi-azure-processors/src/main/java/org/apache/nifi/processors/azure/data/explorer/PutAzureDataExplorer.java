@@ -161,7 +161,7 @@ public class PutAzureDataExplorer extends AbstractProcessor {
             .defaultValue("5 s")
             .build();
 
-    private static final List<PropertyDescriptor> descriptors = List.of(
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
             INGEST_SERVICE,
             DATABASE_NAME,
             TABLE_NAME,
@@ -175,18 +175,21 @@ public class PutAzureDataExplorer extends AbstractProcessor {
             INGEST_STATUS_POLLING_INTERVAL
     );
 
-    private static final Set<Relationship> relationships = Set.of(SUCCESS, FAILURE);
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            SUCCESS,
+            FAILURE
+    );
 
     private transient KustoIngestService service;
 
     @Override
     public Set<Relationship> getRelationships() {
-        return relationships;
+        return RELATIONSHIPS;
     }
 
     @Override
     public final List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return descriptors;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @OnScheduled

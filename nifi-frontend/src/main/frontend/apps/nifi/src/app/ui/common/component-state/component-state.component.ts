@@ -21,8 +21,7 @@ import { MatDialogModule } from '@angular/material/dialog';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatSortModule, Sort } from '@angular/material/sort';
 import { AsyncPipe } from '@angular/common';
-import { CloseOnEscapeDialog, NiFiCommon, NifiTooltipDirective } from '@nifi/shared';
-import { NifiSpinnerDirective } from '../spinner/nifi-spinner.directive';
+import { isDefinedAndNotNull, CloseOnEscapeDialog, NiFiCommon } from '@nifi/shared';
 import { ComponentStateState, StateEntry, StateItem, StateMap } from '../../../state/component-state';
 import { Store } from '@ngrx/store';
 import { clearComponentState } from '../../../state/component-state/component-state.actions';
@@ -31,33 +30,27 @@ import {
     selectComponentName,
     selectComponentState
 } from '../../../state/component-state/component-state.selectors';
-import { isDefinedAndNotNull } from 'libs/shared/src';
 import { debounceTime, Observable } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { selectClusterSummary } from '../../../state/cluster-summary/cluster-summary.selectors';
-import { ErrorBanner } from '../error-banner/error-banner.component';
 import { ErrorContextKey } from '../../../state/error';
 import { ContextErrorBanner } from '../context-error-banner/context-error-banner.component';
 
 @Component({
     selector: 'component-state',
-    standalone: true,
     templateUrl: './component-state.component.html',
     imports: [
         MatButtonModule,
         MatDialogModule,
         MatTableModule,
         MatSortModule,
-        NifiTooltipDirective,
-        NifiSpinnerDirective,
         AsyncPipe,
         ReactiveFormsModule,
         MatFormFieldModule,
         MatInputModule,
-        ErrorBanner,
         ContextErrorBanner
     ],
     styleUrls: ['./component-state.component.scss']

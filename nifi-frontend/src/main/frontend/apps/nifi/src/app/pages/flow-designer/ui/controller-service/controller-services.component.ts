@@ -43,7 +43,7 @@ import {
     selectControllerService
 } from '../../state/controller-services/controller-services.actions';
 import { initialState } from '../../state/controller-services/controller-services.reducer';
-import { ComponentType, isDefinedAndNotNull } from 'libs/shared/src';
+import { ComponentType, isDefinedAndNotNull } from '@nifi/shared';
 import { ControllerServiceEntity } from '../../../../state/shared';
 import { BreadcrumbEntity } from '../../state/shared';
 import { selectCurrentUser } from '../../../../state/current-user/current-user.selectors';
@@ -57,7 +57,8 @@ import { DocumentationRequest } from '../../../../state/documentation';
 @Component({
     selector: 'controller-services',
     templateUrl: './controller-services.component.html',
-    styleUrls: ['./controller-services.component.scss']
+    styleUrls: ['./controller-services.component.scss'],
+    standalone: false
 })
 export class ControllerServices implements OnDestroy {
     serviceState$ = this.store.select(selectControllerServicesState);

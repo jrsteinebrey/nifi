@@ -30,10 +30,12 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 class TestComponent {
     copyText = 'copied value';
 }
+
 describe('CopyDirective', () => {
     let component: TestComponent;
     let fixture: ComponentFixture<TestComponent>;
     let directiveDebugEl: any;
+
     beforeEach(() => {
         TestBed.configureTestingModule({
             imports: [CopyDirective, TestComponent]
@@ -43,9 +45,11 @@ describe('CopyDirective', () => {
         fixture.detectChanges();
         directiveDebugEl = fixture.debugElement.query(By.directive(CopyDirective));
     });
+
     afterEach(() => {
         jest.restoreAllMocks();
     });
+
     it('should create a copy button on mouse enter', () => {
         directiveDebugEl.triggerEventHandler('mouseenter', null);
         fixture.detectChanges();
@@ -53,6 +57,7 @@ describe('CopyDirective', () => {
         expect(copyButton).not.toBeNull();
         expect(copyButton?.classList).toContain('fa-copy');
     });
+
     it('should remove the copy button on mouse leave', () => {
         directiveDebugEl.triggerEventHandler('mouseenter', null);
         fixture.detectChanges();
@@ -61,13 +66,19 @@ describe('CopyDirective', () => {
         const copyButton = directiveDebugEl.nativeElement.querySelector('.copy-button');
         expect(copyButton).toBeNull();
     });
+
     it('should copy text to clipboard and change button appearance on click', async () => {
-        // Mock the clipboard's writeText method
-        Object.assign(navigator, {
-            clipboard: {
-                writeText: jest.fn().mockResolvedValue(undefined)
-            }
+        // Mock the clipboard object with a writable property
+        const mockClipboard = {
+            writeText: jest.fn().mockResolvedValue(undefined)
+        };
+
+        // Use Object.defineProperty to define a writable property
+        Object.defineProperty(navigator, 'clipboard', {
+            value: mockClipboard,
+            writable: true
         });
+
         directiveDebugEl.triggerEventHandler('mouseenter', null);
         fixture.detectChanges();
         const copyButton = directiveDebugEl.nativeElement.querySelector('.copy-button');
@@ -79,6 +90,7 @@ describe('CopyDirective', () => {
         expect(copyButton?.classList).toContain('fa-check');
         expect(copyButton?.classList).toContain('success-color-default');
     });
+
     it('should unsubscribe from events on mouse leave', () => {
         directiveDebugEl.triggerEventHandler('mouseenter', null);
         fixture.detectChanges();

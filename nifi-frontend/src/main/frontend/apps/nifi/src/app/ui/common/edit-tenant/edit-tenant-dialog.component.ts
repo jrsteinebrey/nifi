@@ -17,7 +17,7 @@
 
 import { Component, EventEmitter, Inject, Input, Output } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
-import { EditTenantRequest, EditTenantResponse, Revision, UserEntity, UserGroupEntity } from '../../../state/shared';
+import { EditTenantRequest, EditTenantResponse, UserEntity, UserGroupEntity } from '../../../state/shared';
 import { MatButtonModule } from '@angular/material/button';
 import {
     AbstractControl,
@@ -39,14 +39,12 @@ import { AsyncPipe } from '@angular/common';
 import { Observable } from 'rxjs';
 import { MatListModule } from '@angular/material/list';
 import { Client } from '../../../service/client.service';
-import { NiFiCommon, CloseOnEscapeDialog } from '@nifi/shared';
-import { ErrorBanner } from '../error-banner/error-banner.component';
+import { NiFiCommon, CloseOnEscapeDialog, Revision } from '@nifi/shared';
 import { ErrorContextKey } from '../../../state/error';
 import { ContextErrorBanner } from '../context-error-banner/context-error-banner.component';
 
 @Component({
     selector: 'edit-tenant-dialog',
-    standalone: true,
     imports: [
         MatDialogModule,
         MatButtonModule,
@@ -59,7 +57,6 @@ import { ContextErrorBanner } from '../context-error-banner/context-error-banner
         NifiSpinnerDirective,
         AsyncPipe,
         MatListModule,
-        ErrorBanner,
         ContextErrorBanner
     ],
     templateUrl: './edit-tenant-dialog.component.html',
@@ -68,7 +65,7 @@ import { ContextErrorBanner } from '../context-error-banner/context-error-banner
 export class EditTenantDialog extends CloseOnEscapeDialog {
     @Input() saving$!: Observable<boolean>;
     @Output() editTenant: EventEmitter<EditTenantResponse> = new EventEmitter<EditTenantResponse>();
-    @Output() cancel: EventEmitter<void> = new EventEmitter<void>();
+    @Output() close: EventEmitter<void> = new EventEmitter<void>();
 
     readonly USER: string = 'user';
     readonly USER_GROUP: string = 'userGroup';
@@ -202,7 +199,7 @@ export class EditTenantDialog extends CloseOnEscapeDialog {
     }
 
     cancelClicked(): void {
-        this.cancel.next();
+        this.close.next();
     }
 
     okClicked(): void {

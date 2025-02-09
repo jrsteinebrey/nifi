@@ -44,9 +44,12 @@ import org.bouncycastle.openpgp.PGPException;
 import org.bouncycastle.openpgp.PGPLiteralDataGenerator;
 import org.bouncycastle.openpgp.PGPOnePassSignature;
 import org.bouncycastle.openpgp.PGPPrivateKey;
+import org.bouncycastle.openpgp.PGPPublicKey;
 import org.bouncycastle.openpgp.PGPSignature;
 import org.bouncycastle.openpgp.PGPSignatureGenerator;
 import org.bouncycastle.openpgp.PGPUtil;
+import org.bouncycastle.openpgp.operator.KeyFingerPrintCalculator;
+import org.bouncycastle.openpgp.operator.jcajce.JcaKeyFingerprintCalculator;
 import org.bouncycastle.openpgp.operator.jcajce.JcaPGPContentSignerBuilder;
 
 import java.io.IOException;
@@ -55,7 +58,6 @@ import java.io.OutputStream;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -139,9 +141,12 @@ public class SignContentPGP extends AbstractProcessor {
             .required(true)
             .build();
 
-    private static final Set<Relationship> RELATIONSHIPS = new HashSet<>(Arrays.asList(SUCCESS, FAILURE));
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            SUCCESS,
+            FAILURE
+    );
 
-    private static final List<PropertyDescriptor> DESCRIPTORS = Arrays.asList(
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
             FILE_ENCODING,
             HASH_ALGORITHM,
             SIGNING_STRATEGY,
@@ -171,7 +176,7 @@ public class SignContentPGP extends AbstractProcessor {
      */
     @Override
     public final List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return DESCRIPTORS;
+        return PROPERTY_DESCRIPTORS;
     }
 
     /**
@@ -288,7 +293,9 @@ public class SignContentPGP extends AbstractProcessor {
             final int keyAlgorithm = privateKey.getPublicKeyPacket().getAlgorithm();
             final SecureRandom secureRandom = new SecureRandom();
             final JcaPGPContentSignerBuilder builder = new JcaPGPContentSignerBuilder(keyAlgorithm, hashAlgorithm.getId()).setSecureRandom(secureRandom);
-            final PGPSignatureGenerator signatureGenerator = new PGPSignatureGenerator(builder);
+            final KeyFingerPrintCalculator keyFingerprintCalculator = new JcaKeyFingerprintCalculator();
+            final PGPPublicKey pgpPublicKey = new PGPPublicKey(privateKey.getPublicKeyPacket(), keyFingerprintCalculator);
+            final PGPSignatureGenerator signatureGenerator = new PGPSignatureGenerator(builder, pgpPublicKey);
             signatureGenerator.init(PGPSignature.BINARY_DOCUMENT, privateKey);
             return signatureGenerator;
         }

@@ -844,7 +844,7 @@ public class StandardProcessorNode extends ProcessorNode implements Connectable 
 
         final Set<Relationship> relationships;
         final Processor processor = processorRef.get().getProcessor();
-        try (final NarCloseable narCloseable = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), processor.getIdentifier())) {
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), processor.getIdentifier())) {
             relationships = processor.getRelationships();
         }
 
@@ -898,7 +898,7 @@ public class StandardProcessorNode extends ProcessorNode implements Connectable 
         final Set<Relationship> undefined = new HashSet<>();
         final Set<Relationship> relationships;
         final Processor processor = processorRef.get().getProcessor();
-        try (final NarCloseable narCloseable = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), processor.getIdentifier())) {
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), processor.getIdentifier())) {
             relationships = processor.getRelationships();
         }
 
@@ -1015,7 +1015,7 @@ public class StandardProcessorNode extends ProcessorNode implements Connectable 
                     }
                 } else {
                     // Verify the configuration, using the component's classloader
-                    try (final NarCloseable narCloseable = NarCloseable.withComponentNarLoader(extensionManager, processor.getClass(), getIdentifier())) {
+                    try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(extensionManager, processor.getClass(), getIdentifier())) {
                         results.addAll(verifiable.verify(context, logger, attributes));
                     }
                 }
@@ -1227,7 +1227,7 @@ public class StandardProcessorNode extends ProcessorNode implements Connectable 
     @Override
     public Collection<Relationship> getRelationships() {
         final Processor processor = processorRef.get().getProcessor();
-        try (final NarCloseable narCloseable = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), processor.getIdentifier())) {
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), processor.getIdentifier())) {
             return getProcessor().getRelationships();
         }
     }
@@ -1235,7 +1235,7 @@ public class StandardProcessorNode extends ProcessorNode implements Connectable 
     @Override
     public String toString() {
         final Processor processor = processorRef.get().getProcessor();
-        try (final NarCloseable narCloseable = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), processor.getIdentifier())) {
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), processor.getIdentifier())) {
             return getProcessor().toString();
         }
     }
@@ -1268,7 +1268,7 @@ public class StandardProcessorNode extends ProcessorNode implements Connectable 
         final Processor processor = processorRef.get().getProcessor();
 
         activateThread();
-        try (final NarCloseable narCloseable = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), processor.getIdentifier())) {
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), processor.getIdentifier())) {
             processor.onTrigger(context, sessionFactory);
         } finally {
             deactivateThread();
@@ -1508,7 +1508,7 @@ public class StandardProcessorNode extends ProcessorNode implements Connectable 
 
         lifecycleState.incrementActiveThreadCount(null);
         activateThread();
-        try (final NarCloseable narCloseable = NarCloseable.withComponentNarLoader(getExtensionManager(), implClass, getIdentifier())) {
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(getExtensionManager(), implClass, getIdentifier())) {
             ReflectionUtils.quietlyInvokeMethodsWithAnnotation(OnPrimaryNodeStateChange.class, getProcessor(), nodeState);
         } finally {
             deactivateThread();
@@ -1655,7 +1655,7 @@ public class StandardProcessorNode extends ProcessorNode implements Connectable 
 
             final ProcessContext processContext = processContextFactory.get();
 
-            try (final NarCloseable nc = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), processor.getIdentifier())) {
+            try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), processor.getIdentifier())) {
                 try {
                     hasActiveThreads = true;
 
@@ -1713,7 +1713,7 @@ public class StandardProcessorNode extends ProcessorNode implements Connectable 
                     + "initialize and run the Processor again after the 'Administrative Yield Duration' has elapsed. Failure is due to " + cause, cause);
 
                 // If processor's task completed Exceptionally, then we want to retry initiating the start (if Processor is still scheduled to run).
-                try (final NarCloseable nc = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), processor.getIdentifier())) {
+                try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), processor.getIdentifier())) {
                     activateThread();
                     try {
                         ReflectionUtils.quietlyInvokeMethodsWithAnnotation(OnUnscheduled.class, processor, processContext);
@@ -1755,16 +1755,13 @@ public class StandardProcessorNode extends ProcessorNode implements Connectable 
         // to do this, we use #scheduleWithFixedDelay and then make that Future available to the task
         // itself by placing it into an AtomicReference.
         final AtomicReference<Future<?>> futureRef = new AtomicReference<>();
-        final Runnable monitoringTask = new Runnable() {
-            @Override
-            public void run() {
-                Future<?> monitoringFuture = futureRef.get();
-                if (monitoringFuture == null) { // Future is not yet available. Just return and wait for the next invocation.
-                    return;
-                }
-
-               monitorAsyncTask(taskFuture, monitoringFuture, completionTimestampRef.get());
+        final Runnable monitoringTask = () -> {
+            Future<?> monitoringFuture = futureRef.get();
+            if (monitoringFuture == null) { // Future is not yet available. Just return and wait for the next invocation.
+                return;
             }
+
+           monitorAsyncTask(taskFuture, monitoringFuture, completionTimestampRef.get());
         };
 
         final Future<?> future = taskScheduler.scheduleWithFixedDelay(monitoringTask, 1, 10, TimeUnit.MILLISECONDS);
@@ -1826,7 +1823,7 @@ public class StandardProcessorNode extends ProcessorNode implements Connectable 
                                 LOG.debug("Triggering @OnUnscheduled methods of {}", this);
 
                                 activateThread();
-                                try (final NarCloseable nc = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), processor.getIdentifier())) {
+                                try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), processor.getIdentifier())) {
                                     ReflectionUtils.quietlyInvokeMethodsWithAnnotation(OnUnscheduled.class, processor, processContext);
                                 } finally {
                                     deactivateThread();
@@ -1844,7 +1841,7 @@ public class StandardProcessorNode extends ProcessorNode implements Connectable 
                                 LOG.debug("Triggering @OnStopped methods of {}", this);
 
                                 activateThread();
-                                try (final NarCloseable nc = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), processor.getIdentifier())) {
+                                try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), processor.getIdentifier())) {
                                     ReflectionUtils.quietlyInvokeMethodsWithAnnotation(OnStopped.class, processor, processContext);
                                 } finally {
                                     deactivateThread();
@@ -2062,7 +2059,7 @@ public class StandardProcessorNode extends ProcessorNode implements Connectable 
 
     @Override
     public void onConfigurationRestored(final ProcessContext context) {
-        try (final NarCloseable nc = NarCloseable.withComponentNarLoader(getExtensionManager(), getProcessor().getClass(), getProcessor().getIdentifier())) {
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(getExtensionManager(), getProcessor().getClass(), getProcessor().getIdentifier())) {
             ReflectionUtils.quietlyInvokeMethodsWithAnnotation(OnConfigurationRestored.class, getProcessor(), context);
         }
 
@@ -2097,7 +2094,7 @@ public class StandardProcessorNode extends ProcessorNode implements Connectable 
 
         final StandardPropertyConfiguration propertyConfig = new StandardPropertyConfiguration(effectiveValues,
                 originalPropertyValues, this::mapRawValueToEffectiveValue, toString(), serviceFactory);
-        try (final NarCloseable nc = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), getIdentifier())) {
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(getExtensionManager(), processor.getClass(), getIdentifier())) {
             processor.migrateProperties(propertyConfig);
         }
 
@@ -2117,7 +2114,7 @@ public class StandardProcessorNode extends ProcessorNode implements Connectable 
         final Processor processor = getProcessor();
 
         final StandardRelationshipConfiguration relationshipConfig = new StandardRelationshipConfiguration(this);
-        try (final NarCloseable nc = NarCloseable.withComponentNarLoader(getExtensionManager(), getProcessor().getClass(), getProcessor().getIdentifier())) {
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(getExtensionManager(), getProcessor().getClass(), getProcessor().getIdentifier())) {
             processor.migrateRelationships(relationshipConfig);
         }
     }

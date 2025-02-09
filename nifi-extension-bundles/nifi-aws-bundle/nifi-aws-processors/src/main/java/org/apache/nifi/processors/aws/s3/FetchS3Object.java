@@ -271,7 +271,7 @@ public class FetchS3Object extends AbstractS3Processor {
             .required(false)
             .build();
 
-    public static final List<PropertyDescriptor> properties = List.of(
+    public static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
         BUCKET_WITH_DEFAULT_VALUE,
         KEY,
         S3_REGION,
@@ -291,7 +291,7 @@ public class FetchS3Object extends AbstractS3Processor {
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return properties;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override

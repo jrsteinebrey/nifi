@@ -158,22 +158,6 @@ public class ListenHTTPServlet extends HttpServlet {
         }
     }
 
-    private void notAllowed(final HttpServletRequest request, final HttpServletResponse response) throws IOException {
-        response.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED, "Method Not Allowed");
-    }
-
-    @Override
-    protected void doTrace(final HttpServletRequest request, final HttpServletResponse response) throws ServletException, IOException {
-        notAllowed(request, response);
-        logger.debug("Denying TRACE request; method not allowed.");
-    }
-
-    @Override
-    protected void doOptions(final HttpServletRequest request, final HttpServletResponse response) throws ServletException, IOException {
-        notAllowed(request, response);
-        logger.debug("Denying OPTIONS request; method not allowed.");
-    }
-
     @Override
     protected void doPost(final HttpServletRequest request, final HttpServletResponse response) throws ServletException, IOException {
 
@@ -190,7 +174,7 @@ public class ListenHTTPServlet extends HttpServlet {
             if (sessionFactory == null) {
                 try {
                     Thread.sleep(10);
-                } catch (final InterruptedException e) {
+                } catch (final InterruptedException ignored) {
                 }
             }
         } while (sessionFactory == null);
@@ -248,7 +232,7 @@ public class ListenHTTPServlet extends HttpServlet {
             if (destinationVersion != null) {
                 try {
                     protocolVersion = Integer.valueOf(destinationVersion);
-                } catch (final NumberFormatException e) {
+                } catch (final NumberFormatException ignored) {
                     // Value was invalid. Treat as if the header were missing.
                 }
             }

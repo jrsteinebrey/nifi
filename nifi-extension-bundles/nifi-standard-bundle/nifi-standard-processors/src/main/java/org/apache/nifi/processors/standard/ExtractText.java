@@ -38,12 +38,10 @@ import org.apache.nifi.processor.DataUnit;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
 import org.apache.nifi.processor.Relationship;
-import org.apache.nifi.processor.io.InputStreamCallback;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.stream.io.StreamUtils;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -231,7 +229,7 @@ public class ExtractText extends AbstractProcessor {
         .defaultValue("false")
         .build();
 
-    private static final List<PropertyDescriptor> PROPERTIES = List.of(
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
             CHARACTER_SET,
             MAX_BUFFER_SIZE,
             MAX_CAPTURE_GROUP_LENGTH,
@@ -275,7 +273,7 @@ public class ExtractText extends AbstractProcessor {
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return PROPERTIES;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -399,12 +397,7 @@ public class ExtractText extends AbstractProcessor {
 
         try {
             final byte[] byteBuffer = buffer;
-            session.read(flowFile, new InputStreamCallback() {
-                @Override
-                public void process(InputStream in) throws IOException {
-                    StreamUtils.fillBuffer(in, byteBuffer, false);
-                }
-            });
+            session.read(flowFile, in -> StreamUtils.fillBuffer(in, byteBuffer, false));
 
             final long len = Math.min(byteBuffer.length, flowFile.getSize());
             contentString = new String(byteBuffer, 0, (int) len, charset);

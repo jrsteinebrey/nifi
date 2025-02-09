@@ -30,8 +30,7 @@ import {
     VersionedFlowSnapshotMetadataEntity
 } from '../../../../../../../state/shared';
 import { selectSaving } from '../../../../../state/flow/flow.selectors';
-import { AsyncPipe, JsonPipe, NgForOf, NgIf, NgTemplateOutlet } from '@angular/common';
-import { ErrorBanner } from '../../../../../../../ui/common/error-banner/error-banner.component';
+import { AsyncPipe, NgForOf, NgIf } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -44,22 +43,26 @@ import { Observable, of, take } from 'rxjs';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatSortModule, Sort } from '@angular/material/sort';
-import { NiFiCommon, TextTip, NifiTooltipDirective, CloseOnEscapeDialog } from '@nifi/shared';
+import {
+    isDefinedAndNotNull,
+    SelectOption,
+    NiFiCommon,
+    TextTip,
+    NifiTooltipDirective,
+    CloseOnEscapeDialog
+} from '@nifi/shared';
 import { selectTimeOffset } from '../../../../../../../state/flow-configuration/flow-configuration.selectors';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Client } from '../../../../../../../service/client.service';
 import { importFromRegistry } from '../../../../../state/flow/flow.actions';
 import { ClusterConnectionService } from '../../../../../../../service/cluster-connection.service';
-import { isDefinedAndNotNull, SelectOption } from 'libs/shared/src';
 import { ErrorContextKey } from '../../../../../../../state/error';
 import { ContextErrorBanner } from '../../../../../../../ui/common/context-error-banner/context-error-banner.component';
 
 @Component({
     selector: 'import-from-registry',
-    standalone: true,
     imports: [
         AsyncPipe,
-        ErrorBanner,
         MatButtonModule,
         MatDialogModule,
         MatFormFieldModule,
@@ -72,8 +75,6 @@ import { ContextErrorBanner } from '../../../../../../../ui/common/context-error
         NgForOf,
         NifiTooltipDirective,
         MatIconModule,
-        NgTemplateOutlet,
-        JsonPipe,
         MatCheckboxModule,
         MatSortModule,
         MatTableModule,
@@ -138,9 +139,12 @@ export class ImportFromRegistry extends CloseOnEscapeDialog implements OnInit {
                 this.timeOffset = timeOffset;
             });
 
-        const sortedRegistries = dialogRequest.registryClients.slice().sort((a, b) => {
-            return this.nifiCommon.compareString(a.component.name, b.component.name);
-        });
+        const sortedRegistries = dialogRequest.registryClients
+            .slice()
+            .filter((registry) => registry.permissions.canRead)
+            .sort((a, b) => {
+                return this.nifiCommon.compareString(a.component.name, b.component.name);
+            });
 
         sortedRegistries.forEach((registryClient: RegistryClientEntity) => {
             if (registryClient.permissions.canRead) {
@@ -153,8 +157,9 @@ export class ImportFromRegistry extends CloseOnEscapeDialog implements OnInit {
             this.clientBranchingSupportMap.set(registryClient.id, registryClient.component.supportsBranching);
         });
 
+        const initialRegistry = this.registryClientOptions.length > 0 ? this.registryClientOptions[0].value : null;
         this.importFromRegistryForm = this.formBuilder.group({
-            registry: new FormControl(this.registryClientOptions[0].value, Validators.required),
+            registry: new FormControl(initialRegistry, Validators.required),
             branch: new FormControl(null),
             bucket: new FormControl(null, Validators.required),
             flow: new FormControl(null, Validators.required),

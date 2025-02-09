@@ -2578,7 +2578,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 final RevisionDTO componentReferenceRevision = dtoFactory.createRevisionDTO(revisionManager.getRevision(componentReference.getId()));
                 componentReferenceEntity = entityFactory.createComponentReferenceEntity(componentReference, componentReferenceRevision, componentReferencePermissions);
             }
-        } catch (final ResourceNotFoundException e) {
+        } catch (final ResourceNotFoundException ignored) {
             // component not found for the specified resource
         }
 
@@ -3463,7 +3463,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 });
 
         final PermissionsDTO permissions = dtoFactory.createPermissionsDto(parameterProvider);
-        final PermissionsDTO operatePermissions = dtoFactory.createPermissionsDto(new OperationAuthorizable(parameterProvider));
+        dtoFactory.createPermissionsDto(new OperationAuthorizable(parameterProvider));
         final List<BulletinDTO> bulletins = dtoFactory.createBulletinDtos(bulletinRepository.findBulletinsForSource(parameterProvider.getIdentifier()));
         final List<BulletinEntity> bulletinEntities = bulletins.stream().map(bulletin -> entityFactory.createBulletinEntity(bulletin, permissions.getCanRead())).collect(Collectors.toList());
         return entityFactory.createParameterProviderEntity(snapshot.getComponent(), dtoFactory.createRevisionDTO(snapshot.getLastModification()), permissions, bulletinEntities);
@@ -3485,7 +3485,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
     public ParameterProviderEntity deleteParameterProvider(final Revision revision, final String parameterProviderId) {
         final ParameterProviderNode parameterProvider = parameterProviderDAO.getParameterProvider(parameterProviderId);
         final PermissionsDTO permissions = dtoFactory.createPermissionsDto(parameterProvider);
-        final PermissionsDTO operatePermissions = dtoFactory.createPermissionsDto(new OperationAuthorizable(parameterProvider));
+        dtoFactory.createPermissionsDto(new OperationAuthorizable(parameterProvider));
         final ParameterProviderDTO snapshot = deleteComponent(
                 revision,
                 parameterProvider.getResource(),
@@ -4005,40 +4005,20 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
 
         final Authorizable authorizable;
         try {
-            switch (type) {
-                case PROCESSOR:
-                    authorizable = authorizableLookup.getProcessor(sourceId).getAuthorizable();
-                    break;
-                case REPORTING_TASK:
-                    authorizable = authorizableLookup.getReportingTask(sourceId).getAuthorizable();
-                    break;
-                case FLOW_ANALYSIS_RULE:
-                    authorizable = authorizableLookup.getFlowAnalysisRule(sourceId).getAuthorizable();
-                    break;
-                case PARAMETER_PROVIDER:
-                    authorizable = authorizableLookup.getParameterProvider(sourceId).getAuthorizable();
-                    break;
-                case CONTROLLER_SERVICE:
-                    authorizable = authorizableLookup.getControllerService(sourceId).getAuthorizable();
-                    break;
-                case FLOW_CONTROLLER:
-                    authorizable = controllerFacade;
-                    break;
-                case INPUT_PORT:
-                    authorizable = authorizableLookup.getInputPort(sourceId);
-                    break;
-                case OUTPUT_PORT:
-                    authorizable = authorizableLookup.getOutputPort(sourceId);
-                    break;
-                case REMOTE_PROCESS_GROUP:
-                    authorizable = authorizableLookup.getRemoteProcessGroup(sourceId);
-                    break;
-                case PROCESS_GROUP:
-                    authorizable = authorizableLookup.getProcessGroup(sourceId).getAuthorizable();
-                    break;
-                default:
-                    throw new WebApplicationException(Response.serverError().entity("An unexpected type of component is the source of this bulletin.").build());
-            }
+            authorizable = switch (type) {
+                case PROCESSOR -> authorizableLookup.getProcessor(sourceId).getAuthorizable();
+                case REPORTING_TASK -> authorizableLookup.getReportingTask(sourceId).getAuthorizable();
+                case FLOW_ANALYSIS_RULE -> authorizableLookup.getFlowAnalysisRule(sourceId).getAuthorizable();
+                case PARAMETER_PROVIDER -> authorizableLookup.getParameterProvider(sourceId).getAuthorizable();
+                case CONTROLLER_SERVICE -> authorizableLookup.getControllerService(sourceId).getAuthorizable();
+                case FLOW_CONTROLLER -> controllerFacade;
+                case INPUT_PORT -> authorizableLookup.getInputPort(sourceId);
+                case OUTPUT_PORT -> authorizableLookup.getOutputPort(sourceId);
+                case REMOTE_PROCESS_GROUP -> authorizableLookup.getRemoteProcessGroup(sourceId);
+                case PROCESS_GROUP -> authorizableLookup.getProcessGroup(sourceId).getAuthorizable();
+                default ->
+                        throw new WebApplicationException(Response.serverError().entity("An unexpected type of component is the source of this bulletin.").build());
+            };
         } catch (final ResourceNotFoundException e) {
             // if the underlying component is gone, disallow
             return false;
@@ -4330,7 +4310,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                         if (serviceNodes.add(serviceNode)) {
                             findReferencedControllerServices(serviceNode, serviceNodes, user);
                         }
-                    } catch (ResourceNotFoundException e) {
+                    } catch (ResourceNotFoundException ignored) {
                         // ignore if the resource is not found, if the referenced service was previously deleted, it should not stop this action
                     }
                 }
@@ -4423,7 +4403,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 final BulletinEntity controllerServiceBulletin = entityFactory.createBulletinEntity(dtoFactory.createBulletinDto(bulletin), controllerServiceAuthorized);
                 controllerServiceBulletinEntities.add(controllerServiceBulletin);
                 controllerBulletinEntities.add(controllerServiceBulletin);
-            } catch (final ResourceNotFoundException e) {
+            } catch (final ResourceNotFoundException ignored) {
                 // controller service missing.. skip
             }
         }
@@ -4441,7 +4421,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 final BulletinEntity reportingTaskBulletin = entityFactory.createBulletinEntity(dtoFactory.createBulletinDto(bulletin), reportingTaskAuthorizableAuthorized);
                 reportingTaskBulletinEntities.add(reportingTaskBulletin);
                 controllerBulletinEntities.add(reportingTaskBulletin);
-            } catch (final ResourceNotFoundException e) {
+            } catch (final ResourceNotFoundException ignored) {
                 // reporting task missing.. skip
             }
         }
@@ -4459,7 +4439,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 final BulletinEntity flowAnalysisRuleBulletin = entityFactory.createBulletinEntity(dtoFactory.createBulletinDto(bulletin), flowAnalysisRuleAuthorizableAuthorized);
                 flowAnalysisRuleBulletinEntities.add(flowAnalysisRuleBulletin);
                 controllerBulletinEntities.add(flowAnalysisRuleBulletin);
-            } catch (final ResourceNotFoundException e) {
+            } catch (final ResourceNotFoundException ignored) {
                 // flow analysis rule missing.. skip
             }
         }
@@ -4477,7 +4457,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 final BulletinEntity parameterProviderBulletin = entityFactory.createBulletinEntity(dtoFactory.createBulletinDto(bulletin), parameterProviderAuthorizableAuthorized);
                 parameterProviderBulletinEntities.add(parameterProviderBulletin);
                 controllerBulletinEntities.add(parameterProviderBulletin);
-            } catch (final ResourceNotFoundException e) {
+            } catch (final ResourceNotFoundException ignored) {
                 // parameter provider missing.. skip
             }
         }
@@ -4495,7 +4475,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
                 final BulletinEntity flowRegistryClient = entityFactory.createBulletinEntity(dtoFactory.createBulletinDto(bulletin), flowRegistryClientkAuthorizableAuthorized);
                 flowRegistryClientBulletinEntities.add(flowRegistryClient);
                 controllerBulletinEntities.add(flowRegistryClient);
-            } catch (final ResourceNotFoundException e) {
+            } catch (final ResourceNotFoundException ignored) {
                 // flow registry client missing.. skip
             }
         }
@@ -5002,7 +4982,7 @@ public class StandardNiFiServiceFacade implements NiFiServiceFacade {
     private ParameterProviderEntity createParameterProviderEntity(final ParameterProviderNode parameterProvider) {
         final RevisionDTO revision = dtoFactory.createRevisionDTO(revisionManager.getRevision(parameterProvider.getIdentifier()));
         final PermissionsDTO permissions = dtoFactory.createPermissionsDto(parameterProvider);
-        final PermissionsDTO operatePermissions = dtoFactory.createPermissionsDto(new OperationAuthorizable(parameterProvider));
+        dtoFactory.createPermissionsDto(new OperationAuthorizable(parameterProvider));
         final List<BulletinDTO> bulletins = dtoFactory.createBulletinDtos(bulletinRepository.findBulletinsForSource(parameterProvider.getIdentifier()));
         final List<BulletinEntity> bulletinEntities = bulletins.stream().map(bulletin -> entityFactory.createBulletinEntity(bulletin, permissions.getCanRead())).collect(Collectors.toList());
         return entityFactory.createParameterProviderEntity(dtoFactory.createParameterProviderDto(parameterProvider),

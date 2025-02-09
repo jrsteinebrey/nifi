@@ -16,7 +16,6 @@
  */
 package org.apache.nifi.http;
 
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -24,7 +23,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
 import jakarta.servlet.AsyncContext;
@@ -67,6 +65,11 @@ public class StandardHttpContextMap extends AbstractControllerService implements
             .addValidator(StandardValidators.TIME_PERIOD_VALIDATOR)
             .build();
 
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+        MAX_OUTSTANDING_REQUESTS,
+        REQUEST_EXPIRATION
+    );
+
     private static final long CLEANUP_MAX_DELAY_NANOS = 5_000_000_000L;
 
     private final ConcurrentMap<String, Wrapper> wrapperMap = new ConcurrentHashMap<>();
@@ -77,22 +80,16 @@ public class StandardHttpContextMap extends AbstractControllerService implements
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        final List<PropertyDescriptor> properties = new ArrayList<>(2);
-        properties.add(MAX_OUTSTANDING_REQUESTS);
-        properties.add(REQUEST_EXPIRATION);
-        return properties;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @OnEnabled
     public void onConfigured(final ConfigurationContext context) {
         maxSize = context.getProperty(MAX_OUTSTANDING_REQUESTS).asInteger();
-        executor = Executors.newSingleThreadScheduledExecutor(new ThreadFactory() {
-            @Override
-            public Thread newThread(final Runnable r) {
-                final Thread thread = Executors.defaultThreadFactory().newThread(r);
-                thread.setName("StandardHttpContextMap-" + getIdentifier());
-                return thread;
-            }
+        executor = Executors.newSingleThreadScheduledExecutor(r -> {
+            final Thread thread = Executors.defaultThreadFactory().newThread(r);
+            thread.setName("StandardHttpContextMap-" + getIdentifier());
+            return thread;
         });
 
         maxRequestNanos = context.getProperty(REQUEST_EXPIRATION).asTimePeriod(TimeUnit.NANOSECONDS);
@@ -189,7 +186,7 @@ public class StandardHttpContextMap extends AbstractControllerService implements
                         final AsyncContext async = entry.getValue().getAsync();
 
                         getLogger().warn("Request from {} timed out; responding with SERVICE_UNAVAILABLE",
-                                new Object[]{async.getRequest().getRemoteAddr()});
+                                async.getRequest().getRemoteAddr());
 
                         ((HttpServletResponse) async.getResponse()).sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE, "Timeout occurred");
                         async.complete();

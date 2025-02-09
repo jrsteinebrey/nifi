@@ -96,7 +96,7 @@ public class GetAzureQueueStorage_v12 extends AbstractAzureQueueStorage_v12 {
             .build();
 
     private static final ProxySpec[] PROXY_SPECS = {ProxySpec.HTTP, ProxySpec.SOCKS};
-    private static final List<PropertyDescriptor> PROPERTIES = List.of(
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
             QUEUE_NAME,
             ENDPOINT_SUFFIX,
             STORAGE_CREDENTIALS_SERVICE,
@@ -106,14 +106,16 @@ public class GetAzureQueueStorage_v12 extends AbstractAzureQueueStorage_v12 {
             REQUEST_TIMEOUT,
             ProxyConfiguration.createProxyConfigPropertyDescriptor(PROXY_SPECS)
     );
-    private static final Set<Relationship> RELATIONSHIPS = Set.of(REL_SUCCESS);
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS
+    );
 
     // 7 days is the maximum timeout as per https://learn.microsoft.com/en-us/rest/api/storageservices/get-messages
     private static final Duration MAX_VISIBILITY_TIMEOUT = Duration.ofDays(7);
 
     @Override
     public List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return PROPERTIES;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override

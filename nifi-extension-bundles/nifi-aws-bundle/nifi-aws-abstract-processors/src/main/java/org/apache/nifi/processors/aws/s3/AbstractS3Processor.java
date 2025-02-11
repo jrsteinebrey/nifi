@@ -18,7 +18,6 @@ package org.apache.nifi.processors.aws.s3;
 
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.ClientConfiguration;
-import com.amazonaws.SdkClientException;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.Signer;
 import com.amazonaws.client.builder.AwsClientBuilder;

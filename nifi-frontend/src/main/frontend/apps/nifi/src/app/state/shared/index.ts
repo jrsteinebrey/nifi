@@ -15,17 +15,16 @@
  * limitations under the License.
  */
 
-import { filter, Observable } from 'rxjs';
+import { Observable } from 'rxjs';
 import { GarbageCollection } from '../system-diagnostics';
-
-export function isDefinedAndNotNull<T>() {
-    return (source$: Observable<null | undefined | T>) =>
-        source$.pipe(
-            filter((input: null | undefined | T): input is T => {
-                return input !== null && typeof input !== 'undefined';
-            })
-        );
-}
+import {
+    AffectedComponentEntity,
+    BulletinEntity,
+    Parameter,
+    ParameterContextReferenceEntity,
+    Permissions,
+    Revision
+} from '@nifi/shared';
 
 export interface OkDialogRequest {
     title: string;
@@ -33,11 +32,6 @@ export interface OkDialogRequest {
 }
 
 export interface CancelDialogRequest {
-    title: string;
-    message: string;
-}
-
-export interface YesNoDialogRequest {
     title: string;
     message: string;
 }
@@ -55,10 +49,13 @@ export interface NewPropertyDialogResponse {
 export interface EditParameterRequest {
     existingParameters?: string[];
     parameter?: Parameter;
+    isNewParameterContext: boolean;
+    isConvert?: boolean;
 }
 
 export interface EditParameterResponse {
     parameter: Parameter;
+    valueChanged: boolean;
 }
 
 export interface AdvancedUiParams {
@@ -177,7 +174,7 @@ export interface ProvenanceEvent extends ProvenanceEventSummary {
     clusterNodeAddress: string;
     sourceSystemFlowFileId: string;
     alternateIdentifierUri: string;
-    attributes: Attribute[];
+    attributes?: Attribute[];
     parentUuids: string[];
     childUuids: string[];
     transitUri: string;
@@ -257,19 +254,6 @@ export interface PropertyTipInput {
     propertyHistory?: PropertyHistory;
 }
 
-export interface ParameterTipInput {
-    parameter: Parameter;
-}
-
-export interface ElFunctionTipInput {
-    elFunction: ElFunction;
-}
-
-export interface PropertyHintTipInput {
-    supportsEl: boolean;
-    supportsParameters: boolean;
-}
-
 export interface RestrictionsTipInput {
     usageRestriction: string;
     explicitRestrictions: ExplicitRestriction[];
@@ -277,11 +261,6 @@ export interface RestrictionsTipInput {
 
 export interface GarbageCollectionTipInput {
     garbageCollections: GarbageCollection[];
-}
-
-export interface Permissions {
-    canRead: boolean;
-    canWrite: boolean;
 }
 
 export interface ExplicitRestriction {
@@ -294,48 +273,9 @@ export interface RequiredPermission {
     label: string;
 }
 
-export interface Revision {
-    version: number;
-    clientId?: string;
-    lastModifier?: string;
-}
-
-export interface BulletinEntity {
-    canRead: boolean;
-    id: number;
-    sourceId: string;
-    groupId: string;
-    timestamp: string;
-    nodeAddress?: string;
-    bulletin: {
-        id: number;
-        sourceId: string;
-        groupId: string;
-        category: string;
-        level: string;
-        message: string;
-        sourceName: string;
-        timestamp: string;
-        nodeAddress?: string;
-        sourceType: string;
-    };
-}
-
 export interface ParameterEntity {
     canWrite?: boolean;
     parameter: Parameter;
-}
-
-export interface Parameter {
-    name: string;
-    description: string;
-    sensitive: boolean;
-    value: string | null;
-    valueRemoved?: boolean;
-    provided?: boolean;
-    referencingComponents?: AffectedComponentEntity[];
-    parameterContext?: ParameterContextReferenceEntity;
-    inherited?: boolean;
 }
 
 export interface ParameterContextEntity {
@@ -343,7 +283,7 @@ export interface ParameterContextEntity {
     permissions: Permissions;
     id: string;
     uri: string;
-    component: ParameterContext;
+    component?: ParameterContext;
 }
 
 export interface ParameterContext {
@@ -363,36 +303,9 @@ export interface BoundProcessGroup {
     component: any;
 }
 
-export interface ParameterContextReferenceEntity {
-    permissions: Permissions;
-    id: string;
-    component?: ParameterContextReference;
-    bulletins?: BulletinEntity[];
-}
-
-export interface ParameterContextReference {
-    id: string;
-    name: string;
-}
-
-export interface AffectedComponentEntity {
-    permissions: Permissions;
-    id: string;
-    revision: Revision;
-    bulletins: BulletinEntity[];
-    component: AffectedComponent;
-    processGroup: ProcessGroupName;
-    referenceType: string;
-}
-
-export interface AffectedComponent {
-    processGroupId: string;
-    id: string;
-    referenceType: string;
-    name: string;
-    state: string;
-    activeThreadCount?: number;
-    validationErrors: string[];
+export interface ParameterConfig {
+    supportsParameters: boolean;
+    parameters: Parameter[] | null;
 }
 
 export interface SubmitParameterContextUpdate {
@@ -420,36 +333,6 @@ export interface ParameterContextUpdateRequest {
 export interface ParameterContextUpdateRequestEntity {
     parameterContextRevision: Revision;
     request: ParameterContextUpdateRequest;
-}
-
-export interface ElFunction {
-    name: string;
-    description: string;
-    args: { [key: string]: string };
-    subject?: string;
-    returnType: string;
-}
-
-export interface ProcessGroupName {
-    id: string;
-    name: string;
-}
-
-export enum ComponentType {
-    Processor = 'Processor',
-    ProcessGroup = 'ProcessGroup',
-    RemoteProcessGroup = 'RemoteProcessGroup',
-    InputPort = 'InputPort',
-    OutputPort = 'OutputPort',
-    Label = 'Label',
-    Funnel = 'Funnel',
-    Connection = 'Connection',
-    ControllerService = 'ControllerService',
-    ReportingTask = 'ReportingTask',
-    FlowAnalysisRule = 'FlowAnalysisRule',
-    ParameterProvider = 'ParameterProvider',
-    FlowRegistryClient = 'FlowRegistryClient',
-    Flow = 'Flow'
 }
 
 export interface ControllerServiceReferencingComponent {
@@ -618,13 +501,6 @@ export interface VersionedFlowSnapshotMetadata {
     branch?: string;
 }
 
-export interface SelectOption {
-    text: string;
-    value: string | null;
-    description?: string;
-    disabled?: boolean;
-}
-
 export interface PropertyDependency {
     propertyName: string;
     dependentValues: string[];
@@ -705,7 +581,7 @@ export interface OpenChangeComponentVersionDialogRequest {
     componentVersions: DocumentedType[];
 }
 
-export interface MapTableEntry {
+export interface ExternalControllerServiceReference {
+    identifier: string;
     name: string;
-    value: string | null;
 }

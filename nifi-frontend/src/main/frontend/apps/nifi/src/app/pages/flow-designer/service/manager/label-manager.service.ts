@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { DestroyRef, inject, Injectable } from '@angular/core';
+import { Injectable, OnDestroy } from '@angular/core';
 import { Store } from '@ngrx/store';
 import { CanvasState } from '../../state';
 import { CanvasUtils } from '../canvas-utils.service';
@@ -31,19 +31,17 @@ import {
 } from '../../state/flow/flow.selectors';
 import { Client } from '../../../../service/client.service';
 import { updateComponent } from '../../state/flow/flow.actions';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { QuickSelectBehavior } from '../behavior/quick-select-behavior.service';
-import { ComponentType } from '../../../../state/shared';
 import { UpdateComponentRequest } from '../../state/flow';
-import { filter, switchMap } from 'rxjs';
-import { NiFiCommon } from '../../../../service/nifi-common.service';
+import { filter, Subject, switchMap, takeUntil } from 'rxjs';
+import { ComponentType, NiFiCommon } from '@nifi/shared';
 import { ClusterConnectionService } from '../../../../service/cluster-connection.service';
 
 @Injectable({
     providedIn: 'root'
 })
-export class LabelManager {
-    private destroyRef = inject(DestroyRef);
+export class LabelManager implements OnDestroy {
+    private destroyed$: Subject<boolean> = new Subject();
 
     public static readonly INITIAL_WIDTH: number = 148;
     public static readonly INITIAL_HEIGHT: number = 148;
@@ -52,7 +50,7 @@ export class LabelManager {
     private static readonly SNAP_ALIGNMENT_PIXELS: number = 8;
 
     private labels: [] = [];
-    private labelContainer: any;
+    private labelContainer: any = null;
     private transitionRequired = false;
 
     private labelPointDrag: any;
@@ -68,236 +66,7 @@ export class LabelManager {
         private selectableBehavior: SelectableBehavior,
         private quickSelectBehavior: QuickSelectBehavior,
         private editableBehavior: EditableBehavior
-    ) {}
-
-    private select() {
-        return this.labelContainer.selectAll('g.label').data(this.labels, function (d: any) {
-            return d.id;
-        });
-    }
-
-    /**
-     * Sorts the specified labels according to the z index.
-     *
-     * @param {type} labels
-     */
-    private sort(labels: any[]): void {
-        labels.sort((a, b) => {
-            return this.nifiCommon.compareNumber(a.zIndex, b.zIndex);
-        });
-    }
-
-    private renderLabels(entered: any) {
-        if (entered.empty()) {
-            return entered;
-        }
-
-        const label = entered
-            .append('g')
-            .attr('id', function (d: any) {
-                return 'id-' + d.id;
-            })
-            .attr('class', 'label component');
-
-        // label border
-        label.append('rect').attr('class', 'border').attr('fill', 'transparent').attr('stroke', 'transparent');
-
-        // label
-        label
-            .append('rect')
-            .attr('class', 'body')
-            .attr('filter', 'url(#component-drop-shadow)')
-            .attr('stroke-width', 0);
-
-        // label value
-        label
-            .append('text')
-            .attr('xml:space', 'preserve')
-            .attr('font-weight', 'bold')
-            .attr('fill', 'black')
-            .attr('class', 'label-value');
-
-        this.selectableBehavior.activate(label);
-        this.quickSelectBehavior.activate(label);
-
-        return label;
-    }
-
-    private updateLabels(updated: any) {
-        if (updated.empty()) {
-            return;
-        }
-        const self: LabelManager = this;
-
-        // update the border using the configured color
-        updated
-            .select('rect.border')
-            .attr('width', function (d: any) {
-                return d.dimensions.width;
-            })
-            .attr('height', function (d: any) {
-                return d.dimensions.height;
-            })
-            .classed('unauthorized', function (d: any) {
-                return d.permissions.canRead === false;
-            });
-
-        // update the body fill using the configured color
-        updated
-            .select('rect.body')
-            .attr('width', function (d: any) {
-                return d.dimensions.width;
-            })
-            .attr('height', function (d: any) {
-                return d.dimensions.height;
-            })
-            .style('fill', function (d: any) {
-                if (!d.permissions.canRead) {
-                    return null;
-                }
-
-                let color = self.defaultColor();
-
-                // use the specified color if appropriate
-                if (d.component.style['background-color']) {
-                    color = d.component.style['background-color'];
-                }
-
-                return color;
-            })
-            .classed('unauthorized', function (d: any) {
-                return d.permissions.canRead === false;
-            });
-
-        // go through each label being updated
-        updated.each(function (this: any, d: any) {
-            const label = d3.select(this);
-
-            // update the component behavior as appropriate
-            self.editableBehavior.editable(label);
-
-            // update the label
-            const labelText = label.select('text.label-value');
-            const labelPoint = label.selectAll('path.labelpoint');
-            if (d.permissions.canRead) {
-                // udpate the font size
-                labelText.attr('font-size', function () {
-                    let fontSize = '12px';
-
-                    // use the specified color if appropriate
-                    if (d.component.style['font-size']) {
-                        fontSize = d.component.style['font-size'];
-                    }
-
-                    return fontSize;
-                });
-
-                // remove the previous label value
-                labelText.selectAll('tspan').remove();
-
-                // parse the lines in this label
-                let lines = [];
-                if (d.component.label) {
-                    lines = d.component.label.split('\n');
-                } else {
-                    lines.push('');
-                }
-
-                let color = self.defaultColor();
-
-                // use the specified color if appropriate
-                if (d.component.style['background-color']) {
-                    color = d.component.style['background-color'];
-                }
-
-                // add label value
-                lines.forEach((line: string) => {
-                    labelText
-                        .append('tspan')
-                        .attr('x', '0.4em')
-                        .attr('dy', '1.2em')
-                        .text(function () {
-                            return line == '' ? ' ' : line;
-                        })
-                        .style('fill', function () {
-                            return self.canvasUtils.determineContrastColor(
-                                self.nifiCommon.substringAfterLast(color, '#')
-                            );
-                        });
-                });
-
-                // -----------
-                // labelpoints
-                // -----------
-
-                if (d.permissions.canWrite) {
-                    const pointData = [{ x: d.dimensions.width, y: d.dimensions.height }];
-                    const points = labelPoint.data(pointData);
-
-                    // create a point for the end
-                    const pointsEntered: any = points
-                        .enter()
-                        .append('path')
-                        .attr('class', 'labelpoint resizable-triangle')
-                        .attr('d', 'm0,0 l0,8 l-8,0 z')
-                        .call(self.labelPointDrag);
-
-                    // update the midpoints
-                    points.merge(pointsEntered).attr('transform', function (p) {
-                        return 'translate(' + (p.x - 2) + ', ' + (p.y - 10) + ')';
-                    });
-
-                    // remove old items
-                    points.exit().remove();
-                }
-            } else {
-                // remove the previous label value
-                labelText.selectAll('tspan').remove();
-
-                // remove the label points
-                labelPoint.remove();
-            }
-        });
-    }
-
-    private defaultColor(): string {
-        return '#fff7d7';
-    }
-
-    private removeLabels(removed: any) {
-        removed.remove();
-    }
-
-    public init(): void {
-        this.labelContainer = d3.select('#canvas').append('g').attr('pointer-events', 'all').attr('class', 'labels');
-
-        this.store
-            .select(selectLabels)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((labels) => {
-                this.set(labels);
-            });
-
-        this.store
-            .select(selectFlowLoadingStatus)
-            .pipe(
-                filter((status) => status === 'success'),
-                switchMap(() => this.store.select(selectAnySelectedComponentIds)),
-                takeUntilDestroyed(this.destroyRef)
-            )
-            .subscribe((selected) => {
-                this.labelContainer.selectAll('g.label').classed('selected', function (d: any) {
-                    return selected.includes(d.id);
-                });
-            });
-
-        this.store
-            .select(selectTransitionRequired)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((transitionRequired) => {
-                this.transitionRequired = transitionRequired;
-            });
-
+    ) {
         const self: LabelManager = this;
 
         // handle bend point drag events
@@ -396,6 +165,247 @@ export class LabelManager {
                 // indicate dragging complete
                 labelData.dragging = false;
             });
+    }
+
+    private select() {
+        return this.labelContainer.selectAll('g.label').data(this.labels, function (d: any) {
+            return d.id;
+        });
+    }
+
+    /**
+     * Sorts the specified labels according to the z index.
+     *
+     * @param {type} labels
+     */
+    private sort(labels: any[]): void {
+        labels.sort((a, b) => {
+            return this.nifiCommon.compareNumber(a.zIndex, b.zIndex);
+        });
+    }
+
+    private renderLabels(entered: any) {
+        if (entered.empty()) {
+            return entered;
+        }
+
+        const label = entered
+            .append('g')
+            .attr('id', function (d: any) {
+                return 'id-' + d.id;
+            })
+            .attr('class', 'label component');
+
+        // label border
+        label.append('rect').attr('class', 'border').attr('fill', 'transparent').attr('stroke', 'transparent');
+
+        // label
+        label
+            .append('rect')
+            .attr('class', 'body')
+            .attr('filter', 'url(#component-drop-shadow)')
+            .attr('stroke-width', 0);
+
+        // label value
+        label
+            .append('text')
+            .attr('x', 10)
+            .attr('xml:space', 'preserve')
+            .attr('font-weight', 'bold')
+            .attr('fill', 'black')
+            .attr('class', 'label-value');
+
+        this.selectableBehavior.activate(label);
+        this.quickSelectBehavior.activate(label);
+
+        return label;
+    }
+
+    private updateLabels(updated: any) {
+        if (updated.empty()) {
+            return;
+        }
+        const self: LabelManager = this;
+
+        // update the border using the configured color
+        updated
+            .select('rect.border')
+            .attr('width', function (d: any) {
+                return d.dimensions.width;
+            })
+            .attr('height', function (d: any) {
+                return d.dimensions.height;
+            })
+            .classed('unauthorized', function (d: any) {
+                return d.permissions.canRead === false;
+            });
+
+        // update the body fill using the configured color
+        updated
+            .select('rect.body')
+            .attr('width', function (d: any) {
+                return d.dimensions.width;
+            })
+            .attr('height', function (d: any) {
+                return d.dimensions.height;
+            })
+            .style('fill', function (d: any) {
+                if (!d.permissions.canRead) {
+                    return null;
+                }
+
+                let color = self.defaultColor();
+
+                // use the specified color if appropriate
+                if (d.component.style['background-color']) {
+                    color = d.component.style['background-color'];
+                }
+
+                return color;
+            })
+            .classed('unauthorized', function (d: any) {
+                return d.permissions.canRead === false;
+            });
+
+        // go through each label being updated
+        updated.each(function (this: any, d: any) {
+            const label = d3.select(this);
+
+            // update the component behavior as appropriate
+            self.editableBehavior.editable(label);
+
+            // update the label
+            const labelText = label.select('text.label-value');
+            const labelPoint = label.selectAll('path.labelpoint');
+            if (d.permissions.canRead) {
+                // update the font size
+                labelText.attr('font-size', function () {
+                    let fontSize = '12px';
+
+                    // use the specified color if appropriate
+                    if (d.component.style['font-size']) {
+                        fontSize = d.component.style['font-size'];
+                    }
+
+                    return fontSize;
+                });
+
+                // remove the previous label value
+                labelText.selectAll('tspan').remove();
+
+                // parse the lines in this label
+                let lines = [];
+                if (d.component.label) {
+                    lines = d.component.label.split('\n');
+                } else {
+                    lines.push('');
+                }
+
+                let color = self.defaultColor();
+
+                // use the specified color if appropriate
+                if (d.component.style['background-color']) {
+                    color = d.component.style['background-color'];
+                }
+
+                // add label value
+                const textWidth = d.dimensions.width - 15;
+                const textHeight = d.dimensions.height;
+                self.canvasUtils.boundedMultilineEllipsis(
+                    labelText,
+                    textWidth,
+                    textHeight,
+                    lines,
+                    `label-text.${d.id}.width.${textWidth}`
+                );
+                labelText.selectAll('tspan').style('fill', function () {
+                    return self.canvasUtils.determineContrastColor(self.nifiCommon.substringAfterLast(color, '#'));
+                });
+
+                // -----------
+                // labelpoints
+                // -----------
+
+                if (d.permissions.canWrite) {
+                    const pointData = [{ x: d.dimensions.width, y: d.dimensions.height }];
+                    const points = labelPoint.data(pointData);
+
+                    // create a point for the end
+                    const pointsEntered: any = points
+                        .enter()
+                        .append('path')
+                        .attr('class', 'labelpoint resizable-triangle')
+                        .attr('d', 'm0,0 l0,8 l-8,0 z')
+                        .call(self.labelPointDrag);
+
+                    // update the midpoints
+                    points.merge(pointsEntered).attr('transform', function (p) {
+                        return 'translate(' + (p.x - 2) + ', ' + (p.y - 10) + ')';
+                    });
+
+                    // remove old items
+                    points.exit().remove();
+                }
+            } else {
+                // remove the previous label value
+                labelText.selectAll('tspan').remove();
+
+                // remove the label points
+                labelPoint.remove();
+            }
+        });
+    }
+
+    private defaultColor(): string {
+        return '#fff7d7';
+    }
+
+    private removeLabels(removed: any) {
+        removed.remove();
+    }
+
+    public init(): void {
+        this.labelContainer = d3.select('#canvas').append('g').attr('pointer-events', 'all').attr('class', 'labels');
+
+        this.store
+            .select(selectLabels)
+            .pipe(
+                filter(() => this.labelContainer !== null),
+                takeUntil(this.destroyed$)
+            )
+            .subscribe((labels) => {
+                this.set(labels);
+            });
+
+        this.store
+            .select(selectFlowLoadingStatus)
+            .pipe(
+                filter((status) => status === 'success'),
+                filter(() => this.labelContainer !== null),
+                switchMap(() => this.store.select(selectAnySelectedComponentIds)),
+                takeUntil(this.destroyed$)
+            )
+            .subscribe((selected) => {
+                this.labelContainer.selectAll('g.label').classed('selected', function (d: any) {
+                    return selected.includes(d.id);
+                });
+            });
+
+        this.store
+            .select(selectTransitionRequired)
+            .pipe(takeUntil(this.destroyed$))
+            .subscribe((transitionRequired) => {
+                this.transitionRequired = transitionRequired;
+            });
+    }
+
+    public destroy(): void {
+        this.labelContainer = null;
+        this.destroyed$.next(true);
+    }
+
+    ngOnDestroy(): void {
+        this.destroyed$.complete();
     }
 
     private set(labels: any): void {

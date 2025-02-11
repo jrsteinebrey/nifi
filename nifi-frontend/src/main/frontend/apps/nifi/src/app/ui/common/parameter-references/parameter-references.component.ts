@@ -22,21 +22,19 @@ import { MatButtonModule } from '@angular/material/button';
 import { NgClass, NgTemplateOutlet } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MatDialogModule } from '@angular/material/dialog';
-import { NifiTooltipDirective } from '../tooltips/nifi-tooltip.directive';
+import { BulletinsTipInput, ValidationErrorsTipInput } from '../../../state/shared';
 import {
     AffectedComponent,
     AffectedComponentEntity,
-    BulletinsTipInput,
-    ProcessGroupName,
-    ValidationErrorsTipInput
-} from '../../../state/shared';
-import { NiFiCommon } from '../../../service/nifi-common.service';
+    NiFiCommon,
+    NifiTooltipDirective,
+    ProcessGroupName
+} from '@nifi/shared';
 import { ValidationErrorsTip } from '../tooltips/validation-errors-tip/validation-errors-tip.component';
 import { BulletinsTip } from '../tooltips/bulletins-tip/bulletins-tip.component';
 
 @Component({
     selector: 'parameter-references',
-    standalone: true,
     templateUrl: './parameter-references.component.html',
     imports: [
         MatTreeModule,
@@ -51,6 +49,7 @@ import { BulletinsTip } from '../tooltips/bulletins-tip/bulletins-tip.component'
     styleUrls: ['./parameter-references.component.scss']
 })
 export class ParameterReferences {
+    @Input() disabledLinks: boolean = false;
     @Input() set parameterReferences(parameterReferences: AffectedComponentEntity[] | undefined) {
         // reset existing state
         this.processGroups = [];
@@ -110,19 +109,19 @@ export class ParameterReferences {
 
     getNonServiceStateIcon(reference: AffectedComponent): string {
         if (reference.state == 'STOPPED') {
-            return 'stopped fa fa-stop warn-color-lighter';
+            return 'stopped fa fa-stop error-color-variant';
         } else if (reference.state == 'RUNNING') {
-            return 'running fa fa-play success-color-lighter';
+            return 'running fa fa-play success-color-default';
         } else {
-            return 'disabled icon icon-enable-false surface-color';
+            return 'disabled icon icon-enable-false neutral-color';
         }
     }
 
     getServiceStateIcon(reference: AffectedComponent): string {
         if (reference.state == 'ENABLED') {
-            return 'enabled fa fa-flash success-color';
+            return 'enabled fa fa-flash success-color-variant';
         } else {
-            return 'disabled icon icon-enable-false surface-color';
+            return 'disabled icon icon-enable-false neutral-color';
         }
     }
 

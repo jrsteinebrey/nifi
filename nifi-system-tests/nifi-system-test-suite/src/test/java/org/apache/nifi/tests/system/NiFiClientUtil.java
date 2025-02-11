@@ -26,11 +26,12 @@ import org.apache.nifi.provenance.search.SearchableField;
 import org.apache.nifi.remote.protocol.SiteToSiteTransportProtocol;
 import org.apache.nifi.scheduling.ExecutionNode;
 import org.apache.nifi.stream.io.StreamUtils;
-import org.apache.nifi.toolkit.cli.impl.client.nifi.ConnectionClient;
-import org.apache.nifi.toolkit.cli.impl.client.nifi.NiFiClient;
-import org.apache.nifi.toolkit.cli.impl.client.nifi.NiFiClientException;
-import org.apache.nifi.toolkit.cli.impl.client.nifi.ProcessorClient;
-import org.apache.nifi.toolkit.cli.impl.client.nifi.VersionsClient;
+import org.apache.nifi.toolkit.client.ConnectionClient;
+import org.apache.nifi.toolkit.client.NiFiClient;
+import org.apache.nifi.toolkit.client.NiFiClientException;
+import org.apache.nifi.toolkit.client.ProcessorClient;
+import org.apache.nifi.toolkit.client.VersionsClient;
+import org.apache.nifi.web.api.dto.AssetReferenceDTO;
 import org.apache.nifi.web.api.dto.BundleDTO;
 import org.apache.nifi.web.api.dto.ConfigVerificationResultDTO;
 import org.apache.nifi.web.api.dto.ConnectableDTO;
@@ -56,7 +57,6 @@ import org.apache.nifi.web.api.dto.ProcessorDTO;
 import org.apache.nifi.web.api.dto.RemoteProcessGroupDTO;
 import org.apache.nifi.web.api.dto.ReportingTaskDTO;
 import org.apache.nifi.web.api.dto.RevisionDTO;
-import org.apache.nifi.web.api.dto.SnippetDTO;
 import org.apache.nifi.web.api.dto.VerifyConfigRequestDTO;
 import org.apache.nifi.web.api.dto.VersionControlInformationDTO;
 import org.apache.nifi.web.api.dto.VersionedFlowDTO;
@@ -74,14 +74,14 @@ import org.apache.nifi.web.api.entity.ConnectionStatusEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceRunStatusEntity;
 import org.apache.nifi.web.api.entity.ControllerServicesEntity;
-import org.apache.nifi.web.api.entity.CopySnippetRequestEntity;
+import org.apache.nifi.web.api.entity.CopyRequestEntity;
+import org.apache.nifi.web.api.entity.CopyResponseEntity;
 import org.apache.nifi.web.api.entity.CountersEntity;
 import org.apache.nifi.web.api.entity.DropRequestEntity;
 import org.apache.nifi.web.api.entity.FlowAnalysisRuleEntity;
 import org.apache.nifi.web.api.entity.FlowAnalysisRuleRunStatusEntity;
 import org.apache.nifi.web.api.entity.FlowAnalysisRulesEntity;
 import org.apache.nifi.web.api.entity.FlowComparisonEntity;
-import org.apache.nifi.web.api.entity.FlowEntity;
 import org.apache.nifi.web.api.entity.FlowFileEntity;
 import org.apache.nifi.web.api.entity.FlowRegistryClientEntity;
 import org.apache.nifi.web.api.entity.ListingRequestEntity;
@@ -89,6 +89,7 @@ import org.apache.nifi.web.api.entity.NodeEntity;
 import org.apache.nifi.web.api.entity.ParameterContextEntity;
 import org.apache.nifi.web.api.entity.ParameterContextReferenceEntity;
 import org.apache.nifi.web.api.entity.ParameterContextUpdateRequestEntity;
+import org.apache.nifi.web.api.entity.ParameterContextsEntity;
 import org.apache.nifi.web.api.entity.ParameterEntity;
 import org.apache.nifi.web.api.entity.ParameterGroupConfigurationEntity;
 import org.apache.nifi.web.api.entity.ParameterProviderApplyParametersRequestEntity;
@@ -96,6 +97,9 @@ import org.apache.nifi.web.api.entity.ParameterProviderConfigurationEntity;
 import org.apache.nifi.web.api.entity.ParameterProviderEntity;
 import org.apache.nifi.web.api.entity.ParameterProviderParameterApplicationEntity;
 import org.apache.nifi.web.api.entity.ParameterProviderParameterFetchEntity;
+import org.apache.nifi.web.api.entity.ParameterProvidersEntity;
+import org.apache.nifi.web.api.entity.PasteRequestEntity;
+import org.apache.nifi.web.api.entity.PasteResponseEntity;
 import org.apache.nifi.web.api.entity.PortEntity;
 import org.apache.nifi.web.api.entity.ProcessGroupEntity;
 import org.apache.nifi.web.api.entity.ProcessGroupFlowEntity;
@@ -107,7 +111,6 @@ import org.apache.nifi.web.api.entity.ReportingTaskEntity;
 import org.apache.nifi.web.api.entity.ReportingTaskRunStatusEntity;
 import org.apache.nifi.web.api.entity.ReportingTasksEntity;
 import org.apache.nifi.web.api.entity.ScheduleComponentsEntity;
-import org.apache.nifi.web.api.entity.SnippetEntity;
 import org.apache.nifi.web.api.entity.StartVersionControlRequestEntity;
 import org.apache.nifi.web.api.entity.VerifyConfigRequestEntity;
 import org.apache.nifi.web.api.entity.VersionControlInformationEntity;
@@ -126,11 +129,13 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class NiFiClientUtil {
@@ -172,7 +177,7 @@ public class NiFiClientUtil {
     }
 
     public ProcessorEntity createPythonProcessor(final String typeName) throws NiFiClientException, IOException {
-        return createProcessor( "python." + typeName, NiFiSystemIT.NIFI_GROUP_ID, NiFiSystemIT.TEST_PYTHON_EXTENSIONS_ARTIFACT_ID, "0.0.1-SNAPSHOT");
+        return createProcessor(typeName, NiFiSystemIT.NIFI_GROUP_ID, NiFiSystemIT.TEST_PYTHON_EXTENSIONS_ARTIFACT_ID, "0.0.1-SNAPSHOT");
     }
 
     public ProcessorEntity createProcessor(final String simpleTypeName) throws NiFiClientException, IOException {
@@ -293,11 +298,11 @@ public class NiFiClientUtil {
     }
 
     public ControllerServiceEntity createRootLevelControllerService(final String simpleTypeName) throws NiFiClientException, IOException {
-        return createControllerService(NiFiSystemIT.TEST_CS_PACKAGE + "." + simpleTypeName, null, NiFiSystemIT.NIFI_GROUP_ID, NiFiSystemIT.TEST_EXTENSIONS_ARTIFACT_ID, nifiVersion);
+        return createControllerService(NiFiSystemIT.TEST_CS_PACKAGE + "." + simpleTypeName, null, NiFiSystemIT.NIFI_GROUP_ID, NiFiSystemIT.TEST_EXTENSIONS_SERVICES_ARTIFACT_ID, nifiVersion);
     }
 
     public ControllerServiceEntity createControllerService(final String simpleTypeName, final String groupId) throws NiFiClientException, IOException {
-        return createControllerService(NiFiSystemIT.TEST_CS_PACKAGE + "." + simpleTypeName, groupId, NiFiSystemIT.NIFI_GROUP_ID, NiFiSystemIT.TEST_EXTENSIONS_ARTIFACT_ID, nifiVersion);
+        return createControllerService(NiFiSystemIT.TEST_CS_PACKAGE + "." + simpleTypeName, groupId, NiFiSystemIT.NIFI_GROUP_ID, NiFiSystemIT.TEST_EXTENSIONS_SERVICES_ARTIFACT_ID, nifiVersion);
     }
 
     public ControllerServiceEntity createControllerService(final String type, final String processGroupId, final String bundleGroupId, final String artifactId, final String version)
@@ -472,6 +477,38 @@ public class NiFiClientUtil {
         }
     }
 
+    public void deleteParameterContexts() throws NiFiClientException, IOException {
+        final ParameterContextsEntity parameterContextsEntity = nifiClient.getParamContextClient().getParamContexts();
+        final Map<String, ParameterContextEntity> parameterContextMap = parameterContextsEntity.getParameterContexts().stream()
+                .collect(Collectors.toMap(ParameterContextEntity::getId, Function.identity()));
+
+        // If parameter context have inherited contexts then they needed to be deleted from the bottom up, so we just keep iterating
+        // over the set of ids and retrying deletes until all have been deleted, knowing that some delete calls will fail the first time
+        final Set<String> parameterContextIds = new HashSet<>(parameterContextMap.keySet());
+        while (!parameterContextIds.isEmpty()) {
+            final Iterator<String> parameterContextIdIterator = parameterContextIds.iterator();
+            while (parameterContextIdIterator.hasNext()) {
+                final String parameterContextId = parameterContextIdIterator.next();
+                final ParameterContextEntity parameterContextEntity = parameterContextMap.get(parameterContextId);
+                try {
+                    final String version = String.valueOf(parameterContextEntity.getRevision().getVersion());
+                    nifiClient.getParamContextClient().deleteParamContext(parameterContextId, version, true);
+                    parameterContextIdIterator.remove();
+                } catch (final Exception e) {
+                    logger.warn("Failed to delete parameter context [{}] due to: {}", parameterContextId, e.getMessage());
+                }
+            }
+        }
+    }
+
+    public void deleteParameterProviders() throws NiFiClientException, IOException {
+        final ParameterProvidersEntity parameterProvidersEntity = nifiClient.getFlowClient().getParamProviders();
+        for (final ParameterProviderEntity parameterProviderEntity : parameterProvidersEntity.getParameterProviders()) {
+            final String version = String.valueOf(parameterProviderEntity.getRevision().getVersion());
+            nifiClient.getParamProviderClient().deleteParamProvider(parameterProviderEntity.getId(), version, true);
+        }
+    }
+
     public void waitForFlowAnalysisRuleState(final String desiredState, final Collection<String> ruleIdsOfInterest) throws NiFiClientException, IOException {
         final long maxTimestamp = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(2L);
 
@@ -547,8 +584,16 @@ public class NiFiClientUtil {
         return entity;
     }
 
-    public ParameterContextEntity getParameterContext(final String contextId) throws NiFiClientException, IOException {
-        return nifiClient.getParamContextClient().getParamContext(contextId, false);
+    public ParameterEntity createAssetReferenceParameterEntity(final String name, final List<String> referencedAssets) {
+        final ParameterDTO dto = new ParameterDTO();
+        dto.setName(name);
+        dto.setReferencedAssets(referencedAssets.stream().map(assetId -> new AssetReferenceDTO(assetId)).toList());
+        dto.setValue(null);
+        dto.setProvided(false);
+
+        final ParameterEntity entity = new ParameterEntity();
+        entity.setParameter(dto);
+        return entity;
     }
 
     public ParameterContextEntity createParameterContextEntity(final String name, final String description, final Set<ParameterEntity> parameters) {
@@ -676,6 +721,26 @@ public class NiFiClientUtil {
 
         final ParameterContextEntity entityUpdate = createParameterContextEntity(existingEntity.getComponent().getName(), existingEntity.getComponent().getDescription(),
                 parameterEntities, inheritedParameterContextIds, null);
+        entityUpdate.setId(existingEntity.getId());
+        entityUpdate.setRevision(existingEntity.getRevision());
+        entityUpdate.getComponent().setId(existingEntity.getComponent().getId());
+
+        return nifiClient.getParamContextClient().updateParamContext(entityUpdate);
+    }
+
+    public ParameterContextUpdateRequestEntity updateParameterAssetReferences(final ParameterContextEntity existingEntity, final Map<String, List<String>> assetReferences)
+                throws NiFiClientException, IOException {
+
+        final ParameterContextDTO component = existingEntity.getComponent();
+        final List<String> inheritedParameterContextIds = component.getInheritedParameterContexts() == null ? null :
+            component.getInheritedParameterContexts().stream().map(ParameterContextReferenceEntity::getId).collect(Collectors.toList());
+
+        final Set<ParameterEntity> parameterEntities = new HashSet<>();
+        assetReferences.forEach((paramName, references) -> parameterEntities.add(createAssetReferenceParameterEntity(paramName, references)));
+        existingEntity.getComponent().setParameters(parameterEntities);
+
+        final ParameterContextEntity entityUpdate = createParameterContextEntity(existingEntity.getComponent().getName(), existingEntity.getComponent().getDescription(),
+            parameterEntities, inheritedParameterContextIds, null);
         entityUpdate.setId(existingEntity.getId());
         entityUpdate.setRevision(existingEntity.getRevision());
         entityUpdate.getComponent().setId(existingEntity.getComponent().getId());
@@ -1300,6 +1365,7 @@ public class NiFiClientUtil {
         for (final ProcessorEntity processorEntity : flowDto.getProcessors()) {
             processorEntity.setDisconnectedNodeAcknowledged(true);
             getProcessorClient().deleteProcessor(processorEntity);
+            logger.info("Deleted processor [{}]", processorEntity.getId());
         }
 
         // Delete all Controller Services
@@ -1331,6 +1397,7 @@ public class NiFiClientUtil {
         for (final ProcessGroupEntity childGroupEntity : flowDto.getProcessGroups()) {
             childGroupEntity.setDisconnectedNodeAcknowledged(true);
             deleteAll(childGroupEntity.getId());
+            nifiClient.getProcessGroupClient().deleteProcessGroup(childGroupEntity);
         }
     }
 
@@ -1474,6 +1541,33 @@ public class NiFiClientUtil {
         connectionDto.setLoadBalancePartitionAttribute(loadBalanceAttribute);
         connectionDto.setLoadBalanceStrategy(strategy.name());
         connectionDto.setLoadBalanceCompression(compression.name());
+        connectionDto.setId(connectionEntity.getId());
+
+        final ConnectionEntity updatedEntity = new ConnectionEntity();
+        updatedEntity.setComponent(connectionDto);
+        updatedEntity.setId(connectionEntity.getId());
+        updatedEntity.setRevision(connectionEntity.getRevision());
+
+        return getConnectionClient().updateConnection(updatedEntity);
+    }
+
+    public ConnectionEntity updateConnectionBackpressure(final ConnectionEntity connectionEntity, final long flowFileCount, final long bytes) throws NiFiClientException, IOException {
+        final ConnectionDTO connectionDto = new ConnectionDTO();
+        connectionDto.setBackPressureDataSizeThreshold(bytes + " B");
+        connectionDto.setBackPressureObjectThreshold(flowFileCount);
+        connectionDto.setId(connectionEntity.getId());
+
+        final ConnectionEntity updatedEntity = new ConnectionEntity();
+        updatedEntity.setComponent(connectionDto);
+        updatedEntity.setId(connectionEntity.getId());
+        updatedEntity.setRevision(connectionEntity.getRevision());
+
+        return getConnectionClient().updateConnection(updatedEntity);
+    }
+
+    public ConnectionEntity updateConnectionPrioritizer(final ConnectionEntity connectionEntity, final String prioritizerName) throws NiFiClientException, IOException {
+        final ConnectionDTO connectionDto = new ConnectionDTO();
+        connectionDto.setPrioritizers(List.of("org.apache.nifi.prioritizer." + prioritizerName));
         connectionDto.setId(connectionEntity.getId());
 
         final ConnectionEntity updatedEntity = new ConnectionEntity();
@@ -2079,22 +2173,16 @@ public class NiFiClientUtil {
             .orElse(null);
     }
 
-    public FlowEntity copyAndPaste(final ProcessGroupEntity pgEntity, final String destinationGroupId) throws NiFiClientException, IOException {
-        final SnippetDTO snippetDto = new SnippetDTO();
-        snippetDto.setProcessGroups(Collections.singletonMap(pgEntity.getId(), pgEntity.getRevision()));
-        snippetDto.setParentGroupId(pgEntity.getComponent().getParentGroupId());
+    public FlowDTO copyAndPaste(final String sourceGroupId, final CopyRequestEntity copyRequestEntity, final RevisionDTO revisionDTO,
+                                final String destinationGroupId) throws NiFiClientException, IOException {
+        final CopyResponseEntity copyResponseEntity = nifiClient.getProcessGroupClient().copy(sourceGroupId, copyRequestEntity);
 
-        final SnippetEntity snippetEntity = new SnippetEntity();
-        snippetEntity.setSnippet(snippetDto);
+        final PasteRequestEntity pasteRequestEntity = new PasteRequestEntity();
+        pasteRequestEntity.setCopyResponse(copyResponseEntity);
+        pasteRequestEntity.setRevision(revisionDTO);
 
-        final SnippetEntity createdSnippetEntity = nifiClient.getSnippetClient().createSnippet(snippetEntity);
-
-        final CopySnippetRequestEntity requestEntity = new CopySnippetRequestEntity();
-        requestEntity.setOriginX(0D);
-        requestEntity.setOriginY(0D);
-        requestEntity.setSnippetId(createdSnippetEntity.getSnippet().getId());
-
-        return nifiClient.getProcessGroupClient().copySnippet(destinationGroupId, requestEntity);
+        final PasteResponseEntity pasteResponseEntity = nifiClient.getProcessGroupClient().paste(destinationGroupId, pasteRequestEntity);
+        return pasteResponseEntity.getFlow();
     }
 
     public ConnectionEntity setFifoPrioritizer(final ConnectionEntity connectionEntity) throws NiFiClientException, IOException {

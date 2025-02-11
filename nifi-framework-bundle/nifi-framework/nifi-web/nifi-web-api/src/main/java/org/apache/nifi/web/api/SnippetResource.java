@@ -16,17 +16,11 @@
  */
 package org.apache.nifi.web.api;
 
-import java.net.URI;
-import java.util.Set;
-import java.util.function.Consumer;
-import java.util.stream.Collectors;
-
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.ws.rs.Consumes;
@@ -57,10 +51,18 @@ import org.apache.nifi.web.Revision;
 import org.apache.nifi.web.api.dto.SnippetDTO;
 import org.apache.nifi.web.api.entity.ComponentEntity;
 import org.apache.nifi.web.api.entity.SnippetEntity;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+
+import java.net.URI;
+import java.util.Set;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * RESTful endpoint for querying dataflow snippets.
  */
+@Controller
 @Path("/snippets")
 @Tag(name = "Snippets")
 public class SnippetResource extends ApplicationResource {
@@ -112,7 +114,7 @@ public class SnippetResource extends ApplicationResource {
         snippetRequest.getProcessGroups().keySet().stream().map(id -> lookup.getProcessGroup(id)).forEach(processGroupAuthorizable -> {
             // we are not checking referenced services since we do not know how this snippet will be used. these checks should be performed
             // in a subsequent action with this snippet
-            authorizeProcessGroup(processGroupAuthorizable, authorizer, lookup, action, false, false, false, false);
+            authorizeProcessGroup(processGroupAuthorizable, authorizer, lookup, action, false, false, false, false, false);
         });
         snippetRequest.getRemoteProcessGroups().keySet().stream().map(id -> lookup.getRemoteProcessGroup(id)).forEach(authorize);
         snippetRequest.getProcessors().keySet().stream().map(id -> lookup.getProcessor(id).getAuthorizable()).forEach(authorize);
@@ -134,18 +136,16 @@ public class SnippetResource extends ApplicationResource {
     @Produces(MediaType.APPLICATION_JSON)
     @Operation(
             summary = "Creates a snippet. The snippet will be automatically discarded if not used in a subsequent request after 1 minute.",
-            responses = @ApiResponse(content = @Content(schema = @Schema(implementation = SnippetEntity.class))),
-            security = {
-                    @SecurityRequirement(name = "Read or Write - /{component-type}/{uuid} - For every component (all Read or all Write) in the Snippet and their descendant components")
-            }
-    )
-    @ApiResponses(
-            value = {
+            responses = {
+                    @ApiResponse(responseCode = "201", content = @Content(schema = @Schema(implementation = SnippetEntity.class))),
                     @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
                     @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
                     @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
                     @ApiResponse(responseCode = "404", description = "The specified resource could not be found."),
                     @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Read or Write - /{component-type}/{uuid} - For every component (all Read or all Write) in the Snippet and their descendant components")
             }
     )
     public Response createSnippet(
@@ -218,19 +218,17 @@ public class SnippetResource extends ApplicationResource {
     @Path("{id}")
     @Operation(
             summary = "Move's the components in this Snippet into a new Process Group and discards the snippet",
-            responses = @ApiResponse(content = @Content(schema = @Schema(implementation = SnippetEntity.class))),
-            security = {
-                    @SecurityRequirement(name = "Write Process Group - /process-groups/{uuid}"),
-                    @SecurityRequirement(name = "Write - /{component-type}/{uuid} - For each component in the Snippet and their descendant components")
-            }
-    )
-    @ApiResponses(
-            value = {
+            responses = {
+                    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = SnippetEntity.class))),
                     @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
                     @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
                     @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
                     @ApiResponse(responseCode = "404", description = "The specified resource could not be found."),
                     @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Write Process Group - /process-groups/{uuid}"),
+                    @SecurityRequirement(name = "Write - /{component-type}/{uuid} - For each component in the Snippet and their descendant components")
             }
     )
     public Response updateSnippet(
@@ -279,7 +277,7 @@ public class SnippetResource extends ApplicationResource {
                     final SnippetAuthorizable snippet = lookup.getSnippet(snippetId);
 
                     // Note: we are explicitly not authorizing parameter references here because they are being authorized below
-                    authorizeSnippet(snippet, authorizer, lookup, RequestAction.WRITE, false, false, false);
+                    authorizeSnippet(snippet, authorizer, lookup, RequestAction.WRITE, false, false, false, false);
 
                     final ProcessGroup destinationGroup = lookup.getProcessGroup(requestSnippetDTO.getParentGroupId()).getProcessGroup();
 
@@ -309,19 +307,17 @@ public class SnippetResource extends ApplicationResource {
     @Path("{id}")
     @Operation(
             summary = "Deletes the components in a snippet and discards the snippet",
-            responses = @ApiResponse(content = @Content(schema = @Schema(implementation = SnippetEntity.class))),
-            security = {
-                    @SecurityRequirement(name = "Write - /{component-type}/{uuid} - For each component in the Snippet and their descendant components"),
-                    @SecurityRequirement(name = "Write - Parent Process Group - /process-groups/{uuid}"),
-            }
-    )
-    @ApiResponses(
-            value = {
+            responses = {
+                    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = SnippetEntity.class))),
                     @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
                     @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
                     @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
                     @ApiResponse(responseCode = "404", description = "The specified resource could not be found."),
                     @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Write - /{component-type}/{uuid} - For each component in the Snippet and their descendant components"),
+                    @SecurityRequirement(name = "Write - Parent Process Group - /process-groups/{uuid}"),
             }
     )
     public Response deleteSnippet(
@@ -353,7 +349,7 @@ public class SnippetResource extends ApplicationResource {
                 lookup -> {
                     // ensure write permission to every component in the snippet excluding referenced services
                     final SnippetAuthorizable snippet = lookup.getSnippet(snippetId);
-                    authorizeSnippet(snippet, authorizer, lookup, RequestAction.WRITE, true, false, false);
+                    authorizeSnippet(snippet, authorizer, lookup, RequestAction.WRITE, true, false, false, false);
 
                     // ensure write permission to the parent process group
                     snippet.getParentProcessGroup().getAuthorizable().authorize(authorizer, RequestAction.WRITE, NiFiUserUtils.getNiFiUser());
@@ -367,12 +363,12 @@ public class SnippetResource extends ApplicationResource {
         );
     }
 
-    /* setters */
-
+    @Autowired
     public void setServiceFacade(NiFiServiceFacade serviceFacade) {
         this.serviceFacade = serviceFacade;
     }
 
+    @Autowired
     public void setAuthorizer(Authorizer authorizer) {
         this.authorizer = authorizer;
     }

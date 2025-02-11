@@ -35,6 +35,7 @@ import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,12 +48,17 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+import static java.nio.file.Files.newDirectoryStream;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -75,15 +81,25 @@ public class TestExcelRecordReader {
     @Mock
     ComponentLog logger;
 
+    /*
+     * Cleanup the temporary poifiles directory which is created by org.apache.poi.util.DefaultTempFileCreationStrategy
+     * the strategy org.apache.poi.util.TempFile uses which in turn is used by com.github.pjfanning.xlsx.impl.StreamingSheetReader.
+     */
+    @AfterAll
+    public static void cleanUpAfterAll() {
+        final Path tempDir = Path.of(System.getProperty("java.io.tmpdir")).resolve("poifiles");
+        try (DirectoryStream<Path> directoryStream = newDirectoryStream(tempDir, "tmp-[0-9]*.xlsx")) {
+            for (Path tmpFile : directoryStream) {
+                Files.deleteIfExists(tmpFile);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
     @BeforeAll
     static void setUpBeforeAll() throws Exception {
         //Generate an Excel file and populate it with data
-        final ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        try (XSSFWorkbook workbook = new XSSFWorkbook()) {
-            final XSSFSheet sheet = workbook.createSheet("User Info");
-            populateSheet(sheet);
-            workbook.write(outputStream);
-        }
+        final InputStream workbook = createWorkbook(DATA);
 
         //Protect the Excel file with a password
         try (POIFSFileSystem poifsFileSystem = new POIFSFileSystem()) {
@@ -91,29 +107,11 @@ public class TestExcelRecordReader {
             Encryptor encryptor = encryptionInfo.getEncryptor();
             encryptor.confirmPassword(PASSWORD);
 
-            try (OPCPackage opc = OPCPackage.open(new ByteArrayInputStream(outputStream.toByteArray()));
+            try (OPCPackage opc = OPCPackage.open(workbook);
                  OutputStream os = encryptor.getDataStream(poifsFileSystem)) {
                 opc.save(os);
             }
             poifsFileSystem.writeFilesystem(PASSWORD_PROTECTED);
-        }
-    }
-
-    private static void populateSheet(XSSFSheet sheet) {
-        //Adding the data to the Excel worksheet
-        int rowCount = 0;
-        for (Object[] dataRow : DATA) {
-            Row row = sheet.createRow(rowCount++);
-            int columnCount = 0;
-
-            for (Object field : dataRow) {
-                Cell cell = row.createCell(columnCount++);
-                if (field instanceof String) {
-                    cell.setCellValue((String) field);
-                } else if (field instanceof Integer) {
-                    cell.setCellValue((Integer) field);
-                }
-            }
         }
     }
 
@@ -285,6 +283,26 @@ public class TestExcelRecordReader {
     }
 
     @Test
+    void testWhereCellValueDoesNotMatchSchemaType()  {
+        RecordSchema schema = new SimpleRecordSchema(Arrays.asList(new RecordField("first", RecordFieldType.STRING.getDataType()),
+                new RecordField("second", RecordFieldType.FLOAT.getDataType())));
+        List<String> requiredSheets = Collections.singletonList("TestSheetA");
+        ExcelRecordReaderConfiguration configuration = new ExcelRecordReaderConfiguration.Builder()
+                .withSchema(schema)
+                .withFirstRow(2)
+                .withRequiredSheets(requiredSheets)
+                .build();
+
+        final MalformedRecordException mre = assertThrows(MalformedRecordException.class, () ->  {
+            ExcelRecordReader recordReader = new ExcelRecordReader(configuration, getInputStream(MULTI_SHEET_FILE), logger);
+            getRecords(recordReader, true, false);
+        });
+
+        assertInstanceOf(NumberFormatException.class, mre.getCause());
+        assertTrue(mre.getMessage().contains("on row") && mre.getMessage().contains("in sheet"));
+    }
+
+    @Test
     void testPasswordProtected() throws Exception {
         RecordSchema schema = getPasswordProtectedSchema();
         ExcelRecordReaderConfiguration configuration = new ExcelRecordReaderConfiguration.Builder()
@@ -314,5 +332,50 @@ public class TestExcelRecordReader {
     private RecordSchema getPasswordProtectedSchema() {
         return new SimpleRecordSchema(Arrays.asList(new RecordField("id", RecordFieldType.INT.getDataType()),
                 new RecordField("name", RecordFieldType.STRING.getDataType())));
+    }
+
+    @Test
+    void testWithNumberColumnWhoseValueIsEmptyString() throws Exception {
+        final RecordSchema schema = new SimpleRecordSchema(Arrays.asList(new RecordField("first", RecordFieldType.STRING.getDataType()),
+                new RecordField("second", RecordFieldType.LONG.getDataType())));
+        final ExcelRecordReaderConfiguration configuration = new ExcelRecordReaderConfiguration.Builder()
+                .withSchema(schema)
+                .build();
+
+        final Object[][] data = {{"Manny", ""}};
+        final InputStream workbook = createWorkbook(data);
+        final ExcelRecordReader recordReader = new ExcelRecordReader(configuration, workbook, logger);
+
+        assertDoesNotThrow(() -> getRecords(recordReader, true, true));
+    }
+
+    private static InputStream createWorkbook(Object[][] data) throws Exception {
+        final ByteArrayOutputStream workbookOutputStream = new ByteArrayOutputStream();
+        try (XSSFWorkbook workbook = new XSSFWorkbook()) {
+            final XSSFSheet sheet = workbook.createSheet("SomeSheetName");
+            populateSheet(sheet, data);
+            workbook.write(workbookOutputStream);
+        }
+
+        return new ByteArrayInputStream(workbookOutputStream.toByteArray());
+    }
+
+    private static void populateSheet(XSSFSheet sheet, Object[][] data) {
+        //Adding the data to the Excel worksheet
+        int rowCount = 0;
+        for (Object[] dataRow : data) {
+            Row row = sheet.createRow(rowCount++);
+            int columnCount = 0;
+
+            for (Object field : dataRow) {
+                Cell cell = row.createCell(columnCount++);
+                switch (field) {
+                    case String string -> cell.setCellValue(string);
+                    case Integer integer -> cell.setCellValue(integer.doubleValue());
+                    case Long l -> cell.setCellValue(l.doubleValue());
+                    default -> { }
+                }
+            }
+        }
     }
 }

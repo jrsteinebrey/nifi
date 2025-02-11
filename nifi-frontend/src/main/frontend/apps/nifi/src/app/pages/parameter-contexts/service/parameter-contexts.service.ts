@@ -19,7 +19,7 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Client } from '../../../service/client.service';
-import { NiFiCommon } from '../../../service/nifi-common.service';
+import { NiFiCommon } from '@nifi/shared';
 import { CreateParameterContextRequest, DeleteParameterContextRequest } from '../state/parameter-context-listing';
 import {
     ParameterContextEntity,
@@ -50,7 +50,7 @@ export class ParameterContextService {
         );
     }
 
-    getParameterContext(id: string, includeInheritedParameters: boolean): Observable<any> {
+    getParameterContext(id: string, includeInheritedParameters: boolean = true): Observable<any> {
         return this.httpClient.get(`${ParameterContextService.API}/parameter-contexts/${id}`, {
             params: {
                 includeInheritedParameters

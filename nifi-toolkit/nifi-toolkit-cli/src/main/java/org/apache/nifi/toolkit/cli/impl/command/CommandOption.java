@@ -47,11 +47,13 @@ public enum CommandOption {
     FLOW_NAME("fn", "flowName", "A flow name", true),
     FLOW_DESC("fd", "flowDesc", "A flow description", true),
     FLOW_VERSION("fv", "flowVersion", "A version of a flow", true),
+    FLOW_BRANCH("fb", "flowBranch", "A branch for the flow", true),
 
     FLOW_VERSION_1("fv1", "flowVersion1", "A version of a flow", true),
     FLOW_VERSION_2("fv2", "flowVersion2", "A version of a flow", true),
 
-    // Registry - Source options for when there are two registries involved and one is a source
+    // Registry - Source options for when there are two registries involved and one
+    // is a source
     SRC_PROPS("sp", "sourceProps", "A properties file to load for the source", true, true),
     SRC_FLOW_ID("sf", "sourceFlowIdentifier", "A flow identifier from the source registry", true),
     SRC_FLOW_VERSION("sfv", "sourceFlowVersion", "A version of a flow from the source registry", true),
@@ -98,6 +100,9 @@ public enum CommandOption {
     DESTINATION_PG("destPg", "destination-pg", "The ID of the destination process group", true),
     SOURCE_OUTPUT_PORT("sourceOutput", "source-output-port", "The name of the output port in the source process group", true),
     DESTINATION_INPUT_PORT("destInput", "destination-input-port", "The name of the input port in the destination process group", true),
+
+    // NiFi - Processors
+    PROC_ID("procid", "processorId", "The id of a processor", true),
 
     // NiFi - Controller Services
     CS_ID("cs", "controllerServiceId", "The id of a controller service", true),
@@ -149,6 +154,15 @@ public enum CommandOption {
     PARAM_SENSITIVE("ps", "paramSensitive", "Whether or not the parameter is sensitive (true/false)", true),
     UPDATE_TIMEOUT("ut", "updateTimeout", "Number of seconds after which a parameter context update will timeout (default: 60, maximum: 600)", true),
 
+    // NiFi - NARs
+    NAR_ID("nid", "narId", "", true),
+    NAR_FILE("nar", "narFile", "A NAR file to upload, must contain full path and filename", true, true),
+    NAR_UPLOAD_TIMEOUT("npt", "narProcessing", "Number of seconds after which a parameter context update will timeout (default: 60, maximum: 600)", true),
+
+    // NiFi - Assets
+    ASSET_FILE("af", "assetFile", "A file containing the asset content, must contain full path and filename", true, true),
+    ASSET_ID("aid", "assetId", "The id of an asset which can be referenced from a parameter", true, false),
+
     // Security related
     KEYSTORE("ks", "keystore", "A keystore to use for TLS/SSL connections", true),
     KEYSTORE_TYPE("kst", "keystoreType", "The type of key store being used such as PKCS12", true),
@@ -168,11 +182,16 @@ public enum CommandOption {
     USERNAME("usr", "username", "The username for authentication when obtaining an access token", true),
     PASSWORD("pwd", "password", "The password for authentication when obtaining an access token", true),
 
+    OIDC_TOKEN_URL("oidctokenurl", "oidcTokenUrl", "The OIDC URL to access the token endpoint for the OAuth Client Credentials Flow", true),
+    OIDC_CLIENT_ID("oidcid", "oidcClientId", "The Client ID for the OAuth Client Credentials Flow", true),
+    OIDC_CLIENT_SECRET("oidcsecret", "oidcClientSecret", "The Client Secret for the OAuth Client Credentials Flow", true),
+
     KERBEROS_PRINCIPAL("krbPr", "kerberosPrincipal", "The kerberos principal", true),
     KERBEROS_KEYTAB("krbKt", "kerberosKeytab", "The keytab for a kerberos principal", true, true),
     KERBEROS_PASSWORD("krbPw", "kerberosPassword", "The password for a kerberos principal", true),
 
     // Miscellaneous
+    FILTER("filter", "filter", "Indicates a filter that should be used to perform the action", true),
     FORCE("force", "force", "Indicates to force the operation", false),
     OUTPUT_TYPE("ot", "outputType", "The type of output to produce (json or simple)", true),
     VERBOSE("verbose", "verbose", "Indicates that verbose output should be provided", false),
@@ -197,7 +216,6 @@ public enum CommandOption {
         this.hasArg = hasArg;
         this.isFile = isFile;
     }
-
 
     public String getShortName() {
         return shortName;

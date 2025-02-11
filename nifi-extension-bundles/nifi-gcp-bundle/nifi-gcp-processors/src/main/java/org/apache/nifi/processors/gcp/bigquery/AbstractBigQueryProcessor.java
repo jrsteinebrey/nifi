@@ -61,7 +61,10 @@ public abstract class AbstractBigQueryProcessor extends AbstractGCPProcessor<Big
             .description("FlowFiles are routed to this relationship if the Google BigQuery operation fails.")
             .build();
 
-    public static final Set<Relationship> RELATIONSHIPS = Set.of(REL_SUCCESS, REL_FAILURE);
+    public static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS,
+            REL_FAILURE
+    );
 
     public static final PropertyDescriptor DATASET = new PropertyDescriptor.Builder()
             .name(BigQueryAttributes.DATASET_ATTR)
@@ -151,7 +154,7 @@ public abstract class AbstractBigQueryProcessor extends AbstractGCPProcessor<Big
 
     @Override
     protected final Collection<ValidationResult> customValidate(ValidationContext validationContext) {
-        final Collection<ValidationResult> results = new ArrayList<ValidationResult>(super.customValidate(validationContext));
+        final Collection<ValidationResult> results = new ArrayList<>(super.customValidate(validationContext));
         ProxyConfiguration.validateProxySpec(validationContext, results, ProxyAwareTransportFactory.PROXY_SPECS);
 
         final boolean projectId = validationContext.getProperty(PROJECT_ID).isSet();
@@ -168,7 +171,7 @@ public abstract class AbstractBigQueryProcessor extends AbstractGCPProcessor<Big
     }
 
     /**
-     * If sub-classes needs to implement any custom validation, override this method then add
+     * If subclasses needs to implement any custom validation, override this method then add
      * validation result to the results.
      */
     protected void customValidate(ValidationContext validationContext, Collection<ValidationResult> results) {

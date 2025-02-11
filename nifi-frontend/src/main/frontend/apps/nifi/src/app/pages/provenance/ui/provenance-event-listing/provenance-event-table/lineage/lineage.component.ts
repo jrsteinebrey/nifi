@@ -32,7 +32,6 @@ import { ZoomBehavior } from 'd3';
 
 @Component({
     selector: 'lineage',
-    standalone: true,
     templateUrl: './lineage.component.html',
     imports: [ContextMenu, CdkContextMenuTrigger],
     styleUrls: ['./lineage.component.scss']
@@ -325,9 +324,9 @@ export class LineageComponent implements OnInit {
             .attr('orient', 'auto')
             .attr('class', function (d) {
                 if (d.indexOf('SELECTED') >= 0) {
-                    return 'warn-color-darker';
+                    return 'error-color';
                 } else {
-                    return 'surface-contrast';
+                    return 'neutral-contrast';
                 }
             })
             .append('path')
@@ -761,7 +760,7 @@ export class LineageComponent implements OnInit {
 
         flowfiles
             .append('g')
-            .attr('class', 'accent-color')
+            .attr('class', 'tertiary-color')
             .attr('transform', function () {
                 return 'translate(-9,-9)';
             })

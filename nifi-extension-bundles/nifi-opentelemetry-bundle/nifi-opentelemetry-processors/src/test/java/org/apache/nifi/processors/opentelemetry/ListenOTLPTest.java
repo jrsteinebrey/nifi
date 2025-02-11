@@ -35,7 +35,7 @@ import org.apache.nifi.security.ssl.StandardSslContextBuilder;
 import org.apache.nifi.security.ssl.StandardTrustManagerBuilder;
 import org.apache.nifi.security.util.ClientAuth;
 import org.apache.nifi.security.util.TlsPlatform;
-import org.apache.nifi.ssl.SSLContextService;
+import org.apache.nifi.ssl.SSLContextProvider;
 import org.apache.nifi.util.MockFlowFile;
 import org.apache.nifi.util.TestRunner;
 import org.apache.nifi.util.TestRunners;
@@ -43,8 +43,8 @@ import org.apache.nifi.web.client.StandardWebClientService;
 import org.apache.nifi.web.client.api.HttpEntityHeaders;
 import org.apache.nifi.web.client.api.HttpResponseEntity;
 import org.apache.nifi.web.client.api.HttpResponseStatus;
-import org.apache.nifi.web.client.api.WebClientService;
 import org.apache.nifi.web.client.ssl.TlsContext;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -106,7 +106,7 @@ class ListenOTLPTest {
 
     private static final String HTTP_URL_FORMAT = "https://localhost:%d%s";
 
-    private static final String SERVICE_ID = SSLContextService.class.getSimpleName();
+    private static final String SERVICE_ID = SSLContextProvider.class.getSimpleName();
 
     private static final String PATH_NOT_FOUND = "/not-found";
 
@@ -136,10 +136,10 @@ class ListenOTLPTest {
 
     private static X509KeyManager keyManager;
 
-    @Mock
-    private SSLContextService sslContextService;
+    private static StandardWebClientService webClientService;
 
-    private WebClientService webClientService;
+    @Mock
+    private SSLContextProvider sslContextProvider;
 
     private TestRunner runner;
 
@@ -174,19 +174,13 @@ class ListenOTLPTest {
                 .keyPassword(generated)
                 .trustStore(trustStore)
                 .build();
-    }
 
-    @BeforeEach
-    void setRunner() {
-        processor = new ListenOTLP();
-        runner = TestRunners.newTestRunner(processor);
+        webClientService = new StandardWebClientService();
+        webClientService.setReadTimeout(READ_TIMEOUT);
+        webClientService.setConnectTimeout(CONNECT_TIMEOUT);
+        webClientService.setWriteTimeout(READ_TIMEOUT);
 
-        final StandardWebClientService standardWebClientService = new StandardWebClientService();
-        standardWebClientService.setReadTimeout(READ_TIMEOUT);
-        standardWebClientService.setConnectTimeout(CONNECT_TIMEOUT);
-        standardWebClientService.setWriteTimeout(READ_TIMEOUT);
-
-        standardWebClientService.setTlsContext(new TlsContext() {
+        webClientService.setTlsContext(new TlsContext() {
             @Override
             public String getProtocol() {
                 return TlsPlatform.getLatestProtocol();
@@ -202,8 +196,17 @@ class ListenOTLPTest {
                 return Optional.ofNullable(keyManager);
             }
         });
+    }
 
-        webClientService = standardWebClientService;
+    @AfterAll
+    static void closeWebClientService() {
+        webClientService.close();
+    }
+
+    @BeforeEach
+    void setRunner() {
+        processor = new ListenOTLP();
+        runner = TestRunners.newTestRunner(processor);
     }
 
     @AfterEach
@@ -503,7 +506,7 @@ class ListenOTLPTest {
         runner.setProperty(ListenOTLP.ADDRESS, LOCALHOST);
         runner.setProperty(ListenOTLP.PORT, RANDOM_PORT);
         setSslContextService();
-        when(sslContextService.createContext()).thenReturn(sslContext);
+        when(sslContextProvider.createContext()).thenReturn(sslContext);
 
         runner.run(1, false, true);
     }
@@ -516,10 +519,10 @@ class ListenOTLPTest {
     }
 
     private void setSslContextService() throws InitializationException {
-        when(sslContextService.getIdentifier()).thenReturn(SERVICE_ID);
+        when(sslContextProvider.getIdentifier()).thenReturn(SERVICE_ID);
 
-        runner.addControllerService(SERVICE_ID, sslContextService);
-        runner.enableControllerService(sslContextService);
+        runner.addControllerService(SERVICE_ID, sslContextProvider);
+        runner.enableControllerService(sslContextProvider);
 
         runner.setProperty(ListenOTLP.SSL_CONTEXT_SERVICE, SERVICE_ID);
         runner.setProperty(ListenOTLP.CLIENT_AUTHENTICATION, ClientAuth.WANT.name());

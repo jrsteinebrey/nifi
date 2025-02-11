@@ -71,7 +71,6 @@ public class NiFiProperties extends ApplicationProperties {
     public static final String NAR_LIBRARY_AUTOLOAD_DIRECTORY = "nifi.nar.library.autoload.directory";
     public static final String NAR_WORKING_DIRECTORY = "nifi.nar.working.directory";
     public static final String UNPACK_NARS_TO_UBER_JAR = "nifi.nar.unpack.uber.jar";
-    public static final String COMPONENT_DOCS_DIRECTORY = "nifi.documentation.working.directory";
     public static final String SENSITIVE_PROPS_KEY = "nifi.sensitive.props.key";
     public static final String SENSITIVE_PROPS_ALGORITHM = "nifi.sensitive.props.algorithm";
     public static final String REMOTE_INPUT_HOST = "nifi.remote.input.host";
@@ -85,14 +84,7 @@ public class NiFiProperties extends ApplicationProperties {
     public static final String PROCESSOR_SCHEDULING_TIMEOUT = "nifi.processor.scheduling.timeout";
     public static final String BACKPRESSURE_COUNT = "nifi.queue.backpressure.count";
     public static final String BACKPRESSURE_SIZE = "nifi.queue.backpressure.size";
-    public static final String LISTENER_BOOTSTRAP_PORT = "nifi.listener.bootstrap.port";
-
-    // Encryption Properties for all Repositories
-    public static final String REPOSITORY_ENCRYPTION_PROTOCOL_VERSION = "nifi.repository.encryption.protocol.version";
-    public static final String REPOSITORY_ENCRYPTION_KEY_ID = "nifi.repository.encryption.key.id";
-    public static final String REPOSITORY_ENCRYPTION_KEY_PROVIDER = "nifi.repository.encryption.key.provider";
-    public static final String REPOSITORY_ENCRYPTION_KEY_PROVIDER_KEYSTORE_LOCATION = "nifi.repository.encryption.key.provider.keystore.location";
-    public static final String REPOSITORY_ENCRYPTION_KEY_PROVIDER_KEYSTORE_PASSWORD = "nifi.repository.encryption.key.provider.keystore.password";
+    public static final String UPLOAD_WORKING_DIRECTORY = "nifi.upload.working.directory";
 
     // content repository properties
     public static final String REPOSITORY_CONTENT_PREFIX = "nifi.content.repository.directory.";
@@ -103,7 +95,6 @@ public class NiFiProperties extends ApplicationProperties {
     public static final String CONTENT_ARCHIVE_BACK_PRESSURE_PERCENTAGE = "nifi.content.repository.archive.backpressure.percentage";
     public static final String CONTENT_ARCHIVE_ENABLED = "nifi.content.repository.archive.enabled";
     public static final String CONTENT_ARCHIVE_CLEANUP_FREQUENCY = "nifi.content.repository.archive.cleanup.frequency";
-    public static final String CONTENT_VIEWER_URL = "nifi.content.viewer.url";
 
     // flowfile repository properties
     public static final String FLOWFILE_REPOSITORY_IMPLEMENTATION = "nifi.flowfile.repository.implementation";
@@ -131,6 +122,9 @@ public class NiFiProperties extends ApplicationProperties {
     public static final String PROVENANCE_JOURNAL_COUNT = "nifi.provenance.repository.journal.count";
     public static final String PROVENANCE_REPO_DEBUG_FREQUENCY = "nifi.provenance.repository.debug.frequency";
 
+    public static final String ASSET_MANAGER_IMPLEMENTATION = "nifi.asset.manager.implementation";
+    public static final String ASSET_MANAGER_PREFIX = "nifi.asset.manager.properties.";
+
     // status repository properties
     public static final String COMPONENT_STATUS_REPOSITORY_IMPLEMENTATION = "nifi.components.status.repository.implementation";
     public static final String COMPONENT_STATUS_SNAPSHOT_FREQUENCY = "nifi.components.status.snapshot.frequency";
@@ -147,8 +141,11 @@ public class NiFiProperties extends ApplicationProperties {
     public static final String SECURITY_KEYSTORE = "nifi.security.keystore";
     public static final String SECURITY_KEYSTORE_TYPE = "nifi.security.keystoreType";
     public static final String SECURITY_KEYSTORE_PASSWD = "nifi.security.keystorePasswd";
+    public static final String SECURITY_KEYSTORE_PRIVATE_KEY = "nifi.security.keystore.privateKey";
+    public static final String SECURITY_KEYSTORE_CERTIFICATE = "nifi.security.keystore.certificate";
     public static final String SECURITY_KEY_PASSWD = "nifi.security.keyPasswd";
     public static final String SECURITY_TRUSTSTORE = "nifi.security.truststore";
+    public static final String SECURITY_TRUSTSTORE_CERTIFICATE = "nifi.security.truststore.certificate";
     public static final String SECURITY_TRUSTSTORE_TYPE = "nifi.security.truststoreType";
     public static final String SECURITY_TRUSTSTORE_PASSWD = "nifi.security.truststorePasswd";
     public static final String SECURITY_AUTO_RELOAD_ENABLED = "nifi.security.autoreload.enabled";
@@ -320,6 +317,10 @@ public class NiFiProperties extends ApplicationProperties {
     // kubernetes properties
     public static final String CLUSTER_LEADER_ELECTION_KUBERNETES_LEASE_PREFIX = "nifi.cluster.leader.election.kubernetes.lease.prefix";
 
+    // nar manager properties
+    public static final String NAR_PERSISTENCE_PROVIDER_IMPLEMENTATION_CLASS = "nifi.nar.persistence.provider.implementation";
+    public static final String NAR_PERSISTENCE_PROVIDER_PROPERTIES_PREFIX = "nifi.nar.persistence.provider.properties.";
+
     public static final String DEFAULT_PYTHON_WORKING_DIRECTORY = "./work/python";
 
     // automatic diagnostic defaults
@@ -348,11 +349,10 @@ public class NiFiProperties extends ApplicationProperties {
     public static final String DEFAULT_WEB_REQUEST_TIMEOUT = "60 secs";
     public static final String DEFAULT_NAR_WORKING_DIR = "./work/nar";
     public static final boolean DEFAULT_UNPACK_NARS_TO_UBER_JAR = false;
-    public static final String DEFAULT_COMPONENT_DOCS_DIRECTORY = "./work/docs/components";
     public static final String DEFAULT_NAR_LIBRARY_DIR = "./lib";
     public static final String DEFAULT_NAR_LIBRARY_AUTOLOAD_DIR = "./extensions";
     public static final String DEFAULT_FLOWFILE_CHECKPOINT_INTERVAL = "20 secs";
-    public static final String DEFAULT_MAX_APPENDABLE_CLAIM_SIZE = "1 MB";
+    public static final String DEFAULT_MAX_APPENDABLE_CLAIM_SIZE = "50 KB";
     public static final int DEFAULT_QUEUE_SWAP_THRESHOLD = 20000;
     public static final long DEFAULT_BACKPRESSURE_COUNT = 10_000L;
     public static final String DEFAULT_BACKPRESSURE_SIZE = "1 GB";
@@ -391,8 +391,8 @@ public class NiFiProperties extends ApplicationProperties {
     public static final String DEFAULT_SECURITY_USER_SAML_HTTP_CLIENT_READ_TIMEOUT = "30 secs";
     private static final String DEFAULT_SECURITY_USER_JWS_KEY_ROTATION_PERIOD = "PT1H";
     public static final String DEFAULT_WEB_SHOULD_SEND_SERVER_VERSION = "true";
-    public static final int DEFAULT_LISTENER_BOOTSTRAP_PORT = 0;
     public static final Boolean DEFAULT_FLOW_REGISTRY_CHECK_FOR_RULE_VIOLATIONS_BEFORE_COMMIT = false;
+    public static final String DEFAULT_UPLOAD_WORKING_DIR = "./work/uploads";
 
     // cluster common defaults
     public static final String DEFAULT_CLUSTER_PROTOCOL_HEARTBEAT_INTERVAL = "5 sec";
@@ -564,13 +564,13 @@ public class NiFiProperties extends ApplicationProperties {
 
         final String propertyKey;
         if (isSiteToSiteSecure()) {
-            if (StringUtils.isBlank(getProperty(NiFiProperties.WEB_HTTPS_PORT_FORWARDING))) {
+            if (StringUtils.isBlank(getProperty(WEB_HTTPS_PORT_FORWARDING))) {
                 propertyKey = WEB_HTTPS_PORT;
             } else {
                 propertyKey = WEB_HTTPS_PORT_FORWARDING;
             }
         } else {
-            if (StringUtils.isBlank(getProperty(NiFiProperties.WEB_HTTP_PORT_FORWARDING))) {
+            if (StringUtils.isBlank(getProperty(WEB_HTTP_PORT_FORWARDING))) {
                 propertyKey = WEB_HTTP_PORT;
             } else {
                 propertyKey = WEB_HTTP_PORT_FORWARDING;
@@ -658,7 +658,7 @@ public class NiFiProperties extends ApplicationProperties {
         Integer port = null;
         try {
             port = Integer.parseInt(getProperty(WEB_HTTP_PORT));
-        } catch (NumberFormatException nfe) {
+        } catch (NumberFormatException ignored) {
         }
         return port;
     }
@@ -667,7 +667,7 @@ public class NiFiProperties extends ApplicationProperties {
         Integer sslPort = null;
         try {
             sslPort = Integer.parseInt(getProperty(WEB_HTTPS_PORT));
-        } catch (NumberFormatException nfe) {
+        } catch (NumberFormatException ignored) {
         }
         return sslPort;
     }
@@ -753,10 +753,6 @@ public class NiFiProperties extends ApplicationProperties {
         return new File(getProperty(WEB_WORKING_DIR, DEFAULT_WEB_WORKING_DIR));
     }
 
-    public File getComponentDocumentationWorkingDirectory() {
-        return new File(getProperty(COMPONENT_DOCS_DIRECTORY, DEFAULT_COMPONENT_DOCS_DIRECTORY));
-    }
-
     public File getNarWorkingDirectory() {
         return new File(getProperty(NAR_WORKING_DIRECTORY, DEFAULT_NAR_WORKING_DIR));
     }
@@ -804,6 +800,10 @@ public class NiFiProperties extends ApplicationProperties {
 
     public File getNarAutoLoadDirectory() {
         return new File(getProperty(NAR_LIBRARY_AUTOLOAD_DIRECTORY, DEFAULT_NAR_LIBRARY_AUTOLOAD_DIR));
+    }
+
+    public File getUploadWorkingDirectory() {
+        return new File(getProperty(UPLOAD_WORKING_DIRECTORY, DEFAULT_UPLOAD_WORKING_DIR));
     }
 
     // getters for ui properties //
@@ -968,7 +968,7 @@ public class NiFiProperties extends ApplicationProperties {
      * @return true if the login identity provider has been configured
      */
     public boolean isLoginIdentityProviderEnabled() {
-        return !StringUtils.isBlank(getProperty(NiFiProperties.SECURITY_USER_LOGIN_IDENTITY_PROVIDER));
+        return !StringUtils.isBlank(getProperty(SECURITY_USER_LOGIN_IDENTITY_PROVIDER));
     }
 
     /**
@@ -1547,7 +1547,7 @@ public class NiFiProperties extends ApplicationProperties {
         final String clientSecure = getProperty(ZOOKEEPER_CLIENT_SECURE, defaultValue).trim();
 
         if (!"true".equalsIgnoreCase(clientSecure) && !"false".equalsIgnoreCase(clientSecure)) {
-            throw new RuntimeException(String.format("%s was '%s', expected true or false", NiFiProperties.ZOOKEEPER_CLIENT_SECURE, clientSecure));
+            throw new RuntimeException(String.format("%s was '%s', expected true or false", ZOOKEEPER_CLIENT_SECURE, clientSecure));
         }
 
         return Boolean.parseBoolean(clientSecure);
@@ -1558,18 +1558,18 @@ public class NiFiProperties extends ApplicationProperties {
         final String withEnsembleTracker = getProperty(ZOOKEEPER_CLIENT_ENSEMBLE_TRACKER, defaultValue).trim();
 
         if (!"true".equalsIgnoreCase(withEnsembleTracker) && !"false".equalsIgnoreCase(withEnsembleTracker)) {
-            throw new RuntimeException(String.format("%s was '%s', expected true or false", NiFiProperties.ZOOKEEPER_CLIENT_ENSEMBLE_TRACKER, withEnsembleTracker));
+            throw new RuntimeException(String.format("%s was '%s', expected true or false", ZOOKEEPER_CLIENT_ENSEMBLE_TRACKER, withEnsembleTracker));
         }
 
         return Boolean.parseBoolean(withEnsembleTracker);
     }
 
     public boolean isZooKeeperTlsConfigurationPresent() {
-        return StringUtils.isNotBlank(getProperty(NiFiProperties.ZOOKEEPER_CLIENT_SECURE))
-                && StringUtils.isNotBlank(getProperty(NiFiProperties.ZOOKEEPER_SECURITY_KEYSTORE))
-                && getProperty(NiFiProperties.ZOOKEEPER_SECURITY_KEYSTORE_PASSWD) != null
-                && StringUtils.isNotBlank(getProperty(NiFiProperties.ZOOKEEPER_SECURITY_TRUSTSTORE))
-                && getProperty(NiFiProperties.ZOOKEEPER_SECURITY_TRUSTSTORE_PASSWD) != null;
+        return StringUtils.isNotBlank(getProperty(ZOOKEEPER_CLIENT_SECURE))
+                && StringUtils.isNotBlank(getProperty(ZOOKEEPER_SECURITY_KEYSTORE))
+                && getProperty(ZOOKEEPER_SECURITY_KEYSTORE_PASSWD) != null
+                && StringUtils.isNotBlank(getProperty(ZOOKEEPER_SECURITY_TRUSTSTORE))
+                && getProperty(ZOOKEEPER_SECURITY_TRUSTSTORE_PASSWD) != null;
     }
 
     public boolean isTlsConfigurationPresent() {
@@ -1577,10 +1577,6 @@ public class NiFiProperties extends ApplicationProperties {
                 && getProperty(SECURITY_KEYSTORE_PASSWD) != null
                 && StringUtils.isNotBlank(getProperty(SECURITY_TRUSTSTORE))
                 && getProperty(SECURITY_TRUSTSTORE_PASSWD) != null;
-    }
-
-    public String getRepositoryEncryptionKeyId() {
-        return getProperty(REPOSITORY_ENCRYPTION_KEY_ID);
     }
 
     /**
@@ -1656,10 +1652,6 @@ public class NiFiProperties extends ApplicationProperties {
 
     public String getDefaultBackPressureDataSizeThreshold() {
         return getProperty(BACKPRESSURE_SIZE, DEFAULT_BACKPRESSURE_SIZE);
-    }
-
-    public int getDefaultListenerBootstrapPort() {
-        return getIntegerProperty(LISTENER_BOOTSTRAP_PORT, DEFAULT_LISTENER_BOOTSTRAP_PORT);
     }
 
     /**
@@ -1843,7 +1835,7 @@ public class NiFiProperties extends ApplicationProperties {
 
     private static void readFromPropertiesFile(String propertiesFilePath, Properties properties) {
         final String nfPropertiesFilePath = (propertiesFilePath == null)
-                ? System.getProperty(NiFiProperties.PROPERTIES_FILE_PATH)
+                ? System.getProperty(PROPERTIES_FILE_PATH)
                 : propertiesFilePath;
         if (nfPropertiesFilePath != null) {
             final File propertiesFile = new File(nfPropertiesFilePath.trim());
@@ -1866,10 +1858,7 @@ public class NiFiProperties extends ApplicationProperties {
                 if (null != inStream) {
                     try {
                         inStream.close();
-                    } catch (final Exception ex) {
-                        /**
-                         * do nothing *
-                         */
+                    } catch (final Exception ignored) {
                     }
                 }
             }

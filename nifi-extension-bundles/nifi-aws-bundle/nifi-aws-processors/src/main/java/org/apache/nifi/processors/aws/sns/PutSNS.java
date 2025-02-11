@@ -122,7 +122,7 @@ public class PutSNS extends AbstractAwsSyncProcessor<SnsClient, SnsClientBuilder
             .build();
 
 
-    public static final List<PropertyDescriptor> properties = List.of(
+    public static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
             ARN,
             ARN_TYPE,
             SUBJECT,
@@ -131,16 +131,18 @@ public class PutSNS extends AbstractAwsSyncProcessor<SnsClient, SnsClientBuilder
             SSL_CONTEXT_SERVICE,
             TIMEOUT,
             ENDPOINT_OVERRIDE,
+            PROXY_CONFIGURATION_SERVICE,
             USE_JSON_STRUCTURE,
             CHARACTER_ENCODING,
             MESSAGEGROUPID,
-            MESSAGEDEDUPLICATIONID);
+            MESSAGEDEDUPLICATIONID
+    );
 
     public static final int MAX_SIZE = 256 * 1024;
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return properties;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override

@@ -143,6 +143,7 @@ public class PeerSelector {
      * @param peerCount          the number of peers in the remote instance
      * @return the normalized weight of this peer
      */
+    @SuppressWarnings("PMD.AvoidDecimalLiteralsInBigDecimalConstructor")
     private static double calculateNormalizedWeight(TransferDirection direction, long totalFlowFileCount, int flowFileCount, int peerCount) {
         // If there is only a single remote, send/receive all data to/from it
         if (peerCount == 1) {
@@ -201,7 +202,7 @@ public class PeerSelector {
                         .append(" will").append(direction == TransferDirection.RECEIVE ? " send " : " receive ")
                         .append(df.format(percentage)).append("% of data");
             }
-            logger.debug(distributionDescription.toString());
+            logger.debug("{}", distributionDescription);
         }
     }
 

@@ -19,11 +19,9 @@ package org.apache.nifi.processors;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -111,19 +109,19 @@ public abstract class AbstractIoTDB extends AbstractProcessor {
             .description("Processing failed")
             .build();
 
-    private static final List<PropertyDescriptor> descriptors = new ArrayList<>();
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+        IOTDB_HOST,
+        IOTDB_PORT,
+        USERNAME,
+        PASSWORD
+    );
 
-    private static final Set<Relationship> relationships = new LinkedHashSet<>();
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+        REL_SUCCESS,
+        REL_FAILURE
+    );
 
     static {
-        descriptors.add(IOTDB_HOST);
-        descriptors.add(IOTDB_PORT);
-        descriptors.add(USERNAME);
-        descriptors.add(PASSWORD);
-
-        relationships.add(REL_SUCCESS);
-        relationships.add(REL_FAILURE);
-
         typeMap.put(RecordFieldType.STRING, TSDataType.TEXT);
         typeMap.put(RecordFieldType.BOOLEAN, TSDataType.BOOLEAN);
         typeMap.put(RecordFieldType.INT, TSDataType.INT32);
@@ -149,7 +147,7 @@ public abstract class AbstractIoTDB extends AbstractProcessor {
 
     @Override
     public Set<Relationship> getRelationships() {
-        return relationships;
+        return RELATIONSHIPS;
     }
 
     @OnScheduled
@@ -184,7 +182,7 @@ public abstract class AbstractIoTDB extends AbstractProcessor {
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return Collections.unmodifiableList(descriptors);
+        return PROPERTY_DESCRIPTORS;
     }
 
     protected TSDataType getType(RecordFieldType type) {
@@ -334,22 +332,15 @@ public abstract class AbstractIoTDB extends AbstractProcessor {
     }
 
     protected Object convertType(Object value, TSDataType type) {
-        switch (type) {
-            case TEXT:
-                return new Binary(String.valueOf(value), StandardCharsets.UTF_8);
-            case INT32:
-                return Integer.parseInt(value.toString());
-            case INT64:
-                return Long.parseLong(value.toString());
-            case FLOAT:
-                return Float.parseFloat(value.toString());
-            case DOUBLE:
-                return Double.parseDouble(value.toString());
-            case BOOLEAN:
-                return Boolean.parseBoolean(value.toString());
-            default:
-                return null;
-        }
+        return switch (type) {
+            case TEXT -> new Binary(String.valueOf(value), StandardCharsets.UTF_8);
+            case INT32 -> Integer.parseInt(value.toString());
+            case INT64 -> Long.parseLong(value.toString());
+            case FLOAT -> Float.parseFloat(value.toString());
+            case DOUBLE -> Double.parseDouble(value.toString());
+            case BOOLEAN -> Boolean.parseBoolean(value.toString());
+            default -> null;
+        };
     }
 
     protected DatabaseSchema convertSchema(final String timeField, final RecordSchema recordSchema) {

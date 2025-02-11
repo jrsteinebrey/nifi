@@ -18,8 +18,7 @@
 import { flowFeatureKey, FlowState, SelectedComponent } from './index';
 import { createSelector } from '@ngrx/store';
 import { CanvasState, selectCanvasState } from '../index';
-import { selectCurrentRoute } from '../../../../state/router/router.selectors';
-import { ComponentType } from '../../../../state/shared';
+import { ComponentType, selectCurrentRoute } from '@nifi/shared';
 
 export const selectFlowState = createSelector(selectCanvasState, (state: CanvasState) => state[flowFeatureKey]);
 
@@ -30,15 +29,20 @@ export const selectChangeVersionRequest = createSelector(
     (state: FlowState) => state.changeVersionRequest
 );
 
+export const selectPollingProcessor = createSelector(selectFlowState, (state: FlowState) => state.pollingProcessor);
+
 export const selectSaving = createSelector(selectFlowState, (state: FlowState) => state.saving);
 
 export const selectVersionSaving = createSelector(selectFlowState, (state: FlowState) => state.versionSaving);
 
 export const selectCurrentProcessGroupId = createSelector(selectFlowState, (state: FlowState) => state.id);
 
-export const selectRefreshRpgDetails = createSelector(selectFlowState, (state: FlowState) => state.refreshRpgDetails);
+export const selectCurrentProcessGroupRevision = createSelector(
+    selectFlowState,
+    (state: FlowState) => state.flow.revision
+);
 
-export const selectCopiedSnippet = createSelector(selectFlowState, (state: FlowState) => state.copiedSnippet);
+export const selectRefreshRpgDetails = createSelector(selectFlowState, (state: FlowState) => state.refreshRpgDetails);
 
 export const selectCurrentParameterContext = createSelector(
     selectFlowState,
@@ -142,6 +146,15 @@ export const selectViewStatusHistoryComponent = createSelector(selectCurrentRout
     return selectedComponent;
 });
 
+export const selectViewStatusHistoryCurrentProcessGroup = createSelector(selectCurrentRoute, (route) => {
+    if (route?.routeConfig?.path == 'history') {
+        if (route.params.processGroupId) {
+            return route.params.processGroupId;
+        }
+    }
+    return null;
+});
+
 export const selectTransitionRequired = createSelector(selectFlowState, (state: FlowState) => state.transitionRequired);
 
 export const selectDragging = createSelector(selectFlowState, (state: FlowState) => state.dragging);
@@ -239,6 +252,8 @@ export const selectControllerBulletins = createSelector(
     (state: FlowState) => state.controllerBulletins.bulletins // TODO - include others?
 );
 
+export const selectRegistryClients = createSelector(selectFlowState, (state: FlowState) => state.registryClients);
+
 export const selectNavigationCollapsed = createSelector(
     selectFlowState,
     (state: FlowState) => state.navigationCollapsed
@@ -257,3 +272,5 @@ export const selectMaxZIndex = (componentType: ComponentType.Connection | Compon
         );
     }
 };
+
+export const selectFlowAnalysisOpen = createSelector(selectFlowState, (state: FlowState) => state.flowAnalysisOpen);

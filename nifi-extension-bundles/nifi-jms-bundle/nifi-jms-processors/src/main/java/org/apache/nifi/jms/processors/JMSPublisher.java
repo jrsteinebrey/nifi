@@ -20,7 +20,6 @@ import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.nifi.logging.ComponentLog;
 import org.springframework.jms.connection.CachingConnectionFactory;
 import org.springframework.jms.core.JmsTemplate;
-import org.springframework.jms.core.MessageCreator;
 import org.springframework.jms.support.JmsHeaders;
 
 import jakarta.jms.BytesMessage;
@@ -50,25 +49,19 @@ class JMSPublisher extends JMSWorker {
     }
 
     void publish(final String destinationName, final byte[] messageBytes, final Map<String, String> flowFileAttributes) {
-        this.jmsTemplate.send(destinationName, new MessageCreator() {
-            @Override
-            public Message createMessage(Session session) throws JMSException {
-                BytesMessage message = session.createBytesMessage();
-                message.writeBytes(messageBytes);
-                setMessageHeaderAndProperties(session, message, flowFileAttributes);
-                return message;
-            }
+        this.jmsTemplate.send(destinationName, session -> {
+            BytesMessage message = session.createBytesMessage();
+            message.writeBytes(messageBytes);
+            setMessageHeaderAndProperties(session, message, flowFileAttributes);
+            return message;
         });
     }
 
     void publish(String destinationName, String messageText, final Map<String, String> flowFileAttributes) {
-        this.jmsTemplate.send(destinationName, new MessageCreator() {
-            @Override
-            public Message createMessage(Session session) throws JMSException {
-                TextMessage message = session.createTextMessage(messageText);
-                setMessageHeaderAndProperties(session, message, flowFileAttributes);
-                return message;
-            }
+        this.jmsTemplate.send(destinationName, session -> {
+            TextMessage message = session.createTextMessage(messageText);
+            setMessageHeaderAndProperties(session, message, flowFileAttributes);
+            return message;
         });
     }
 
@@ -153,7 +146,7 @@ class JMSPublisher extends JMSWorker {
     }
 
     /**
-     * Implementations of this interface use {@link javax.jms.Message} methods to set strongly typed properties.
+     * Implementations of this interface use {@link jakarta.jms.Message} methods to set strongly typed properties.
      */
     public interface JmsPropertySetter {
         void setProperty(final Message message, final String name, final String value) throws JMSException, NumberFormatException;

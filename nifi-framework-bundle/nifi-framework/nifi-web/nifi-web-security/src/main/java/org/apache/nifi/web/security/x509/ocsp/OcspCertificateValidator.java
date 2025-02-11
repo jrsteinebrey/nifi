@@ -41,14 +41,11 @@ import jakarta.ws.rs.core.Response;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.nifi.security.util.SslContextFactory;
-import org.apache.nifi.security.util.StandardTlsConfiguration;
-import org.apache.nifi.security.util.TlsConfiguration;
 import org.apache.nifi.util.FormatUtils;
 import org.apache.nifi.util.NiFiProperties;
 import org.apache.nifi.web.security.x509.ocsp.OcspStatus.ValidationStatus;
 import org.apache.nifi.web.security.x509.ocsp.OcspStatus.VerificationStatus;
-import org.apache.nifi.web.util.WebUtils;
+import org.apache.nifi.web.util.WebClientUtils;
 import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.ocsp.OCSPObjectIdentifiers;
 import org.bouncycastle.asn1.x509.Extension;
@@ -78,7 +75,6 @@ public class OcspCertificateValidator {
 
     private static final Logger logger = LoggerFactory.getLogger(OcspCertificateValidator.class);
 
-    private static final String HTTPS = "https";
     private static final String OCSP_REQUEST_CONTENT_TYPE = "application/ocsp-request";
 
     private static final int CONNECT_TIMEOUT = 10000;
@@ -105,12 +101,7 @@ public class OcspCertificateValidator {
                 clientConfig.property(ClientProperties.CONNECT_TIMEOUT, CONNECT_TIMEOUT);
 
                 // initialize the client
-                if (HTTPS.equalsIgnoreCase(validationAuthorityURI.getScheme())) {
-                    TlsConfiguration tlsConfiguration = StandardTlsConfiguration.fromNiFiProperties(properties);
-                    client = WebUtils.createClient(clientConfig, SslContextFactory.createSslContext(tlsConfiguration));
-                } else {
-                    client = WebUtils.createClient(clientConfig);
-                }
+                client = WebClientUtils.createClient(clientConfig);
 
                 // get the trusted CAs
                 trustedCAs = getTrustedCAs(properties);
@@ -397,7 +388,7 @@ public class OcspCertificateValidator {
         } catch (final OCSPException | IOException | ProcessingException | OperatorCreationException e) {
             logger.error(e.getMessage(), e);
         } catch (CertificateException e) {
-            e.printStackTrace();
+            logger.error("Certificate processing failed", e);
         }
 
         return ocspStatus;
@@ -428,24 +419,6 @@ public class OcspCertificateValidator {
         // if the responder certificate was issued by the same CA that issued the subject certificate we may be able to use that...
         final X500Principal issuerCA = issuerCertificate.getSubjectX500Principal();
         if (responderCertificate.getIssuerX500Principal().equals(issuerCA)) {
-            // perform a number of verification steps... TODO... from sun.security.provider.certpath.OCSPResponse.java... currently incomplete...
-//            try {
-//                // ensure appropriate key usage
-//                final List<String> keyUsage = responderCertificate.getExtendedKeyUsage();
-//                if (keyUsage == null || !keyUsage.contains(KP_OCSP_SIGNING_OID)) {
-//                    return null;
-//                }
-//
-//                // ensure the certificate is valid
-//                responderCertificate.checkValidity();
-//
-//                // verify the signature
-//                responderCertificate.verify(issuerCertificate.getPublicKey());
-//
-//                return responderCertificate;
-//            } catch (final CertificateException | NoSuchAlgorithmException | InvalidKeyException | NoSuchProviderException | SignatureException e) {
-//                return null;
-//            }
             return null;
         } else {
             return null;

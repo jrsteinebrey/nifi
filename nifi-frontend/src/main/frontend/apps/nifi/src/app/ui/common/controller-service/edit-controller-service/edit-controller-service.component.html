@@ -26,7 +26,7 @@
     </div>
 </h2>
 <form class="controller-service-edit-form" [formGroup]="editControllerServiceForm">
-    <error-banner></error-banner>
+    <context-error-banner [context]="ErrorContextKey.CONTROLLER_SERVICES"></context-error-banner>
     <mat-tab-group [(selectedIndex)]="selectedIndex" (selectedIndexChange)="tabChanged($event)">
         <mat-tab label="Settings">
             <mat-dialog-content>
@@ -40,25 +40,25 @@
                         </div>
                         <div class="flex flex-col mb-5">
                             <div>Id</div>
-                            <div class="accent-color font-medium">
+                            <div [copy]="request.controllerService.id" class="tertiary-color font-medium">
                                 {{ request.controllerService.id }}
                             </div>
                         </div>
                         <div class="flex flex-col mb-5">
                             <div>Type</div>
-                            <div class="accent-color font-medium">
+                            <div class="tertiary-color font-medium">
                                 {{ formatType(request.controllerService) }}
                             </div>
                         </div>
                         <div class="flex flex-col mb-5">
                             <div>Bundle</div>
-                            <div class="accent-color font-medium">
+                            <div class="tertiary-color font-medium">
                                 {{ formatBundle(request.controllerService) }}
                             </div>
                         </div>
                         <div class="supports-controller-services flex flex-col mb-5">
                             <div>Supports Controller Service</div>
-                            <div class="accent-color font-medium">
+                            <div class="tertiary-color font-medium">
                                 <ul>
                                     @for (
                                         serviceApi of request.controllerService.component.controllerServiceApis;
@@ -97,7 +97,7 @@
                         <div>
                             Referencing Components
                             <i
-                                class="fa fa-info-circle"
+                                class="fa fa-info-circle primary-color"
                                 nifiTooltip
                                 [tooltipComponentType]="TextTip"
                                 tooltipInputData="Other components referencing this controller service."></i>
@@ -105,6 +105,7 @@
                         <div class="relative h-full border">
                             <div class="absolute inset-0 overflow-y-auto p-1">
                                 <controller-service-references
+                                    [disabledLinks]="(saving$ | async)!"
                                     [serviceReferences]="request.controllerService.component.referencingComponents"
                                     [goToReferencingComponent]="
                                         goToReferencingComponent
@@ -160,15 +161,14 @@
     @if ({ value: (saving$ | async)! }; as saving) {
         <mat-dialog-actions align="end">
             @if (readonly) {
-                <button mat-button mat-dialog-close color="primary">Close</button>
+                <button mat-flat-button mat-dialog-close>Close</button>
             } @else {
                 <button mat-button mat-dialog-close>Cancel</button>
                 <button
                     [disabled]="!editControllerServiceForm.dirty || editControllerServiceForm.invalid || saving.value"
                     type="button"
-                    color="primary"
                     (click)="submitForm()"
-                    mat-button>
+                    mat-flat-button>
                     <span *nifiSpinner="saving.value">Apply</span>
                 </button>
             }

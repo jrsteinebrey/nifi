@@ -17,46 +17,46 @@
 
 import { Component, EventEmitter, Input, OnDestroy, Output, Renderer2, ViewContainerRef } from '@angular/core';
 import { PropertyItem } from '../../property-table.component';
-import { CdkDrag, CdkDragHandle } from '@angular/cdk/drag-drop';
+import { CdkDrag } from '@angular/cdk/drag-drop';
 import { AbstractControl, FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
-import { NgTemplateOutlet } from '@angular/common';
-import { NifiTooltipDirective } from '../../../tooltips/nifi-tooltip.directive';
-import { PropertyHintTip } from '../../../tooltips/property-hint-tip/property-hint-tip.component';
-import { Parameter, PropertyHintTipInput } from '../../../../../state/shared';
+import { Resizable, Parameter, PropertyHint } from '@nifi/shared';
+import { ParameterConfig } from '../../../../../state/shared';
 import { A11yModule } from '@angular/cdk/a11y';
 import { CodemirrorModule } from '@ctrl/ngx-codemirror';
+import { Editor } from 'codemirror';
 import { NfEl } from './modes/nfel';
 import { NfPr } from './modes/nfpr';
-import { Editor } from 'codemirror';
-import { Resizable } from '../../../resizable/resizable.component';
 
 @Component({
     selector: 'nf-editor',
-    standalone: true,
     templateUrl: './nf-editor.component.html',
     imports: [
         CdkDrag,
-        CdkDragHandle,
         ReactiveFormsModule,
         MatDialogModule,
         MatInputModule,
         MatButtonModule,
         MatCheckboxModule,
-        NgTemplateOutlet,
-        NifiTooltipDirective,
         A11yModule,
         CodemirrorModule,
-        Resizable
+        Resizable,
+        PropertyHint
     ],
     styleUrls: ['./nf-editor.component.scss']
 })
 export class NfEditor implements OnDestroy {
     @Input() set item(item: PropertyItem) {
-        this.nfEditorForm.get('value')?.setValue(item.value);
+        if (item.descriptor.sensitive && item.value !== null) {
+            this.nfEditorForm.get('value')?.setValue('Sensitive value set');
+            this.showSensitiveHelperText = true;
+        } else {
+            this.nfEditorForm.get('value')?.setValue(item.value);
+        }
+
         if (item.descriptor.required) {
             this.nfEditorForm.get('value')?.addValidators(Validators.required);
         } else {
@@ -68,15 +68,15 @@ export class NfEditor implements OnDestroy {
         this.setEmptyStringChanged();
 
         this.supportsEl = item.descriptor.supportsEl;
-        this.sensitive = item.descriptor.sensitive;
         this.mode = this.supportsEl ? this.nfel.getLanguageId() : this.nfpr.getLanguageId();
 
         this.itemSet = true;
         this.loadParameters();
     }
 
-    @Input() set parameters(parameters: Parameter[] | null) {
-        this._parameters = parameters;
+    @Input() set parameterConfig(parameterConfig: ParameterConfig) {
+        this.parameters = parameterConfig.parameters;
+        this.supportsParameters = parameterConfig.supportsParameters;
 
         this.getParametersSet = true;
         this.loadParameters();
@@ -85,21 +85,19 @@ export class NfEditor implements OnDestroy {
     @Input() readonly: boolean = false;
 
     @Output() ok: EventEmitter<string | null> = new EventEmitter<string | null>();
-    @Output() cancel: EventEmitter<void> = new EventEmitter<void>();
-
-    protected readonly PropertyHintTip = PropertyHintTip;
+    @Output() close: EventEmitter<void> = new EventEmitter<void>();
 
     itemSet = false;
     getParametersSet = false;
 
     nfEditorForm: FormGroup;
-    sensitive = false;
+    showSensitiveHelperText = false;
     supportsEl = false;
     supportsParameters = false;
     blank = false;
 
     mode!: string;
-    _parameters!: Parameter[] | null;
+    parameters: Parameter[] | null = null;
 
     editor!: Editor;
 
@@ -118,18 +116,22 @@ export class NfEditor implements OnDestroy {
 
     codeMirrorLoaded(codeEditor: any): void {
         this.editor = codeEditor.codeMirror;
-        // The `.property-editor` minimum height is set to 240px. This is the height of the `.nf-editor` overlay. The
-        // height of the codemirror needs to be set in order to handle large amounts of text in the codemirror editor.
-        // The height of the codemirror should be the height of the `.nf-editor` overlay minus the 132px of spacing
-        // needed to display the EL and Param tooltips, the 'Set Empty String' checkbox, the action buttons,
-        // and the resize handle so the initial height of the codemirror when opening should be 108px for a 240px tall
-        // `.nf-editor` overlay. If the initial height of that overlay changes then this initial height should also be
-        // updated.
-        this.editor.setSize('100%', 108);
 
         if (!this.readonly) {
             this.editor.focus();
             this.editor.execCommand('selectAll');
+        }
+
+        if (this.showSensitiveHelperText) {
+            const clearSensitiveHelperText = () => {
+                if (this.showSensitiveHelperText) {
+                    this.nfEditorForm.get('value')?.setValue('');
+                    this.nfEditorForm.get('value')?.markAsDirty();
+                    this.showSensitiveHelperText = false;
+                }
+            };
+
+            this.editor.on('keydown', clearSensitiveHelperText);
         }
 
         // disabling of the input through the form isn't supported until codemirror
@@ -146,10 +148,8 @@ export class NfEditor implements OnDestroy {
             this.nfpr.setViewContainerRef(this.viewContainerRef, this.renderer);
 
             if (this.getParametersSet) {
-                if (this._parameters) {
-                    this.supportsParameters = true;
-
-                    const parameters: Parameter[] = this._parameters;
+                if (this.parameters) {
+                    const parameters: Parameter[] = this.parameters;
                     if (this.supportsEl) {
                         this.nfel.enableParameters();
                         this.nfel.setParameters(parameters);
@@ -160,8 +160,6 @@ export class NfEditor implements OnDestroy {
                         this.nfpr.configureAutocomplete();
                     }
                 } else {
-                    this.supportsParameters = false;
-
                     this.nfel.disableParameters();
                     this.nfpr.disableParameters();
 
@@ -190,13 +188,6 @@ export class NfEditor implements OnDestroy {
                     }
                 }
             }
-        };
-    }
-
-    getPropertyHintTipData(): PropertyHintTipInput {
-        return {
-            supportsEl: this.supportsEl,
-            supportsParameters: this.supportsParameters
         };
     }
 
@@ -254,7 +245,7 @@ export class NfEditor implements OnDestroy {
     }
 
     cancelClicked(): void {
-        this.cancel.next();
+        this.close.next();
     }
 
     ngOnDestroy(): void {

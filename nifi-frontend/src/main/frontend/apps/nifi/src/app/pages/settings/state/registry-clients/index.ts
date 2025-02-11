@@ -15,7 +15,8 @@
  * limitations under the License.
  */
 
-import { DocumentedType, RegistryClientEntity, Revision } from '../../../../state/shared';
+import { Bundle, DocumentedType, RegistryClientEntity } from '../../../../state/shared';
+import { Revision } from '@nifi/shared';
 
 export const registryClientsFeatureKey = 'registryClients';
 
@@ -34,6 +35,7 @@ export interface CreateRegistryClientRequest {
     component: {
         name: string;
         type: string;
+        bundle: Bundle;
         description?: string;
     };
 }

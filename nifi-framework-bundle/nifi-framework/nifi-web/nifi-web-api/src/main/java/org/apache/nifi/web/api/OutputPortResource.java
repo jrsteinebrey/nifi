@@ -16,14 +16,11 @@
  */
 package org.apache.nifi.web.api;
 
-import java.util.Set;
-
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.ws.rs.Consumes;
@@ -54,10 +51,15 @@ import org.apache.nifi.web.api.entity.PortRunStatusEntity;
 import org.apache.nifi.web.api.entity.ProcessorEntity;
 import org.apache.nifi.web.api.request.ClientIdParameter;
 import org.apache.nifi.web.api.request.LongParameter;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+
+import java.util.Set;
 
 /**
  * RESTful endpoint for managing an Output Port.
  */
+@Controller
 @Path("/output-ports")
 @Tag(name = "OutputPorts")
 public class OutputPortResource extends ApplicationResource {
@@ -101,18 +103,16 @@ public class OutputPortResource extends ApplicationResource {
     @Path("{id}")
     @Operation(
             summary = "Gets an output port",
-            responses = @ApiResponse(content = @Content(schema = @Schema(implementation = PortEntity.class))),
-            security = {
-                    @SecurityRequirement(name = "Read - /output-ports/{uuid}")
-            }
-    )
-    @ApiResponses(
-            value = {
+            responses = {
+                    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = PortEntity.class))),
                     @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
                     @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
                     @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
                     @ApiResponse(responseCode = "404", description = "The specified resource could not be found."),
                     @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Read - /output-ports/{uuid}")
             }
     )
     public Response getOutputPort(
@@ -152,18 +152,16 @@ public class OutputPortResource extends ApplicationResource {
     @Path("{id}")
     @Operation(
             summary = "Updates an output port",
-            responses = @ApiResponse(content = @Content(schema = @Schema(implementation = PortEntity.class))),
-            security = {
-                    @SecurityRequirement(name = "Write - /output-ports/{uuid}")
-            }
-    )
-    @ApiResponses(
-            value = {
+            responses = {
+                    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = PortEntity.class))),
                     @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
                     @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
                     @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
                     @ApiResponse(responseCode = "404", description = "The specified resource could not be found."),
                     @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Write - /output-ports/{uuid}")
             }
     )
     public Response updateOutputPort(
@@ -242,19 +240,17 @@ public class OutputPortResource extends ApplicationResource {
     @Path("{id}")
     @Operation(
             summary = "Deletes an output port",
-            responses = @ApiResponse(content = @Content(schema = @Schema(implementation = PortEntity.class))),
-            security = {
-                    @SecurityRequirement(name = "Write - /output-ports/{uuid}"),
-                    @SecurityRequirement(name = "Write - Parent Process Group - /process-groups/{uuid}")
-            }
-    )
-    @ApiResponses(
-            value = {
+            responses = {
+                    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = PortEntity.class))),
                     @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
                     @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
                     @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
                     @ApiResponse(responseCode = "404", description = "The specified resource could not be found."),
                     @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Write - /output-ports/{uuid}"),
+                    @SecurityRequirement(name = "Write - Parent Process Group - /process-groups/{uuid}")
             }
     )
     public Response removeOutputPort(
@@ -323,18 +319,16 @@ public class OutputPortResource extends ApplicationResource {
     @Path("/{id}/run-status")
     @Operation(
             summary = "Updates run status of an output-port",
-            responses = @ApiResponse(content = @Content(schema = @Schema(implementation = ProcessorEntity.class))),
-            security = {
-                    @SecurityRequirement(name = "Write - /output-ports/{uuid} or /operation/output-ports/{uuid}")
-            }
-    )
-    @ApiResponses(
-            value = {
+            responses = {
+                    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = ProcessorEntity.class))),
                     @ApiResponse(responseCode = "400", description = "NiFi was unable to complete the request because it was invalid. The request should not be retried without modification."),
                     @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
                     @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
                     @ApiResponse(responseCode = "404", description = "The specified resource could not be found."),
                     @ApiResponse(responseCode = "409", description = "The request was valid but NiFi was not in the appropriate state to process it.")
+            },
+            security = {
+                    @SecurityRequirement(name = "Write - /output-ports/{uuid} or /operation/output-ports/{uuid}")
             }
     )
     public Response updateRunStatus(
@@ -394,12 +388,12 @@ public class OutputPortResource extends ApplicationResource {
         return dto;
     }
 
-    // setters
-
+    @Autowired
     public void setServiceFacade(NiFiServiceFacade serviceFacade) {
         this.serviceFacade = serviceFacade;
     }
 
+    @Autowired
     public void setAuthorizer(Authorizer authorizer) {
         this.authorizer = authorizer;
     }

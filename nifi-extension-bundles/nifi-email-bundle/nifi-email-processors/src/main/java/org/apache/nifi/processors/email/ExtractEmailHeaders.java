@@ -127,9 +127,15 @@ public class ExtractEmailHeaders extends AbstractProcessor {
 
     private static final String ATTACHMENT_DISPOSITION = "attachment";
 
-    private static final Set<Relationship> relationships = Set.of(REL_SUCCESS, REL_FAILURE);
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS,
+            REL_FAILURE
+    );
 
-    private static final List<PropertyDescriptor> descriptors = List.of(CAPTURED_HEADERS, STRICT_PARSING);
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+            CAPTURED_HEADERS,
+            STRICT_PARSING
+    );
 
     @Override
     public void onTrigger(final ProcessContext context, final ProcessSession session) {
@@ -215,12 +221,12 @@ public class ExtractEmailHeaders extends AbstractProcessor {
 
     @Override
     public Set<Relationship> getRelationships() {
-        return relationships;
+        return RELATIONSHIPS;
     }
 
     @Override
     public final List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return descriptors;
+        return PROPERTY_DESCRIPTORS;
     }
 
     private static void putAddressListInAttributes(

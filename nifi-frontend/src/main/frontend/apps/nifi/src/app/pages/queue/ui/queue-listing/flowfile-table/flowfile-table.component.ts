@@ -17,24 +17,23 @@
 
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
-import { TextTip } from '../../../../../ui/common/tooltips/text-tip/text-tip.component';
 import { BulletinsTip } from '../../../../../ui/common/tooltips/bulletins-tip/bulletins-tip.component';
 import { ValidationErrorsTip } from '../../../../../ui/common/tooltips/validation-errors-tip/validation-errors-tip.component';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
+import { NiFiCommon, TextTip } from '@nifi/shared';
 
 import { RouterLink } from '@angular/router';
 import { FlowFileSummary, ListingRequest, SelectedConnection } from '../../../state/queue-listing';
 import { CurrentUser } from '../../../../../state/current-user';
-import { ErrorBanner } from '../../../../../ui/common/error-banner/error-banner.component';
 import { ClusterSummary } from '../../../../../state/cluster-summary';
 import { MatIconButton } from '@angular/material/button';
 import { MatMenu, MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
+import { ErrorContextKey } from '../../../../../state/error';
+import { ContextErrorBanner } from '../../../../../ui/common/context-error-banner/context-error-banner.component';
 
 @Component({
     selector: 'flowfile-table',
-    standalone: true,
     templateUrl: './flowfile-table.component.html',
-    imports: [MatTableModule, RouterLink, ErrorBanner, MatIconButton, MatMenu, MatMenuItem, MatMenuTrigger],
+    imports: [MatTableModule, RouterLink, MatIconButton, MatMenu, MatMenuItem, MatMenuTrigger, ContextErrorBanner],
     styleUrls: ['./flowfile-table.component.scss']
 })
 export class FlowFileTable {
@@ -153,4 +152,6 @@ export class FlowFileTable {
     viewContentClicked(summary: FlowFileSummary): void {
         this.viewContent.next(summary);
     }
+
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

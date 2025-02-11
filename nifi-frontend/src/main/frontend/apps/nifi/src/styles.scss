@@ -15,14 +15,16 @@
  * limitations under the License.
  */
 
-// Custom Theming for Angular Material
-// For more information: https://v16.material.angular.io/guide/theming-your-components
 @use '@angular/material' as mat;
 @use 'sass:map';
-@use 'assets/styles/app' as app;
-@use 'assets/styles/codemirror-theme' as codemirror-theme;
-@use 'assets/styles/listing-table' as listing-table;
+
+@use 'libs/shared/src/assets/styles/app' as app;
+@use 'libs/shared/src/assets/styles/codemirror-theme' as codemirror-theme;
+@use 'libs/shared/src/assets/styles/prism-theme' as prism-theme;
+@use 'libs/shared/src/assets/styles/listing-table' as listing-table;
+@use 'libs/shared/src/components/resizable/resizeable-theme' as resizable;
 @use 'app/app.component-theme' as app-component;
+@use 'app/pages/documentation/feature/documentation.component-theme' as documentation;
 @use 'app/pages/flow-designer/ui/canvas/canvas.component-theme' as canvas;
 @use 'app/pages/flow-designer/ui/canvas/footer/footer.component-theme' as footer;
 @use 'app/pages/flow-designer/ui/canvas/graph-controls/navigation-control/navigation-control.component-theme' as
@@ -31,9 +33,12 @@
     birdseye-control;
 @use 'app/pages/flow-designer/ui/canvas/graph-controls/operation-control/operation-control.component-theme' as
     operation-control;
+@use 'app/pages/flow-designer/ui/canvas/items/processor/edit-processor/edit-processor.component-theme' as edit-processor;
 @use 'app/pages/flow-designer/ui/canvas/header/flow-status/flow-status.component-theme' as flow-status;
 @use 'app/pages/flow-designer/ui/canvas/header/new-canvas-item/new-canvas-item.component-theme' as new-canvas-item;
 @use 'app/pages/flow-designer/ui/canvas/header/search/search.component-theme' as search;
+@use 'app/pages/flow-designer/ui/canvas/header/flow-analysis-drawer/violation-details-dialog/violation-details-dialog.component-theme'
+    as violation-details-dialog;
 @use 'app/pages/login/feature/login.component-theme' as login;
 @use 'app/pages/logout/feature/logout.component-theme' as logout;
 @use 'app/pages/provenance/feature/provenance.component-theme' as provenance;
@@ -46,27 +51,26 @@
 @use 'app/ui/common/navigation/navigation.component-theme' as navigation;
 @use 'app/ui/common/property-table/editors/nf-editor/nf-editor.component-theme' as nf-editor;
 @use 'app/ui/common/status-history/status-history.component-theme' as status-history;
-@use 'app/ui/common/tooltips/property-hint-tip/property-hint-tip.component-theme' as property-hint-tip;
+@use 'libs/shared/src/components/tooltips/property-hint-tip/property-hint-tip.component-theme' as property-hint-tip;
 @use 'app/pages/summary/ui/processor-status-listing/processor-status-table/processor-status-table.component-theme' as
     processor-status-table;
 @use 'app/pages/flow-designer/ui/canvas/change-color-dialog/change-color-dialog.component-theme' as change-color-dialog;
-@use 'app/ui/common/map-table/editors/text-editor/text-editor.component-theme' as text-editor;
+@use 'libs/shared/src/components/map-table/editors/text-editor/text-editor.component-theme' as text-editor;
 
 // Plus imports for other components in your app.
-@use 'assets/fonts/flowfont/flowfont.css';
-@use 'font-awesome/css/font-awesome.min.css';
+@use 'libs/shared/src/assets/fonts/flowfont/flowfont.css';
 @use 'codemirror/lib/codemirror.css';
 @use 'codemirror/addon/fold/foldgutter.css';
 @use 'codemirror/addon/hint/show-hint.css';
 
-@import 'assets/themes/supplemental';
-// To override the NiFi theme, you need to set the variables $material-theme-light and $material-theme-dark
-@import 'assets/themes/material';
+@use 'font-awesome';
+@use 'libs/shared/src/assets/themes/material';
 
 // Include the common styles for Angular Material. We include this here so that you only
 // have to load a single css file for Angular Material in your app.
 // Be sure that you only ever include this mixin once!
-@include mat.core();
+@include mat.elevation-classes();
+@include mat.app-background();
 
 @tailwind base;
 @tailwind components;
@@ -76,68 +80,73 @@
 @include app.styles();
 @include listing-table.styles();
 
-// Include the light theme color styles.
-@include mat.all-component-themes($material-theme-light);
+html {
+    @include mat.typography-hierarchy(material.$m3-light-theme);
+    @include mat.all-component-themes(material.$m3-light-theme);
+    @include app.generate-material-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include codemirror-theme.generate-codemirror-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include prism-theme.generate-prism-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include app-component.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include listing-table.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include documentation.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include canvas.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include footer.generate-theme();
+    @include extension-creation.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include birdseye-control.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include navigation-control.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include operation-control.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include flow-status.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include edit-processor.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include violation-details-dialog.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include new-canvas-item.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include search.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include login.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include logout.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include provenance-event-table.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include provenance.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include lineage.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include context-menu.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include navigation.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include nf-editor.generate-theme();
+    @include status-history.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include property-hint-tip.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include processor-status-table.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include change-color-dialog.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
+    @include text-editor.generate-theme();
+    @include resizable.generate-theme(material.$m3-light-theme, material.$m3-light-theme-config);
 
-// generate light mode stylesheets
-@include app.generate-material-theme($material-theme-light);
-@include app.generate-supplemental-theme($supplemental-theme-light);
-@include codemirror-theme.generate-codemirror-theme($material-theme-light, $supplemental-theme-light);
-@include app-component.generate-theme($material-theme-light);
-@include listing-table.generate-theme($material-theme-light, $supplemental-theme-light);
-@include canvas.generate-theme($material-theme-light, $supplemental-theme-light);
-@include footer.generate-theme($supplemental-theme-light);
-@include extension-creation.generate-theme($material-theme-light);
-@include navigation-control.generate-theme($supplemental-theme-light);
-@include birdseye-control.generate-theme($material-theme-light, $supplemental-theme-light);
-@include operation-control.generate-theme($supplemental-theme-light);
-@include flow-status.generate-theme($material-theme-light, $supplemental-theme-light);
-@include new-canvas-item.generate-theme($material-theme-light, $supplemental-theme-light);
-@include search.generate-theme($supplemental-theme-light);
-@include login.generate-theme($material-theme-light, $supplemental-theme-light);
-@include logout.generate-theme($material-theme-light, $supplemental-theme-light);
-@include provenance-event-table.generate-theme($supplemental-theme-light);
-@include provenance.generate-theme($material-theme-light, $supplemental-theme-light);
-@include lineage.generate-theme($material-theme-light, $supplemental-theme-light);
-@include context-menu.generate-theme($material-theme-light, $supplemental-theme-light);
-@include navigation.generate-theme($material-theme-light, $supplemental-theme-light);
-@include nf-editor.generate-theme($material-theme-light, $supplemental-theme-light);
-@include status-history.generate-theme($supplemental-theme-light);
-@include property-hint-tip.generate-theme($material-theme-light, $supplemental-theme-light);
-@include processor-status-table.generate-theme($supplemental-theme-light);
-@include change-color-dialog.generate-theme($supplemental-theme-light);
-@include text-editor.generate-theme($material-theme-light, $supplemental-theme-light);
-
-.dark-theme {
-    // Include the dark theme color styles.
-    @include mat.all-component-colors($material-theme-dark);
-
-    // generate dark mode stylesheets
-    @include app.generate-material-theme($material-theme-dark);
-    @include app.generate-supplemental-theme($supplemental-theme-dark);
-    @include codemirror-theme.generate-codemirror-theme($material-theme-dark, $supplemental-theme-dark);
-    @include app-component.generate-theme($material-theme-dark);
-    @include listing-table.generate-theme($material-theme-dark, $supplemental-theme-dark);
-    @include canvas.generate-theme($material-theme-dark, $supplemental-theme-dark);
-    @include footer.generate-theme($supplemental-theme-dark);
-    @include extension-creation.generate-theme($material-theme-dark);
-    @include navigation-control.generate-theme($supplemental-theme-dark);
-    @include birdseye-control.generate-theme($material-theme-dark, $supplemental-theme-dark);
-    @include operation-control.generate-theme($supplemental-theme-dark);
-    @include flow-status.generate-theme($material-theme-dark, $supplemental-theme-dark);
-    @include new-canvas-item.generate-theme($material-theme-dark, $supplemental-theme-dark);
-    @include search.generate-theme($supplemental-theme-dark);
-    @include login.generate-theme($material-theme-dark, $supplemental-theme-dark);
-    @include logout.generate-theme($material-theme-dark, $supplemental-theme-dark);
-    @include provenance-event-table.generate-theme($supplemental-theme-dark);
-    @include provenance.generate-theme($material-theme-dark, $supplemental-theme-dark);
-    @include lineage.generate-theme($material-theme-dark, $supplemental-theme-dark);
-    @include context-menu.generate-theme($material-theme-dark, $supplemental-theme-dark);
-    @include navigation.generate-theme($material-theme-dark, $supplemental-theme-dark);
-    @include nf-editor.generate-theme($material-theme-dark, $supplemental-theme-dark);
-    @include status-history.generate-theme($supplemental-theme-dark);
-    @include property-hint-tip.generate-theme($material-theme-dark, $supplemental-theme-dark);
-    @include processor-status-table.generate-theme($supplemental-theme-dark);
-    @include change-color-dialog.generate-theme($supplemental-theme-dark);
-    @include text-editor.generate-theme($material-theme-dark, $supplemental-theme-dark);
+    .dark-theme {
+        @include mat.all-component-colors(material.$m3-dark-theme);
+        @include app.generate-material-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include codemirror-theme.generate-codemirror-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include prism-theme.generate-prism-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include app-component.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include listing-table.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include documentation.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include canvas.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include footer.generate-theme();
+        @include extension-creation.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include birdseye-control.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include navigation-control.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include operation-control.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include flow-status.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include edit-processor.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include violation-details-dialog.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include new-canvas-item.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include search.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include login.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include logout.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include provenance-event-table.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include provenance.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include lineage.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include context-menu.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include navigation.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include nf-editor.generate-theme();
+        @include status-history.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include property-hint-tip.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include processor-status-table.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include change-color-dialog.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+        @include text-editor.generate-theme();
+        @include resizable.generate-theme(material.$m3-dark-theme, material.$m3-dark-theme-config);
+    }
 }

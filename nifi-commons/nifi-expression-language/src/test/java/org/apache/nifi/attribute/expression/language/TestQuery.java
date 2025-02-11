@@ -58,6 +58,7 @@ import static java.lang.Double.POSITIVE_INFINITY;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -209,7 +210,7 @@ public class TestQuery {
 
         final ParameterLookup parameterLookup = mock(ParameterLookup.class);
         final ParameterDescriptor parameterDescriptor = new ParameterDescriptor.Builder().name(parameterName).sensitive(true).build();
-        final Parameter parameter = new Parameter(parameterDescriptor, value);
+        final Parameter parameter = new Parameter.Builder().descriptor(parameterDescriptor).value(value).build();
         when(parameterLookup.getParameter(eq(parameterName))).thenReturn(Optional.of(parameter));
         when(parameterLookup.isEmpty()).thenReturn(false);
 
@@ -2560,14 +2561,14 @@ public class TestQuery {
         if (expectedResult instanceof Long) {
             if (ResultType.NUMBER.equals(result.getResultType())) {
                 final Number resultNumber = ((NumberQueryResult) result).getValue();
-                assertTrue(resultNumber instanceof Long);
+                assertInstanceOf(Long.class, resultNumber);
             } else {
                 assertEquals(ResultType.WHOLE_NUMBER, result.getResultType());
             }
         } else if (expectedResult instanceof Double) {
             if (ResultType.NUMBER.equals(result.getResultType())) {
                 final Number resultNumber = ((NumberQueryResult) result).getValue();
-                assertTrue(resultNumber instanceof Double);
+                assertInstanceOf(Double.class, resultNumber);
             } else {
                 assertEquals(ResultType.DECIMAL, result.getResultType());
             }
@@ -2619,7 +2620,7 @@ public class TestQuery {
                 return Optional.empty();
             }
 
-            return Optional.of(new Parameter(new ParameterDescriptor.Builder().name(parameterName).build(), value));
+            return Optional.of(new Parameter.Builder().name(parameterName).value(value).build());
         }
 
         @Override

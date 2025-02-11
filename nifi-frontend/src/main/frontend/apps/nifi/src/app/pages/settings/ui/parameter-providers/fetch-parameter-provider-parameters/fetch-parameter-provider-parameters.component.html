@@ -18,21 +18,21 @@
 <div>
     <h2 mat-dialog-title>Fetch Parameters</h2>
     <form class="parameter-provider-fetch-form" [formGroup]="fetchParametersForm">
-        <error-banner></error-banner>
+        <context-error-banner [context]="ErrorContextKey.PARAMETER_PROVIDERS"></context-error-banner>
 
         <mat-dialog-content *ngIf="(updateRequest | async)! as requestEntity; else fetchFormContent">
             <div class="dialog-content flex gap-x-4 w-full pt-2">
                 <div class="flex flex-col flex-1">
                     <div class="flex flex-col mb-4">
                         <div>Name</div>
-                        <div class="accent-color font-medium">
+                        <div class="tertiary-color font-medium">
                             {{ parameterProvider.component.name }}
                         </div>
                     </div>
 
                     <div class="flex flex-col mb-4">
                         <div>Parameter Groups</div>
-                        <div class="accent-color font-medium">
+                        <div class="tertiary-color font-medium">
                             {{ parameterGroupNames | sort | join }}
                         </div>
                     </div>
@@ -45,12 +45,12 @@
                             <div
                                 *ngFor="let updateStep of requestEntity.updateSteps"
                                 class="flex justify-between items-center">
-                                <div class="accent-color font-medium">
+                                <div class="tertiary-color font-medium">
                                     {{ updateStep.description }}
                                 </div>
                                 <div
                                     *ngIf="updateStep.complete; else stepInProgress"
-                                    class="fa fa-check complete success-color"></div>
+                                    class="fa fa-check complete success-color-default"></div>
                                 <ng-template #stepInProgress>
                                     <div class="fa fa-spin fa-circle-o-notch primary-color"></div>
                                 </ng-template>
@@ -65,14 +65,14 @@
                             <div class="flex flex-row items-center gap-x-2">
                                 Parameter Contexts To Create
                                 <i
-                                    class="fa fa-info-circle"
+                                    class="fa fa-info-circle primary-color"
                                     nifiTooltip
                                     [tooltipComponentType]="TextTip"
                                     tooltipInputData="Parameter groups set to be created as parameter contexts, pending apply."></i>
                             </div>
                             <div
                                 *ngIf="Object.keys(parameterContextsToCreate).length > 0; else none"
-                                class="accent-color font-medium">
+                                class="tertiary-color font-medium">
                                 {{ Object.values(parameterContextsToCreate) | sort | join }}
                             </div>
                         </div>
@@ -80,14 +80,14 @@
                             <div class="flex flex-row items-center gap-x-2">
                                 Parameter Contexts To Update
                                 <i
-                                    class="fa fa-info-circle"
+                                    class="fa fa-info-circle primary-color"
                                     nifiTooltip
                                     [tooltipComponentType]="TextTip"
                                     tooltipInputData="Synced parameter contexts to be updated, pending apply."></i>
                             </div>
                             <div
                                 *ngIf="parameterContextsToUpdate.length > 0; else none"
-                                class="accent-color font-medium">
+                                class="tertiary-color font-medium">
                                 {{ parameterContextsToUpdate | sort | join }}
                             </div>
                         </div>
@@ -95,7 +95,7 @@
                             <div class="flex flex-row items-center gap-x-2">
                                 Affected Referencing Components
                                 <i
-                                    class="fa fa-info-circle"
+                                    class="fa fa-info-circle primary-color"
                                     nifiTooltip
                                     [tooltipComponentType]="TextTip"
                                     tooltipInputData="Affected components referencing this parameter provider."></i>
@@ -103,6 +103,7 @@
                             <div class="relative h-full border">
                                 <div class="absolute inset-0 overflow-y-auto p-1">
                                     <parameter-references
+                                        [disabledLinks]="(saving$ | async)!"
                                         [parameterReferences]="
                                             parameterProvider.component.affectedComponents
                                         "></parameter-references>
@@ -111,7 +112,7 @@
                         </div>
 
                         <ng-template #none>
-                            <div class="unset surface-color">None</div>
+                            <div class="unset neutral-color">None</div>
                         </ng-template>
                     </div>
                 </div>
@@ -124,7 +125,7 @@
                     <div class="flex flex-col flex-1">
                         <div class="flex flex-col mb-4">
                             <div>Name</div>
-                            <div class="accent-color font-medium">
+                            <div class="tertiary-color font-medium">
                                 {{ parameterProvider.component.name }}
                             </div>
                         </div>
@@ -133,7 +134,7 @@
                             <div class="flex flex-row items-center gap-x-2">
                                 Select To Configure a Parameter Group
                                 <i
-                                    class="fa fa-info-circle"
+                                    class="fa fa-info-circle primary-color"
                                     nifiTooltip
                                     [tooltipComponentType]="TextTip"
                                     tooltipInputData="Discovered parameter groups from this parameter provider. Select a group to create a parameter context, then configure its parameter sensitivities."></i>
@@ -159,7 +160,6 @@
                                     <!-- Not synced, give the user the option to create a parameter context for the group -->
                                     <div class="flex items-center">
                                         <mat-checkbox
-                                            color="primary"
                                             formControlName="createParameterContext"
                                             (change)="createParameterContextToggled($event)">
                                             <mat-label>Create Parameter Context</mat-label>
@@ -183,7 +183,7 @@
                                 <ng-template #paramContextSynced>
                                     <div class="flex flex-col">
                                         <div>Parameter Context Name</div>
-                                        <div class="accent-color font-medium">
+                                        <div class="tertiary-color font-medium">
                                             {{ parameterGroupConfig.parameterContextName }}
                                         </div>
                                     </div>
@@ -195,7 +195,7 @@
                                         <div class="flex items-center gap-x-2">
                                             Fetched Parameters
                                             <i
-                                                class="fa fa-info-circle"
+                                                class="fa fa-info-circle primary-color"
                                                 nifiTooltip
                                                 [tooltipComponentType]="TextTip"
                                                 tooltipInputData="Discovered parameters from the selected parameter group."></i>
@@ -207,7 +207,7 @@
                                                         parameterGroupConfig.parameterSensitivities
                                                     )
                                                 "
-                                                class="accent-color font-medium">
+                                                class="tertiary-color font-medium">
                                                 {{ param[0] }}
                                             </li>
                                         </ul>
@@ -219,7 +219,7 @@
                                         <div class="flex flex-row items-center gap-x-2">
                                             Select Parameters To Be Set As Sensitive
                                             <i
-                                                class="fa fa-info-circle"
+                                                class="fa fa-info-circle primary-color"
                                                 nifiTooltip
                                                 [tooltipComponentType]="TextTip"
                                                 tooltipInputData="Only parameters that are not referenced can be modified."></i>
@@ -238,14 +238,13 @@
                                                     <ng-container matColumnDef="sensitive">
                                                         <th mat-header-cell *matHeaderCellDef>
                                                             <mat-checkbox
-                                                                color="accent"
+                                                                class="tertiary-checkbox"
                                                                 [checked]="areAllSelected(parameterGroupConfig)"
                                                                 [indeterminate]="areAnySelected(parameterGroupConfig)"
                                                                 (change)="selectAllChanged($event)"></mat-checkbox>
                                                         </th>
                                                         <td mat-cell *matCellDef="let item" class="items-center">
                                                             <mat-checkbox
-                                                                color="primary"
                                                                 [formControl]="
                                                                     getFormControl(item, parameterGroupConfig)
                                                                 "
@@ -301,14 +300,14 @@
                                 <div class="flex flex-row items-center gap-x-2">
                                     Parameter Contexts To Create
                                     <i
-                                        class="fa fa-info-circle"
+                                        class="fa fa-info-circle primary-color"
                                         nifiTooltip
                                         [tooltipComponentType]="TextTip"
                                         tooltipInputData="Parameter groups set to be created as parameter contexts, pending apply."></i>
                                 </div>
                                 <div
                                     *ngIf="Object.keys(parameterContextsToCreate).length > 0; else none"
-                                    class="accent-color font-medium">
+                                    class="tertiary-color font-medium">
                                     {{ Object.values(parameterContextsToCreate) | sort | join }}
                                 </div>
                             </div>
@@ -316,14 +315,14 @@
                                 <div class="flex flex-row items-center gap-x-2">
                                     Parameter Contexts To Update
                                     <i
-                                        class="fa fa-info-circle"
+                                        class="fa fa-info-circle primary-color"
                                         nifiTooltip
                                         [tooltipComponentType]="TextTip"
                                         tooltipInputData="Synced parameter contexts to be updated, pending apply."></i>
                                 </div>
                                 <div
                                     *ngIf="parameterContextsToUpdate.length > 0; else none"
-                                    class="accent-color font-medium">
+                                    class="tertiary-color font-medium">
                                     {{ parameterContextsToUpdate | sort | join }}
                                 </div>
                             </div>
@@ -331,7 +330,7 @@
                                 <div class="flex flex-row items-center gap-x-2">
                                     Referencing Components
                                     <i
-                                        class="fa fa-info-circle"
+                                        class="fa fa-info-circle primary-color"
                                         nifiTooltip
                                         [tooltipComponentType]="TextTip"
                                         tooltipInputData="Components referencing this selected parameter."></i>
@@ -345,7 +344,7 @@
                             </div>
 
                             <ng-template #none>
-                                <div class="unset surface-color">None</div>
+                                <div class="unset neutral-color">None</div>
                             </ng-template>
                         </div>
                     </div>
@@ -365,9 +364,8 @@
                 <button
                     [disabled]="!canSubmitForm() || saving.value"
                     type="button"
-                    color="primary"
                     (click)="submitForm()"
-                    mat-button>
+                    mat-flat-button>
                     <span *nifiSpinner="saving.value">Apply</span>
                 </button>
             </ng-template>

@@ -18,7 +18,16 @@
                             }
                         ]
                     }
-                ]
+                ],
+
+                // Don't require a "Component" suffix
+                "@angular-eslint/component-class-suffix": [
+                    "error",
+                    {
+                        "suffixes": [""]
+                    }
+                ],
+                "@angular-eslint/prefer-standalone": "off"
             }
         },
         {
@@ -29,6 +38,13 @@
         {
             "files": ["*.js", "*.jsx"],
             "extends": ["plugin:@nx/javascript"],
+            "rules": {}
+        },
+        {
+            "files": ["*.spec.ts", "*.spec.tsx", "*.spec.js", "*.spec.jsx"],
+            "env": {
+                "jest": true
+            },
             "rules": {}
         }
     ]

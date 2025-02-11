@@ -33,18 +33,16 @@ import { EditRegistryClientDialogRequest, EditRegistryClientRequest } from '../.
 import { NifiSpinnerDirective } from '../../../../../ui/common/spinner/nifi-spinner.directive';
 import { Client } from '../../../../../service/client.service';
 import { MatSelectModule } from '@angular/material/select';
-import { NifiTooltipDirective } from '../../../../../ui/common/tooltips/nifi-tooltip.directive';
-import { TextTip } from '../../../../../ui/common/tooltips/text-tip/text-tip.component';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
+import { TextTip, NiFiCommon, CopyDirective } from '@nifi/shared';
 import { MatTabsModule } from '@angular/material/tabs';
 import { PropertyTable } from '../../../../../ui/common/property-table/property-table.component';
-import { ErrorBanner } from '../../../../../ui/common/error-banner/error-banner.component';
 import { ClusterConnectionService } from '../../../../../service/cluster-connection.service';
 import { TabbedDialog } from '../../../../../ui/common/tabbed-dialog/tabbed-dialog.component';
+import { ErrorContextKey } from '../../../../../state/error';
+import { ContextErrorBanner } from '../../../../../ui/common/context-error-banner/context-error-banner.component';
 
 @Component({
     selector: 'edit-registry-client',
-    standalone: true,
     templateUrl: './edit-registry-client.component.html',
     imports: [
         ReactiveFormsModule,
@@ -55,10 +53,10 @@ import { TabbedDialog } from '../../../../../ui/common/tabbed-dialog/tabbed-dial
         AsyncPipe,
         NifiSpinnerDirective,
         MatSelectModule,
-        NifiTooltipDirective,
         MatTabsModule,
         PropertyTable,
-        ErrorBanner
+        ContextErrorBanner,
+        CopyDirective
     ],
     styleUrls: ['./edit-registry-client.component.scss']
 })
@@ -140,4 +138,6 @@ export class EditRegistryClient extends TabbedDialog {
     override isDirty(): boolean {
         return this.editRegistryClientForm.dirty;
     }
+
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

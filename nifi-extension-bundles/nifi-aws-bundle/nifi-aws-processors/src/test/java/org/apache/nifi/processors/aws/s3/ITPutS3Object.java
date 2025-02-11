@@ -30,6 +30,7 @@ import com.amazonaws.services.s3.model.Tag;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.nifi.fileresource.service.StandardFileResourceService;
 import org.apache.nifi.fileresource.service.api.FileResourceService;
+import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.flowfile.attributes.CoreAttributes;
 import org.apache.nifi.processor.DataUnit;
 import org.apache.nifi.processor.ProcessContext;
@@ -44,6 +45,8 @@ import org.apache.nifi.util.TestRunner;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -81,7 +84,7 @@ public class ITPutS3Object extends AbstractS3IT {
 
     final static Pattern reS3ETag = Pattern.compile("[0-9a-fA-f]{32}(-[0-9]+)?");
 
-
+    private static final Logger logger = LoggerFactory.getLogger(ITPutS3Object.class);
     private static String kmsKeyId = "";
     private static String randomKeyMaterial = "";
 
@@ -506,7 +509,7 @@ public class ITPutS3Object extends AbstractS3IT {
         runner.setProperty(PutS3Object.BUCKET_WITHOUT_DEFAULT_VALUE, BUCKET_NAME);
         runner.setProperty(PutS3Object.KEY, AbstractS3IT.SAMPLE_FILE_RESOURCE_NAME);
 
-        assertEquals(BUCKET_NAME, context.getProperty(PutS3Object.BUCKET_WITHOUT_DEFAULT_VALUE).toString());
+        assertEquals(BUCKET_NAME, context.getProperty(PutS3Object.BUCKET_WITHOUT_DEFAULT_VALUE).evaluateAttributeExpressions((FlowFile) null).toString());
         assertEquals(SAMPLE_FILE_RESOURCE_NAME, context.getProperty(PutS3Object.KEY).evaluateAttributeExpressions(Collections.emptyMap()).toString());
         assertEquals(TEST_PARTSIZE_LONG.longValue(),
                 context.getProperty(PutS3Object.MULTIPART_PART_SIZE).asDataSize(DataUnit.B).longValue());
@@ -516,7 +519,7 @@ public class ITPutS3Object extends AbstractS3IT {
     public void testLocalStatePersistence() throws IOException {
         final TestRunner runner = initTestRunner();
 
-        final String bucket = runner.getProcessContext().getProperty(PutS3Object.BUCKET_WITHOUT_DEFAULT_VALUE).getValue();
+        final String bucket = runner.getProcessContext().getProperty(PutS3Object.BUCKET_WITHOUT_DEFAULT_VALUE).evaluateAttributeExpressions((FlowFile) null).getValue();
         final String key = runner.getProcessContext().getProperty(PutS3Object.KEY).evaluateAttributeExpressions(Collections.emptyMap()).getValue();
         final String cacheKey1 = runner.getProcessor().getIdentifier() + "/" + bucket + "/" + key;
         final String cacheKey2 = runner.getProcessor().getIdentifier() + "/" + bucket + "/" + key + "-v2";
@@ -563,7 +566,7 @@ public class ITPutS3Object extends AbstractS3IT {
         final PutS3Object.MultipartState state1new = processor.getLocalStateIfInS3(mockClient, bucket, cacheKey1);
         assertEquals("", state1new.getUploadId());
         assertEquals(0L, state1new.getFilePosition().longValue());
-        assertEquals(new ArrayList<PartETag>(), state1new.getPartETags());
+        assertEquals(new ArrayList<>(), state1new.getPartETags());
         assertEquals(0L, state1new.getPartSize().longValue());
         assertEquals(StorageClass.fromValue(StorageClass.Standard.toString()), state1new.getStorageClass());
         assertEquals(0L, state1new.getContentLength().longValue());
@@ -571,7 +574,7 @@ public class ITPutS3Object extends AbstractS3IT {
         final PutS3Object.MultipartState state2new = processor.getLocalStateIfInS3(mockClient, bucket, cacheKey2);
         assertEquals("1234", state2new.getUploadId());
         assertEquals(0L, state2new.getFilePosition().longValue());
-        assertEquals(new ArrayList<PartETag>(), state2new.getPartETags());
+        assertEquals(new ArrayList<>(), state2new.getPartETags());
         assertEquals(0L, state2new.getPartSize().longValue());
         assertEquals(StorageClass.fromValue(StorageClass.Standard.toString()), state2new.getStorageClass());
         assertEquals(1234L, state2new.getContentLength().longValue());
@@ -579,7 +582,7 @@ public class ITPutS3Object extends AbstractS3IT {
         final PutS3Object.MultipartState state3new = processor.getLocalStateIfInS3(mockClient, bucket, cacheKey3);
         assertEquals("5678", state3new.getUploadId());
         assertEquals(0L, state3new.getFilePosition().longValue());
-        assertEquals(new ArrayList<PartETag>(), state3new.getPartETags());
+        assertEquals(new ArrayList<>(), state3new.getPartETags());
         assertEquals(0L, state3new.getPartSize().longValue());
         assertEquals(StorageClass.fromValue(StorageClass.Standard.toString()), state3new.getStorageClass());
         assertEquals(5678L, state3new.getContentLength().longValue());
@@ -590,7 +593,7 @@ public class ITPutS3Object extends AbstractS3IT {
         final TestRunner runner = initTestRunner();
         final PutS3Object processor = (PutS3Object) runner.getProcessor();
 
-        final String bucket = runner.getProcessContext().getProperty(PutS3Object.BUCKET_WITHOUT_DEFAULT_VALUE).getValue();
+        final String bucket = runner.getProcessContext().getProperty(PutS3Object.BUCKET_WITHOUT_DEFAULT_VALUE).evaluateAttributeExpressions((FlowFile) null).getValue();
         final String key = runner.getProcessContext().getProperty(PutS3Object.KEY).evaluateAttributeExpressions(Collections.emptyMap()).getValue();
         final String cacheKey1 = runner.getProcessor().getIdentifier() + "/" + bucket + "/" + key + "-bv1";
         final String cacheKey2 = runner.getProcessor().getIdentifier() + "/" + bucket + "/" + key + "-bv2";
@@ -666,7 +669,7 @@ public class ITPutS3Object extends AbstractS3IT {
         final TestRunner runner = initTestRunner();
         final PutS3Object processor = (PutS3Object) runner.getProcessor();
 
-        final String bucket = runner.getProcessContext().getProperty(PutS3Object.BUCKET_WITHOUT_DEFAULT_VALUE).getValue();
+        final String bucket = runner.getProcessContext().getProperty(PutS3Object.BUCKET_WITHOUT_DEFAULT_VALUE).evaluateAttributeExpressions((FlowFile) null).getValue();
         final String key = runner.getProcessContext().getProperty(PutS3Object.KEY).evaluateAttributeExpressions(Collections.emptyMap()).getValue();
         final String cacheKey = runner.getProcessor().getIdentifier() + "/" + bucket + "/" + key + "-sr";
 
@@ -710,7 +713,7 @@ public class ITPutS3Object extends AbstractS3IT {
             tempByteCount += megabyte.length;
         }
         tempOut.close();
-        System.out.println("file size: " + tempByteCount);
+        logger.info("file size: {}", tempByteCount);
         assertTrue(tempByteCount < S3_MINIMUM_PART_SIZE);
 
         assertTrue(megabyte.length < S3_MINIMUM_PART_SIZE);
@@ -754,7 +757,7 @@ public class ITPutS3Object extends AbstractS3IT {
             tempByteCount += megabyte.length;
         }
         tempOut.close();
-        System.out.println("file size: " + tempByteCount);
+        logger.info("file size: {}", tempByteCount);
         assertTrue(tempByteCount > S3_MINIMUM_PART_SIZE && tempByteCount < S3_MAXIMUM_OBJECT_SIZE);
         assertTrue(tempByteCount > TEST_PARTSIZE_LONG);
 
@@ -806,7 +809,7 @@ public class ITPutS3Object extends AbstractS3IT {
         List<Tag> objectTags = result.getTagSet();
 
         for (Tag tag : objectTags) {
-            System.out.println("Tag Key : " + tag.getKey() + ", Tag Value : " + tag.getValue());
+            logger.info("Tag Key : {}, Tag Value : {}", tag.getKey(), tag.getValue());
         }
 
         assertEquals(1, objectTags.size());

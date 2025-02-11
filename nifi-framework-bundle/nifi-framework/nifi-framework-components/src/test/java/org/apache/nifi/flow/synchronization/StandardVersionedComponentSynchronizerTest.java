@@ -63,6 +63,7 @@ import org.apache.nifi.groups.FlowFileOutboundPolicy;
 import org.apache.nifi.groups.FlowSynchronizationOptions;
 import org.apache.nifi.groups.ProcessGroup;
 import org.apache.nifi.groups.ScheduledStateChangeListener;
+import org.apache.nifi.groups.VersionedComponentAdditions;
 import org.apache.nifi.logging.LogLevel;
 import org.apache.nifi.nar.ExtensionManager;
 import org.apache.nifi.parameter.Parameter;
@@ -127,6 +128,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -388,6 +390,38 @@ public class StandardVersionedComponentSynchronizerTest {
         final Map<String, String> migratedProperties = propertiesCaptor.getValue();
         final String propertyValue = migratedProperties.get(SENSITIVE_PROPERTY_NAME);
         assertEquals(ENCODED_TEXT, propertyValue);
+    }
+
+    @Test
+    public void testAddVersionedComponents() {
+        final VersionedControllerService versionedService = createMinimalVersionedControllerService();
+
+        final Map<String, String> versionedProperties = Collections.singletonMap(SENSITIVE_PROPERTY_NAME, ENCRYPTED_PROPERTY_VALUE);
+        final VersionedProcessor versionedProcessor = createMinimalVersionedProcessor();
+        versionedProcessor.setProperties(versionedProperties);
+
+        final ProcessorNode processorNode = createMockProcessor();
+        when(flowManager.createProcessor(any(), any(), any(), eq(true))).thenReturn(processorNode);
+
+        final VersionedComponentAdditions additions = new VersionedComponentAdditions.Builder()
+                .setProcessors(Set.of(versionedProcessor))
+                .setControllerServices(Set.of(versionedService))
+                .build();
+
+        synchronizer.addVersionedComponentsToProcessGroup(group, additions, synchronizationOptions);
+
+        verify(group).addProcessor(processorNode);
+        verify(processorNode).migrateConfiguration(propertiesCaptor.capture(), any());
+        Map<String, String> migratedProperties = propertiesCaptor.getValue();
+        String propertyValue = migratedProperties.get(SENSITIVE_PROPERTY_NAME);
+        assertEquals(ENCODED_TEXT, propertyValue);
+
+        verify(group).addControllerService(any(ControllerServiceNode.class));
+        verify(controllerServiceNode, atLeastOnce()).setName(eq(versionedService.getName()));
+        verify(controllerServiceNode).migrateConfiguration(propertiesCaptor.capture(), any());
+        migratedProperties = propertiesCaptor.getValue();
+        propertyValue = migratedProperties.get("abc");
+        assertEquals("123", propertyValue);
     }
 
     @Test
@@ -1165,30 +1199,30 @@ public class StandardVersionedComponentSynchronizerTest {
 
         // Test no changes
         Map<String, String> parameterMap = new HashMap<>(originalParams);
-        VersionedParameterContext proposed = createVersionedParameterContext("Context 2", parameterMap, Collections.singleton("secret"));
+        VersionedParameterContext proposed = createVersionedParameterContext("Context 1", parameterMap, Collections.singleton("secret"));
         assertEquals(Collections.emptySet(), synchronizer.getUpdatedParameterNames(existing, proposed));
 
         // Test non-sensitive param change
         parameterMap = new HashMap<>(originalParams);
         parameterMap.put("abc", "hello");
-        proposed = createVersionedParameterContext("Context 2", parameterMap, Collections.singleton("secret"));
+        proposed = createVersionedParameterContext("Context 1", parameterMap, Collections.singleton("secret"));
         assertEquals(Collections.singleton("abc"), synchronizer.getUpdatedParameterNames(existing, proposed));
 
         // Test sensitive param change
         parameterMap = new HashMap<>(originalParams);
         parameterMap.put("secret", "secret");
-        proposed = createVersionedParameterContext("Context 2", parameterMap, Collections.singleton("secret"));
+        proposed = createVersionedParameterContext("Context 1", parameterMap, Collections.singleton("secret"));
         assertEquals(Collections.singleton("secret"), synchronizer.getUpdatedParameterNames(existing, proposed));
 
         // Test removed parameters
         parameterMap.clear();
-        proposed = createVersionedParameterContext("Context 2", parameterMap, Collections.singleton("secret"));
+        proposed = createVersionedParameterContext("Context 1", parameterMap, Collections.singleton("secret"));
         assertEquals(new HashSet<>(Arrays.asList("abc", "secret")), synchronizer.getUpdatedParameterNames(existing, proposed));
 
         // Test added parameter
         parameterMap = new HashMap<>(originalParams);
         parameterMap.put("Added", "Added");
-        proposed = createVersionedParameterContext("Context 2", parameterMap, Collections.singleton("secret"));
+        proposed = createVersionedParameterContext("Context 1", parameterMap, Collections.singleton("secret"));
         assertEquals(Collections.singleton("Added"), synchronizer.getUpdatedParameterNames(existing, proposed));
 
         // Test added, removed, and updated parameters
@@ -1197,8 +1231,30 @@ public class StandardVersionedComponentSynchronizerTest {
         parameterMap.put("Added 2", "Added");
         parameterMap.remove("secret");
         parameterMap.put("abc", "hello");
-        proposed = createVersionedParameterContext("Context 2", parameterMap, Collections.singleton("secret"));
+        proposed = createVersionedParameterContext("Context 1", parameterMap, Collections.singleton("secret"));
         assertEquals(new HashSet<>(Arrays.asList("abc", "secret", "Added", "Added 2")), synchronizer.getUpdatedParameterNames(existing, proposed));
+
+        // Test change value due to inherited parameter context reordering
+        final Map<String, String> inheritedParameters = new HashMap<>();
+        // Context 1: abc = xyz
+        // Context 3: abc = def
+        inheritedParameters.put("abc", "def");
+        final VersionedParameterContext context3 = createVersionedParameterContext("Context 3", inheritedParameters, Collections.emptySet());
+
+        synchronizer.synchronize(null, context3, synchronizationOptions);
+
+        parameterMap = new HashMap<>();
+        proposed = createVersionedParameterContext("Context 2", parameterMap, Collections.emptySet());
+        synchronizer.synchronize(null, proposed, synchronizationOptions);
+
+        ParameterContext context2 = parameterContextManager.getParameterContextNameMapping().get("Context 2");
+        proposed.setInheritedParameterContexts(List.of("Context 1", "Context 3"));
+        synchronizer.synchronize(context2, proposed, synchronizationOptions);
+
+        proposed.setInheritedParameterContexts(List.of("Context 3", "Context 1"));
+        context2 = parameterContextManager.getParameterContextNameMapping().get("Context 2");
+        // The effective value of abc should change here due to the reordering
+        assertEquals(Collections.singleton("abc"), synchronizer.getUpdatedParameterNames(context2, proposed));
     }
 
     @Test

@@ -39,29 +39,22 @@ import { Store } from '@ngrx/store';
 import { NiFiState } from '../../../../state';
 import { Router } from '@angular/router';
 import { ParameterContextService } from '../../service/parameter-contexts.service';
-import { YesNoDialog } from '../../../../ui/common/yes-no-dialog/yes-no-dialog.component';
-import { EditParameterContext } from '../../ui/parameter-context-listing/edit-parameter-context/edit-parameter-context.component';
+import { Parameter, YesNoDialog } from '@nifi/shared';
 import {
     selectParameterContexts,
     selectParameterContextStatus,
     selectSaving,
     selectUpdateRequest
 } from './parameter-context-listing.selectors';
-import {
-    EditParameterRequest,
-    EditParameterResponse,
-    isDefinedAndNotNull,
-    Parameter,
-    ParameterContextUpdateRequest
-} from '../../../../state/shared';
+import { EditParameterRequest, EditParameterResponse, ParameterContextUpdateRequest } from '../../../../state/shared';
 import { EditParameterDialog } from '../../../../ui/common/edit-parameter-dialog/edit-parameter-dialog.component';
 import { OkDialog } from '../../../../ui/common/ok-dialog/ok-dialog.component';
 import { ErrorHelper } from '../../../../service/error-helper.service';
 import { HttpErrorResponse } from '@angular/common/http';
-import { MEDIUM_DIALOG, SMALL_DIALOG, XL_DIALOG } from '../../../../index';
 import { BackNavigation } from '../../../../state/navigation';
-import { Storage } from '../../../../service/storage.service';
-import { NiFiCommon } from '../../../../service/nifi-common.service';
+import { isDefinedAndNotNull, MEDIUM_DIALOG, SMALL_DIALOG, XL_DIALOG, NiFiCommon, Storage } from '@nifi/shared';
+import { ErrorContextKey } from '../../../../state/error';
+import { EditParameterContext } from '../../../../ui/common/parameter-context/edit-parameter-context/edit-parameter-context.component';
 
 @Injectable()
 export class ParameterContextListingEffects {
@@ -115,8 +108,8 @@ export class ParameterContextListingEffects {
 
                     dialogReference.componentInstance.createNewParameter = (
                         existingParameters: string[]
-                    ): Observable<Parameter> => {
-                        const dialogRequest: EditParameterRequest = { existingParameters };
+                    ): Observable<EditParameterResponse> => {
+                        const dialogRequest: EditParameterRequest = { existingParameters, isNewParameterContext: true };
                         const newParameterDialogReference = this.dialog.open(EditParameterDialog, {
                             ...MEDIUM_DIALOG,
                             data: dialogRequest
@@ -130,17 +123,20 @@ export class ParameterContextListingEffects {
                                 newParameterDialogReference.close();
 
                                 return {
-                                    ...dialogResponse.parameter
+                                    ...dialogResponse
                                 };
                             })
                         );
                     };
 
-                    dialogReference.componentInstance.editParameter = (parameter: Parameter): Observable<Parameter> => {
+                    dialogReference.componentInstance.editParameter = (
+                        parameter: Parameter
+                    ): Observable<EditParameterResponse> => {
                         const dialogRequest: EditParameterRequest = {
                             parameter: {
                                 ...parameter
-                            }
+                            },
+                            isNewParameterContext: true
                         };
                         const editParameterDialogReference = this.dialog.open(EditParameterDialog, {
                             ...MEDIUM_DIALOG,
@@ -155,7 +151,7 @@ export class ParameterContextListingEffects {
                                 editParameterDialogReference.close();
 
                                 return {
-                                    ...dialogResponse.parameter
+                                    ...dialogResponse
                                 };
                             })
                         );
@@ -220,7 +216,13 @@ export class ParameterContextListingEffects {
         this.actions$.pipe(
             ofType(ParameterContextListingActions.parameterContextListingBannerApiError),
             map((action) => action.error),
-            switchMap((error) => of(ErrorActions.addBannerError({ error })))
+            switchMap((error) =>
+                of(
+                    ErrorActions.addBannerError({
+                        errorContext: { errors: [error], context: ErrorContextKey.PARAMETER_CONTEXTS }
+                    })
+                )
+            )
         )
     );
 
@@ -253,7 +255,7 @@ export class ParameterContextListingEffects {
         { dispatch: false }
     );
 
-    navigateToEditService$ = createEffect(
+    navigateToEditParameterContext$ = createEffect(
         () =>
             this.actions$.pipe(
                 ofType(ParameterContextListingActions.navigateToEditParameterContext),
@@ -310,6 +312,7 @@ export class ParameterContextListingEffects {
                     });
 
                     editDialogReference.componentInstance.updateRequest = this.store.select(selectUpdateRequest);
+
                     editDialogReference.componentInstance.availableParameterContexts$ = this.store
                         .select(selectParameterContexts)
                         .pipe(
@@ -319,8 +322,11 @@ export class ParameterContextListingEffects {
 
                     editDialogReference.componentInstance.createNewParameter = (
                         existingParameters: string[]
-                    ): Observable<Parameter> => {
-                        const dialogRequest: EditParameterRequest = { existingParameters };
+                    ): Observable<EditParameterResponse> => {
+                        const dialogRequest: EditParameterRequest = {
+                            existingParameters,
+                            isNewParameterContext: false
+                        };
                         const newParameterDialogReference = this.dialog.open(EditParameterDialog, {
                             ...MEDIUM_DIALOG,
                             data: dialogRequest
@@ -332,9 +338,8 @@ export class ParameterContextListingEffects {
                             take(1),
                             map((dialogResponse: EditParameterResponse) => {
                                 newParameterDialogReference.close();
-
                                 return {
-                                    ...dialogResponse.parameter
+                                    ...dialogResponse
                                 };
                             })
                         );
@@ -342,11 +347,12 @@ export class ParameterContextListingEffects {
 
                     editDialogReference.componentInstance.editParameter = (
                         parameter: Parameter
-                    ): Observable<Parameter> => {
+                    ): Observable<EditParameterResponse> => {
                         const dialogRequest: EditParameterRequest = {
                             parameter: {
                                 ...parameter
-                            }
+                            },
+                            isNewParameterContext: false
                         };
                         const editParameterDialogReference = this.dialog.open(EditParameterDialog, {
                             ...MEDIUM_DIALOG,
@@ -359,9 +365,8 @@ export class ParameterContextListingEffects {
                             take(1),
                             map((dialogResponse: EditParameterResponse) => {
                                 editParameterDialogReference.close();
-
                                 return {
-                                    ...dialogResponse.parameter
+                                    ...dialogResponse
                                 };
                             })
                         );
@@ -381,8 +386,6 @@ export class ParameterContextListingEffects {
                         });
 
                     editDialogReference.afterClosed().subscribe((response) => {
-                        this.store.dispatch(ErrorActions.clearBannerErrors());
-
                         if (response != 'ROUTED') {
                             this.store.dispatch(
                                 ParameterContextListingActions.selectParameterContext({
@@ -391,8 +394,8 @@ export class ParameterContextListingEffects {
                                     }
                                 })
                             );
-                            this.store.dispatch(ParameterContextListingActions.editParameterContextComplete());
                         }
+                        this.store.dispatch(ParameterContextListingActions.editParameterContextComplete());
                     });
                 })
             ),
@@ -535,11 +538,14 @@ export class ParameterContextListingEffects {
                 ofType(ParameterContextListingActions.promptParameterContextDeletion),
                 map((action) => action.request),
                 tap((request) => {
+                    // @ts-ignore - component will be defined since the user has permissions to delete the context, but it is optional as defined by the type
+                    const name = request.parameterContext.component.name;
+
                     const dialogReference = this.dialog.open(YesNoDialog, {
                         ...SMALL_DIALOG,
                         data: {
                             title: 'Delete Parameter Context',
-                            message: `Delete parameter context ${request.parameterContext.component.name}?`
+                            message: `Delete parameter context ${name}?`
                         }
                     });
 

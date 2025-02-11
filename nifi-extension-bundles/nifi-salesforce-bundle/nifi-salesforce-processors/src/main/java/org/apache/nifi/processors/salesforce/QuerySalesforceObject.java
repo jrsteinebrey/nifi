@@ -44,6 +44,7 @@ import org.apache.nifi.components.state.StateMap;
 import org.apache.nifi.expression.ExpressionLanguageScope;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.flowfile.attributes.CoreAttributes;
+import org.apache.nifi.json.JsonParserFactory;
 import org.apache.nifi.json.JsonTreeRowRecordReader;
 import org.apache.nifi.json.SchemaApplicationStrategy;
 import org.apache.nifi.json.StartingFieldStrategy;
@@ -84,7 +85,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -111,7 +111,9 @@ import static org.apache.nifi.processors.salesforce.util.CommonSalesforcePropert
         + " It's also possible to define an initial cutoff value for the age, filtering out all older records"
         + " even for the first run. In case of 'Property Based Query' this processor should run on the Primary Node only."
         + " FlowFile attribute 'record.count' indicates how many records were retrieved and written to the output."
-        + " The processor can accept an optional input FlowFile and reference the FlowFile attributes in the query.")
+        + " The processor can accept an optional input FlowFile and reference the FlowFile attributes in the query."
+        + " When 'Include Deleted Records' is true, the processor will include deleted records (soft-deletes) in the results by using the 'queryAll' API."
+        + " The 'IsDeleted' field will be automatically included in the results when querying deleted records.")
 @Stateful(scopes = Scope.CLUSTER, description = "When 'Age Field' is set, after performing a query the time of execution is stored. Subsequent queries will be augmented"
         + " with an additional condition so that only records that are newer than the stored execution time (adjusted with the optional value of 'Age Delay') will be retrieved."
         + " State is stored across the cluster so that this Processor can be run on Primary Node only and if a new Primary Node is selected,"
@@ -232,6 +234,16 @@ public class QuerySalesforceObject extends AbstractProcessor {
             .dependsOn(QUERY_TYPE, PROPERTY_BASED_QUERY)
             .build();
 
+    static final PropertyDescriptor INCLUDE_DELETED_RECORDS = new PropertyDescriptor.Builder()
+            .name("include-deleted-records")
+            .displayName("Include Deleted Records")
+            .description("If true, the processor will include deleted records (IsDeleted = true) in the query results. When enabled, the processor will use the 'queryAll' API.")
+            .required(true)
+            .defaultValue("false")
+            .allowableValues("true", "false")
+            .dependsOn(QUERY_TYPE, PROPERTY_BASED_QUERY)
+            .build();
+
     static final Relationship REL_SUCCESS = new Relationship.Builder()
             .name("success")
             .description("For FlowFiles created as a result of a successful query.")
@@ -252,8 +264,8 @@ public class QuerySalesforceObject extends AbstractProcessor {
     public static final String LAST_AGE_FILTER = "last_age_filter";
     private static final String STARTING_FIELD_NAME = "records";
     private static final String DATE_FORMAT = "yyyy-MM-dd";
-    private static final String TIME_FORMAT = "HH:mm:ss.SSSX";
-    private static final String DATE_TIME_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSSZZZZ";
+    private static final String TIME_FORMAT = "HH:mm:ss.SSSZ";
+    private static final String DATE_TIME_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSSZ";
     private static final String NEXT_RECORDS_URL = "nextRecordsUrl";
     private static final String TOTAL_SIZE = "totalSize";
     private static final String RECORDS = "records";
@@ -262,6 +274,7 @@ public class QuerySalesforceObject extends AbstractProcessor {
     private static final JsonFactory JSON_FACTORY = OBJECT_MAPPER.getFactory();
     private static final String TOTAL_RECORD_COUNT_ATTRIBUTE = "total.record.count";
     private static final int MAX_RECORD_COUNT = 2000;
+    private static final JsonParserFactory jsonParserFactory = new JsonParserFactory();
 
     private volatile SalesforceToRecordSchemaConverter salesForceToRecordSchemaConverter;
     private volatile SalesforceRestClient salesforceRestService;
@@ -294,7 +307,7 @@ public class QuerySalesforceObject extends AbstractProcessor {
         salesforceRestService = new SalesforceRestClient(salesforceConfiguration);
     }
 
-    private static final List<PropertyDescriptor> PROPERTIES = Collections.unmodifiableList(Arrays.asList(
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
             SALESFORCE_INSTANCE_URL,
             API_VERSION,
             QUERY_TYPE,
@@ -306,18 +319,21 @@ public class QuerySalesforceObject extends AbstractProcessor {
             INITIAL_AGE_FILTER,
             AGE_DELAY,
             CUSTOM_WHERE_CONDITION,
+            INCLUDE_DELETED_RECORDS,
             READ_TIMEOUT,
             CREATE_ZERO_RECORD_FILES,
             TOKEN_PROVIDER
-    ));
+    );
 
-    private static final Set<Relationship> RELATIONSHIPS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            REL_SUCCESS, REL_FAILURE, REL_ORIGINAL
-    )));
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS,
+            REL_FAILURE,
+            REL_ORIGINAL
+    );
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return PROPERTIES;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -339,7 +355,8 @@ public class QuerySalesforceObject extends AbstractProcessor {
                 || descriptor.equals(SOBJECT_NAME)
                 || descriptor.equals(AGE_FIELD)
                 || descriptor.equals(INITIAL_AGE_FILTER)
-                || descriptor.equals(CUSTOM_WHERE_CONDITION))
+                || descriptor.equals(CUSTOM_WHERE_CONDITION)
+                || descriptor.equals(INCLUDE_DELETED_RECORDS))
         ) {
             getLogger().debug("A property that require resetting state was modified - {} oldValue {} newValue {}",
                     descriptor.getDisplayName(), oldValue, newValue);
@@ -365,16 +382,25 @@ public class QuerySalesforceObject extends AbstractProcessor {
         String customWhereClause = context.getProperty(CUSTOM_WHERE_CONDITION).evaluateAttributeExpressions(originalFlowFile).getValue();
         RecordSetWriterFactory writerFactory = context.getProperty(RECORD_WRITER).asControllerService(RecordSetWriterFactory.class);
         boolean createZeroRecordFlowFiles = context.getProperty(CREATE_ZERO_RECORD_FILES).asBoolean();
+        boolean includeDeletedRecords = context.getProperty(INCLUDE_DELETED_RECORDS).asBoolean();
 
         StateMap state = getState(session);
         IncrementalContext incrementalContext = new IncrementalContext(context, state);
-        SalesforceSchemaHolder salesForceSchemaHolder = getConvertedSalesforceSchema(sObject, fields);
+        SalesforceSchemaHolder salesForceSchemaHolder = getConvertedSalesforceSchema(sObject, fields, includeDeletedRecords);
 
         if (StringUtils.isBlank(fields)) {
             fields = salesForceSchemaHolder.getSalesforceObject().getFields()
                     .stream()
                     .map(SObjectField::getName)
                     .collect(Collectors.joining(","));
+        }
+
+        // Add IsDeleted to fields if Include Deleted Records is true
+        if (includeDeletedRecords) {
+            List<String> fieldList = Arrays.stream(fields.split("\\s*,\\s*")).collect(Collectors.toList());
+            if (fieldList.stream().noneMatch(f -> f.equalsIgnoreCase("IsDeleted"))) {
+                fields = fields + ", IsDeleted";
+            }
         }
 
         String querySObject = new SalesforceQueryBuilder(incrementalContext)
@@ -396,7 +422,7 @@ public class QuerySalesforceObject extends AbstractProcessor {
             AtomicInteger recordCountHolder = new AtomicInteger();
             try {
                 outgoingFlowFile = session.write(outgoingFlowFile, processRecordsCallback(session, nextRecordsUrl, writerFactory, state, incrementalContext,
-                        salesForceSchemaHolder, querySObject, originalAttributes, attributes, recordCountHolder));
+                        salesForceSchemaHolder, querySObject, originalAttributes, attributes, recordCountHolder, includeDeletedRecords));
                 int recordCount = recordCountHolder.get();
 
                 if (createZeroRecordFlowFiles || recordCount != 0) {
@@ -428,10 +454,10 @@ public class QuerySalesforceObject extends AbstractProcessor {
     private OutputStreamCallback processRecordsCallback(ProcessSession session, AtomicReference<String> nextRecordsUrl, RecordSetWriterFactory writerFactory,
                                                         StateMap state, IncrementalContext incrementalContext, SalesforceSchemaHolder salesForceSchemaHolder,
                                                         String querySObject, Map<String, String> originalAttributes, Map<String, String> attributes,
-                                                        AtomicInteger recordCountHolder) {
+                                                        AtomicInteger recordCountHolder, boolean includeDeletedRecords) {
         return out -> {
             try {
-                handleRecordSet(out, nextRecordsUrl, querySObject, writerFactory, salesForceSchemaHolder, originalAttributes, attributes, recordCountHolder);
+                handleRecordSet(out, nextRecordsUrl, querySObject, writerFactory, salesForceSchemaHolder, originalAttributes, attributes, recordCountHolder, includeDeletedRecords);
 
                 if (incrementalContext.getAgeFilterUpper() != null) {
                     Map<String, String> newState = new HashMap<>(state.toMap());
@@ -446,9 +472,9 @@ public class QuerySalesforceObject extends AbstractProcessor {
 
     private void handleRecordSet(OutputStream out, AtomicReference<String> nextRecordsUrl, String querySObject, RecordSetWriterFactory writerFactory,
                                  SalesforceSchemaHolder salesForceSchemaHolder, Map<String, String> originalAttributes, Map<String, String> attributes,
-                                 AtomicInteger recordCountHolder) throws Exception {
+                                 AtomicInteger recordCountHolder, boolean includeDeletedRecords) throws Exception {
         try (
-                InputStream querySObjectResultInputStream = getResultInputStream(nextRecordsUrl.get(), querySObject);
+                InputStream querySObjectResultInputStream = getResultInputStream(nextRecordsUrl.get(), querySObject, includeDeletedRecords);
                 JsonTreeRowRecordReader jsonReader = createJsonReader(querySObjectResultInputStream, salesForceSchemaHolder.getRecordSchema());
                 RecordSetWriter writer = createRecordSetWriter(writerFactory, originalAttributes, out, salesForceSchemaHolder.getRecordSchema())
         ) {
@@ -482,7 +508,8 @@ public class QuerySalesforceObject extends AbstractProcessor {
                 StartingFieldStrategy.NESTED_FIELD,
                 STARTING_FIELD_NAME,
                 SchemaApplicationStrategy.SELECTED_PART,
-                CAPTURE_PREDICATE
+                CAPTURE_PREDICATE,
+                jsonParserFactory
         );
     }
 
@@ -506,8 +533,9 @@ public class QuerySalesforceObject extends AbstractProcessor {
         AtomicBoolean isOriginalTransferred = new AtomicBoolean(false);
         List<FlowFile> outgoingFlowFiles = new ArrayList<>();
         long startNanos = System.nanoTime();
+        boolean includeDeletedRecords = context.getProperty(INCLUDE_DELETED_RECORDS).asBoolean();
         do {
-            try (InputStream response = getResultInputStream(nextRecordsUrl.get(), customQuery)) {
+            try (InputStream response = getResultInputStream(nextRecordsUrl.get(), customQuery, includeDeletedRecords)) {
                 FlowFile outgoingFlowFile = createOutgoingFlowFile(session, originalFlowFile);
                 outgoingFlowFiles.add(outgoingFlowFile);
                 outgoingFlowFile = session.write(outgoingFlowFile, parseCustomQueryResponse(response, nextRecordsUrl, totalSize));
@@ -574,14 +602,18 @@ public class QuerySalesforceObject extends AbstractProcessor {
                 .equals(value) && jsonParser.nextToken() != null;
     }
 
-    private InputStream getResultInputStream(String nextRecordsUrl, String querySObject) {
+    private InputStream getResultInputStream(String nextRecordsUrl, String querySObject, boolean includeDeletedRecords) {
         if (nextRecordsUrl == null) {
-            return salesforceRestService.query(querySObject);
+            if (includeDeletedRecords) {
+                return salesforceRestService.queryAll(querySObject);
+            } else {
+                return salesforceRestService.query(querySObject);
+            }
         }
         return salesforceRestService.getNextRecords(nextRecordsUrl);
     }
 
-    private SalesforceSchemaHolder getConvertedSalesforceSchema(String sObject, String fields) {
+    private SalesforceSchemaHolder getConvertedSalesforceSchema(String sObject, String fields, boolean includeDeletedRecords) {
         try (InputStream describeSObjectResult = salesforceRestService.describeSObject(sObject)) {
             return convertSchema(describeSObjectResult, fields);
         } catch (IOException e) {

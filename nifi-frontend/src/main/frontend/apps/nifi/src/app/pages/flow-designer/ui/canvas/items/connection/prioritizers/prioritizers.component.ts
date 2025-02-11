@@ -20,13 +20,9 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatTableModule } from '@angular/material/table';
-import { AsyncPipe, NgTemplateOutlet } from '@angular/common';
-import { CdkConnectedOverlay, CdkOverlayOrigin } from '@angular/cdk/overlay';
-import { RouterLink } from '@angular/router';
-import { NiFiCommon } from '../../../../../../../service/nifi-common.service';
+import { NgTemplateOutlet } from '@angular/common';
 import { DocumentedType } from '../../../../../../../state/shared';
-import { NifiTooltipDirective } from '../../../../../../../ui/common/tooltips/nifi-tooltip.directive';
-import { TextTip } from '../../../../../../../ui/common/tooltips/text-tip/text-tip.component';
+import { NifiTooltipDirective, NiFiCommon, TextTip } from '@nifi/shared';
 import {
     CdkDrag,
     CdkDragDrop,
@@ -38,7 +34,6 @@ import {
 
 @Component({
     selector: 'prioritizers',
-    standalone: true,
     templateUrl: './prioritizers.component.html',
     imports: [
         MatButtonModule,
@@ -46,10 +41,6 @@ import {
         MatTableModule,
         DragDropModule,
         NgTemplateOutlet,
-        CdkOverlayOrigin,
-        CdkConnectedOverlay,
-        RouterLink,
-        AsyncPipe,
         NifiTooltipDirective,
         CdkDropList,
         CdkDrag
@@ -127,7 +118,7 @@ export class Prioritizers implements ControlValueAccessor {
     }
 
     getPrioritizerLabel(entity: DocumentedType): string {
-        return this.nifiCommon.substringAfterLast(entity.type, '.');
+        return this.nifiCommon.getComponentTypeLabel(entity.type);
     }
 
     hasDescription(entity: DocumentedType): boolean {

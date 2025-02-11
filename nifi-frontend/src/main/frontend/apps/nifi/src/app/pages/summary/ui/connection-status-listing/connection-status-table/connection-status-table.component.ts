@@ -19,10 +19,9 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { SummaryTableFilterModule } from '../../common/summary-table-filter/summary-table-filter.module';
 import { MatSortModule, Sort } from '@angular/material/sort';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
+import { ComponentType, NiFiCommon } from '@nifi/shared';
 import { SummaryTableFilterColumn } from '../../common/summary-table-filter/summary-table-filter.component';
 import { MatTableModule } from '@angular/material/table';
-import { ComponentType } from '../../../../../state/shared';
 import { RouterLink } from '@angular/router';
 import { MatPaginatorModule } from '@angular/material/paginator';
 import { ConnectionStatusSnapshot, ConnectionStatusSnapshotEntity } from '../../../state';
@@ -34,7 +33,6 @@ export type SupportedColumns = 'name' | 'queue' | 'in' | 'out' | 'threshold' | '
 
 @Component({
     selector: 'connection-status-table',
-    standalone: true,
     imports: [
         CommonModule,
         SummaryTableFilterModule,

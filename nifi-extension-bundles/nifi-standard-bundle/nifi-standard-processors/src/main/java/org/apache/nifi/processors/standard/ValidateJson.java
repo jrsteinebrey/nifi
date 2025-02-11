@@ -56,6 +56,8 @@ import org.apache.nifi.json.schema.JsonSchema;
 import org.apache.nifi.schema.access.JsonSchemaRegistryComponent;
 import org.apache.nifi.json.schema.SchemaVersion;
 import org.apache.nifi.schemaregistry.services.JsonSchemaRegistry;
+import org.apache.nifi.processor.DataUnit;
+import com.fasterxml.jackson.core.StreamReadConstraints;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -125,13 +127,14 @@ public class ValidateJson extends AbstractProcessor {
     protected static final String ERROR_ATTRIBUTE_KEY = "json.validation.errors";
     private static final String SCHEMA_NAME_PROPERTY_NAME = "Schema Name";
     private static final String SCHEMA_CONTENT_PROPERTY_NAME = "JSON Schema";
+    private static final String DEFAULT_MAX_STRING_LENGTH = "20 MB";
 
     public static final PropertyDescriptor SCHEMA_ACCESS_STRATEGY = new PropertyDescriptor.Builder()
             .name("Schema Access Strategy")
             .displayName("Schema Access Strategy")
             .description("Specifies how to obtain the schema that is to be used for interpreting the data.")
             .allowableValues(JsonSchemaStrategy.class)
-            .defaultValue(JsonSchemaStrategy.SCHEMA_CONTENT_PROPERTY.getValue())
+            .defaultValue(JsonSchemaStrategy.SCHEMA_CONTENT_PROPERTY)
             .required(true)
             .build();
 
@@ -165,17 +168,27 @@ public class ValidateJson extends AbstractProcessor {
             .dependsOn(SCHEMA_ACCESS_STRATEGY, JsonSchemaStrategy.SCHEMA_CONTENT_PROPERTY)
             .build();
 
+
+    public static final PropertyDescriptor MAX_STRING_LENGTH = new PropertyDescriptor.Builder()
+            .name("Max String Length")
+            .description("The maximum allowed length of a string value when parsing the JSON document")
+            .required(true)
+            .defaultValue(DEFAULT_MAX_STRING_LENGTH)
+            .addValidator(StandardValidators.DATA_SIZE_VALIDATOR)
+            .build();
+
     public static final PropertyDescriptor SCHEMA_VERSION = new PropertyDescriptor.Builder()
             .fromPropertyDescriptor(JsonSchemaRegistryComponent.SCHEMA_VERSION)
             .dependsOn(SCHEMA_ACCESS_STRATEGY, JsonSchemaStrategy.SCHEMA_CONTENT_PROPERTY)
             .build();
 
-    private static final List<PropertyDescriptor> PROPERTIES = List.of(
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
             SCHEMA_ACCESS_STRATEGY,
             SCHEMA_NAME,
             SCHEMA_REGISTRY,
             SCHEMA_CONTENT,
-            SCHEMA_VERSION
+            SCHEMA_VERSION,
+            MAX_STRING_LENGTH
     );
 
     public static final Relationship REL_VALID = new Relationship.Builder()
@@ -199,7 +212,7 @@ public class ValidateJson extends AbstractProcessor {
         REL_FAILURE
     );
 
-    private static final ObjectMapper MAPPER = new ObjectMapper().configure(JsonParser.Feature.ALLOW_COMMENTS, true);
+    private ObjectMapper mapper;
 
     private final ConcurrentMap<SchemaVersion, JsonSchemaFactory> schemaFactories =  Arrays.stream(SchemaVersion.values())
             .collect(
@@ -223,21 +236,21 @@ public class ValidateJson extends AbstractProcessor {
 
     @Override
     public final List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return PROPERTIES;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
     protected Collection<ValidationResult> customValidate(ValidationContext validationContext) {
         Collection<ValidationResult> validationResults = new ArrayList<>();
-        final String schemaAccessStrategy = getSchemaAccessStrategy(validationContext);
 
-        if (isNameStrategy(validationContext) && !validationContext.getProperty(SCHEMA_REGISTRY).isSet()) {
+        final JsonSchemaStrategy schemaAccessStrategy = getSchemaAccessStrategy(validationContext);
+        if (schemaAccessStrategy.equals(JsonSchemaStrategy.SCHEMA_NAME_PROPERTY) && !validationContext.getProperty(SCHEMA_REGISTRY).isSet()) {
             validationResults.add(new ValidationResult.Builder()
                     .subject(SCHEMA_REGISTRY.getDisplayName())
                     .explanation(getPropertyValidateMessage(schemaAccessStrategy, SCHEMA_REGISTRY))
                     .valid(false)
                     .build());
-        } else if (isContentStrategy(validationContext) && !validationContext.getProperty(SCHEMA_CONTENT).isSet()) {
+        } else if (schemaAccessStrategy.equals(JsonSchemaStrategy.SCHEMA_CONTENT_PROPERTY) && !validationContext.getProperty(SCHEMA_CONTENT).isSet()) {
             validationResults.add(new ValidationResult.Builder()
                     .subject(SCHEMA_CONTENT.getDisplayName())
                     .explanation(getPropertyValidateMessage(schemaAccessStrategy, SCHEMA_CONTENT))
@@ -250,15 +263,21 @@ public class ValidateJson extends AbstractProcessor {
 
     @OnScheduled
     public void onScheduled(final ProcessContext context) throws IOException {
-        if (isNameStrategy(context)) {
-            jsonSchemaRegistry = context.getProperty(SCHEMA_REGISTRY).asControllerService(JsonSchemaRegistry.class);
-        } else if (isContentStrategy(context)) {
-            try (final InputStream inputStream = context.getProperty(SCHEMA_CONTENT).asResource().read()) {
-                final SchemaVersion schemaVersion = SchemaVersion.valueOf(context.getProperty(SCHEMA_VERSION).getValue());
-                final JsonSchemaFactory factory = schemaFactories.get(schemaVersion);
-                schema = factory.getSchema(inputStream);
+        switch (getSchemaAccessStrategy(context)) {
+            case SCHEMA_NAME_PROPERTY ->
+                    jsonSchemaRegistry = context.getProperty(SCHEMA_REGISTRY).asControllerService(JsonSchemaRegistry.class);
+            case SCHEMA_CONTENT_PROPERTY -> {
+                try (final InputStream inputStream = context.getProperty(SCHEMA_CONTENT).asResource().read()) {
+                    final SchemaVersion schemaVersion = SchemaVersion.valueOf(context.getProperty(SCHEMA_VERSION).getValue());
+                    final JsonSchemaFactory factory = schemaFactories.get(schemaVersion);
+                    schema = factory.getSchema(inputStream);
+                }
             }
         }
+        final int maxStringLength = context.getProperty(MAX_STRING_LENGTH).asDataSize(DataUnit.B).intValue();
+        final StreamReadConstraints streamReadConstraints = StreamReadConstraints.builder().maxStringLength(maxStringLength).build();
+        mapper = new ObjectMapper().configure(JsonParser.Feature.ALLOW_COMMENTS, true);
+        mapper.getFactory().setStreamReadConstraints(streamReadConstraints);
     }
 
     @Override
@@ -268,7 +287,8 @@ public class ValidateJson extends AbstractProcessor {
             return;
         }
 
-        if (isNameStrategy(context)) {
+        final JsonSchemaStrategy schemaAccessStrategy = getSchemaAccessStrategy(context);
+        if (schemaAccessStrategy.equals(JsonSchemaStrategy.SCHEMA_NAME_PROPERTY)) {
             try {
                 final String schemaName = context.getProperty(SCHEMA_NAME).evaluateAttributeExpressions(flowFile).getValue();
                 final JsonSchema jsonSchema = jsonSchemaRegistry.retrieveSchema(schemaName);
@@ -283,7 +303,7 @@ public class ValidateJson extends AbstractProcessor {
         }
 
         try (final InputStream in = session.read(flowFile)) {
-            final JsonNode node = MAPPER.readTree(in);
+            final JsonNode node = mapper.readTree(in);
             final Set<ValidationMessage> errors = schema.validate(node);
 
             if (errors.isEmpty()) {
@@ -304,21 +324,11 @@ public class ValidateJson extends AbstractProcessor {
         }
     }
 
-    private String getPropertyValidateMessage(String schemaAccessStrategy, PropertyDescriptor property) {
-        return "The '" + schemaAccessStrategy + "' Schema Access Strategy requires that the " + property.getDisplayName() + " property be set.";
+    private String getPropertyValidateMessage(JsonSchemaStrategy schemaAccessStrategy, PropertyDescriptor property) {
+        return "The '" + schemaAccessStrategy.getValue() + "' Schema Access Strategy requires that the " + property.getDisplayName() + " property be set.";
     }
 
-    private boolean isNameStrategy(PropertyContext context) {
-        final String schemaAccessStrategy = getSchemaAccessStrategy(context);
-        return JsonSchemaStrategy.SCHEMA_NAME_PROPERTY.getValue().equals(schemaAccessStrategy);
-    }
-
-    private String getSchemaAccessStrategy(PropertyContext context) {
-        return context.getProperty(SCHEMA_ACCESS_STRATEGY).getValue();
-    }
-
-    private boolean isContentStrategy(PropertyContext context) {
-        final String schemaAccessStrategy = getSchemaAccessStrategy(context);
-        return JsonSchemaStrategy.SCHEMA_CONTENT_PROPERTY.getValue().equals(schemaAccessStrategy);
+    private JsonSchemaStrategy getSchemaAccessStrategy(PropertyContext context) {
+        return context.getProperty(SCHEMA_ACCESS_STRATEGY).asAllowableValue(JsonSchemaStrategy.class);
     }
 }

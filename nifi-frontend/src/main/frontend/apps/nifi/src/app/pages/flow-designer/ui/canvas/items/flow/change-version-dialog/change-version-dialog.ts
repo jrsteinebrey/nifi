@@ -16,23 +16,20 @@
  */
 
 import { Component, EventEmitter, Inject, Output } from '@angular/core';
-import { AsyncPipe } from '@angular/common';
 import { MatButton } from '@angular/material/button';
 import { MatCell, MatCellDef, MatColumnDef, MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
 import { MatSortModule, Sort } from '@angular/material/sort';
 import { VersionedFlowSnapshotMetadata } from '../../../../../../../state/shared';
 import { ChangeVersionDialogRequest, VersionControlInformation } from '../../../../../state/flow';
-import { NiFiCommon } from '../../../../../../../service/nifi-common.service';
 import { Store } from '@ngrx/store';
 import { CanvasState } from '../../../../../state';
 import { selectTimeOffset } from '../../../../../../../state/flow-configuration/flow-configuration.selectors';
-import { CloseOnEscapeDialog } from '../../../../../../../ui/common/close-on-escape-dialog/close-on-escape-dialog.component';
+import { NiFiCommon, CloseOnEscapeDialog } from '@nifi/shared';
 
 @Component({
     selector: 'change-version-dialog',
-    standalone: true,
-    imports: [AsyncPipe, MatButton, MatCell, MatCellDef, MatColumnDef, MatDialogModule, MatSortModule, MatTableModule],
+    imports: [MatButton, MatCell, MatCellDef, MatColumnDef, MatDialogModule, MatSortModule, MatTableModule],
     templateUrl: './change-version-dialog.html',
     styleUrl: './change-version-dialog.scss'
 })

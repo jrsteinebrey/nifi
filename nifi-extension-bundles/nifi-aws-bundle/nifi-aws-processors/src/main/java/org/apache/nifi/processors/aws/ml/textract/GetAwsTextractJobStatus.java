@@ -21,7 +21,6 @@ import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.SeeAlso;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.components.PropertyDescriptor;
-import org.apache.nifi.components.ValidationContext;
 import org.apache.nifi.components.ValidationResult;
 import org.apache.nifi.components.Validator;
 import org.apache.nifi.expression.ExpressionLanguageScope;
@@ -36,12 +35,11 @@ import software.amazon.awssdk.services.textract.model.GetDocumentAnalysisRequest
 import software.amazon.awssdk.services.textract.model.GetDocumentTextDetectionRequest;
 import software.amazon.awssdk.services.textract.model.GetExpenseAnalysisRequest;
 import software.amazon.awssdk.services.textract.model.JobStatus;
+import software.amazon.awssdk.services.textract.model.ProvisionedThroughputExceededException;
 import software.amazon.awssdk.services.textract.model.TextractResponse;
 import software.amazon.awssdk.services.textract.model.ThrottlingException;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.apache.nifi.processors.aws.ml.textract.StartAwsTextractJob.TEXTRACT_TYPE_ATTRIBUTE;
@@ -51,16 +49,13 @@ import static org.apache.nifi.processors.aws.ml.textract.StartAwsTextractJob.TEX
 @SeeAlso({StartAwsTextractJob.class})
 public class GetAwsTextractJobStatus extends AbstractAwsMachineLearningJobStatusProcessor<TextractClient, TextractClientBuilder> {
 
-    public static final Validator TEXTRACT_TYPE_VALIDATOR = new Validator() {
-        @Override
-        public ValidationResult validate(final String subject, final String value, final ValidationContext context) {
-            if (context.isExpressionLanguageSupported(subject) && context.isExpressionLanguagePresent(value)) {
-                return new ValidationResult.Builder().subject(subject).input(value).explanation("Expression Language Present").valid(true).build();
-            } else if (TextractType.TEXTRACT_TYPES.contains(value)) {
-                return new ValidationResult.Builder().subject(subject).input(value).explanation("Supported Value.").valid(true).build();
-            } else {
-                return new ValidationResult.Builder().subject(subject).input(value).explanation("Not a supported value, flow file attribute or context parameter.").valid(false).build();
-            }
+    public static final Validator TEXTRACT_TYPE_VALIDATOR = (subject, value, context) -> {
+        if (context.isExpressionLanguageSupported(subject) && context.isExpressionLanguagePresent(value)) {
+            return new ValidationResult.Builder().subject(subject).input(value).explanation("Expression Language Present").valid(true).build();
+        } else if (TextractType.TEXTRACT_TYPES.contains(value)) {
+            return new ValidationResult.Builder().subject(subject).input(value).explanation("Supported Value.").valid(true).build();
+        } else {
+            return new ValidationResult.Builder().subject(subject).input(value).explanation("Not a supported value, flow file attribute or context parameter.").valid(false).build();
         }
     };
 
@@ -73,12 +68,14 @@ public class GetAwsTextractJobStatus extends AbstractAwsMachineLearningJobStatus
             .defaultValue(String.format("${%s}", TEXTRACT_TYPE_ATTRIBUTE))
             .addValidator(TEXTRACT_TYPE_VALIDATOR)
             .build();
-    private static final List<PropertyDescriptor> TEXTRACT_PROPERTIES =
-            Collections.unmodifiableList(Stream.concat(PROPERTIES.stream(), Stream.of(TEXTRACT_TYPE)).collect(Collectors.toList()));
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = Stream.concat(
+            getCommonPropertyDescriptors().stream(),
+            Stream.of(TEXTRACT_TYPE)
+    ).toList();
 
     @Override
     public List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return TEXTRACT_PROPERTIES;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -111,8 +108,9 @@ public class GetAwsTextractJobStatus extends AbstractAwsMachineLearningJobStatus
             } else {
                 throw new IllegalStateException("Unrecognized job status");
             }
-        } catch (final ThrottlingException e) {
+        } catch (final ThrottlingException | ProvisionedThroughputExceededException e) {
             getLogger().info("Request Rate Limit exceeded", e);
+            context.yield();
             session.transfer(flowFile, REL_THROTTLED);
         } catch (final Exception e) {
             getLogger().warn("Failed to get Textract Job status", e);

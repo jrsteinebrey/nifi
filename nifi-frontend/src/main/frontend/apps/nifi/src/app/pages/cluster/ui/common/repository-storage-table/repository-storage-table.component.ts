@@ -19,13 +19,12 @@ import { Component, Input } from '@angular/core';
 import { ClusterTable } from '../cluster-table/cluster-table.component';
 import { ClusterNodeRepositoryStorageUsage } from '../../../../../state/system-diagnostics';
 import { MatSortModule, Sort } from '@angular/material/sort';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
+import { NiFiCommon } from '@nifi/shared';
 import { ClusterTableFilter, ClusterTableFilterColumn } from '../cluster-table-filter/cluster-table-filter.component';
 import { MatTableModule } from '@angular/material/table';
 
 @Component({
     selector: 'repository-storage-table',
-    standalone: true,
     imports: [ClusterTableFilter, MatTableModule, MatSortModule],
     templateUrl: './repository-storage-table.component.html',
     styleUrl: './repository-storage-table.component.scss'

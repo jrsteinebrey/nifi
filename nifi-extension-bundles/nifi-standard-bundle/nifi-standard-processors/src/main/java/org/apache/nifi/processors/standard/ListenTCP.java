@@ -16,7 +16,6 @@
  */
 package org.apache.nifi.processors.standard;
 
-import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.annotation.behavior.InputRequirement;
 import org.apache.nifi.annotation.behavior.SupportsBatching;
 import org.apache.nifi.annotation.behavior.WritesAttribute;
@@ -26,8 +25,6 @@ import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.annotation.lifecycle.OnScheduled;
 import org.apache.nifi.annotation.lifecycle.OnStopped;
 import org.apache.nifi.components.PropertyDescriptor;
-import org.apache.nifi.components.ValidationContext;
-import org.apache.nifi.components.ValidationResult;
 import org.apache.nifi.event.transport.EventException;
 import org.apache.nifi.event.transport.EventServer;
 import org.apache.nifi.event.transport.SslSessionStatus;
@@ -37,11 +34,11 @@ import org.apache.nifi.event.transport.message.ByteArrayMessage;
 import org.apache.nifi.event.transport.netty.ByteArrayMessageNettyEventServerFactory;
 import org.apache.nifi.event.transport.netty.NettyEventServerFactory;
 import org.apache.nifi.flowfile.FlowFile;
+import org.apache.nifi.migration.PropertyConfiguration;
 import org.apache.nifi.processor.AbstractProcessor;
 import org.apache.nifi.processor.DataUnit;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
-import org.apache.nifi.processor.ProcessorInitializationContext;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
@@ -51,8 +48,7 @@ import org.apache.nifi.processor.util.listen.ListenerProperties;
 import org.apache.nifi.processor.util.listen.queue.TrackingLinkedBlockingQueue;
 import org.apache.nifi.remote.io.socket.NetworkUtils;
 import org.apache.nifi.security.util.ClientAuth;
-import org.apache.nifi.ssl.RestrictedSSLContextService;
-import org.apache.nifi.ssl.SSLContextService;
+import org.apache.nifi.ssl.SSLContextProvider;
 
 import javax.net.ssl.SSLContext;
 import java.io.IOException;
@@ -60,11 +56,7 @@ import java.net.InetAddress;
 import java.nio.charset.Charset;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -104,25 +96,16 @@ public class ListenTCP extends AbstractProcessor {
             .description("The Controller Service to use in order to obtain an SSL Context. If this property is set, " +
                     "messages will be received over a secure connection.")
             .required(false)
-            .identifiesControllerService(RestrictedSSLContextService.class)
+            .identifiesControllerService(SSLContextProvider.class)
             .build();
 
     public static final PropertyDescriptor CLIENT_AUTH = new PropertyDescriptor.Builder()
             .name("Client Auth")
             .description("The client authentication policy to use for the SSL Context. Only used if an SSL Context Service is provided.")
-            .required(false)
+            .required(true)
             .allowableValues(ClientAuth.values())
             .defaultValue(ClientAuth.REQUIRED.name())
-            .build();
-
-    // Deprecated
-    public static final PropertyDescriptor MAX_RECV_THREAD_POOL_SIZE = new PropertyDescriptor.Builder()
-            .name("max-receiving-threads")
-            .displayName("Max Number of Receiving Message Handler Threads")
-            .description(
-                    "This property is deprecated and no longer used.")
-            .addValidator(StandardValidators.createLongValidator(1, 65535, true))
-            .required(false)
+            .dependsOn(SSL_CONTEXT_SERVICE)
             .build();
 
     protected static final PropertyDescriptor POOL_RECV_BUFFERS = new PropertyDescriptor.Builder()
@@ -144,17 +127,35 @@ public class ListenTCP extends AbstractProcessor {
             .addValidator(StandardValidators.TIME_PERIOD_VALIDATOR)
             .build();
 
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+            ListenerProperties.NETWORK_INTF_NAME,
+            ListenerProperties.PORT,
+            ListenerProperties.RECV_BUFFER_SIZE,
+            ListenerProperties.MAX_MESSAGE_QUEUE_SIZE,
+            ListenerProperties.MAX_SOCKET_BUFFER_SIZE,
+            ListenerProperties.CHARSET,
+            ListenerProperties.WORKER_THREADS,
+            ListenerProperties.MAX_BATCH_SIZE,
+            ListenerProperties.MESSAGE_DELIMITER,
+            IDLE_CONNECTION_TIMEOUT,
+            POOL_RECV_BUFFERS,
+            SSL_CONTEXT_SERVICE,
+            CLIENT_AUTH
+    );
+
     public static final Relationship REL_SUCCESS = new Relationship.Builder()
             .name("success")
             .description("Messages received successfully will be sent out this relationship.")
             .build();
 
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS
+    );
+
     private static final long TRACKING_LOG_INTERVAL = 60000;
     private final AtomicLong nextTrackingLog = new AtomicLong();
     private int eventsCapacity;
 
-    protected List<PropertyDescriptor> descriptors;
-    protected Set<Relationship> relationships;
     protected volatile int port;
     protected volatile TrackingLinkedBlockingQueue<ByteArrayMessage> events;
     protected volatile BlockingQueue<ByteArrayMessage> errorEvents;
@@ -163,28 +164,8 @@ public class ListenTCP extends AbstractProcessor {
     protected volatile EventBatcher<ByteArrayMessage> eventBatcher;
 
     @Override
-    protected void init(final ProcessorInitializationContext context) {
-        final List<PropertyDescriptor> descriptors = new ArrayList<>();
-        descriptors.add(ListenerProperties.NETWORK_INTF_NAME);
-        descriptors.add(ListenerProperties.PORT);
-        descriptors.add(ListenerProperties.RECV_BUFFER_SIZE);
-        descriptors.add(ListenerProperties.MAX_MESSAGE_QUEUE_SIZE);
-        descriptors.add(ListenerProperties.MAX_SOCKET_BUFFER_SIZE);
-        descriptors.add(ListenerProperties.CHARSET);
-        descriptors.add(ListenerProperties.WORKER_THREADS);
-        descriptors.add(ListenerProperties.MAX_BATCH_SIZE);
-        descriptors.add(ListenerProperties.MESSAGE_DELIMITER);
-        descriptors.add(IDLE_CONNECTION_TIMEOUT);
-        // Deprecated
-        descriptors.add(MAX_RECV_THREAD_POOL_SIZE);
-        descriptors.add(POOL_RECV_BUFFERS);
-        descriptors.add(SSL_CONTEXT_SERVICE);
-        descriptors.add(CLIENT_AUTH);
-        this.descriptors = Collections.unmodifiableList(descriptors);
-
-        final Set<Relationship> relationships = new HashSet<>();
-        relationships.add(REL_SUCCESS);
-        this.relationships = Collections.unmodifiableSet(relationships);
+    public void migrateProperties(PropertyConfiguration config) {
+        config.removeProperty("max-receiving-threads");
     }
 
     @OnScheduled
@@ -204,11 +185,11 @@ public class ListenTCP extends AbstractProcessor {
         messageDemarcatorBytes = msgDemarcator.getBytes(charset);
         final NettyEventServerFactory eventFactory = new ByteArrayMessageNettyEventServerFactory(getLogger(), address, port, TransportProtocol.TCP, messageDemarcatorBytes, bufferSize, events);
 
-        final SSLContextService sslContextService = context.getProperty(SSL_CONTEXT_SERVICE).asControllerService(SSLContextService.class);
-        if (sslContextService != null) {
+        final SSLContextProvider sslContextProvider = context.getProperty(SSL_CONTEXT_SERVICE).asControllerService(SSLContextProvider.class);
+        if (sslContextProvider != null) {
             final String clientAuthValue = context.getProperty(CLIENT_AUTH).getValue();
             ClientAuth clientAuth = ClientAuth.valueOf(clientAuthValue);
-            SSLContext sslContext = sslContextService.createContext();
+            SSLContext sslContext = sslContextProvider.createContext();
             eventFactory.setSslContext(sslContext);
             eventFactory.setClientAuth(clientAuth);
         }
@@ -245,14 +226,14 @@ public class ListenTCP extends AbstractProcessor {
             FlowFile flowFile = entry.getValue().getFlowFile();
             final List<ByteArrayMessage> events = entry.getValue().getEvents();
 
-            if (flowFile.getSize() == 0L || events.size() == 0) {
+            if (flowFile.getSize() == 0L || events.isEmpty()) {
                 session.remove(flowFile);
                 getLogger().debug("No data written to FlowFile from batch {}; removing FlowFile", entry.getKey());
                 continue;
             }
 
             final Map<String, String> attributes = getAttributes(entry.getValue());
-            addClientCertificateAttributes(attributes, events.get(0));
+            addClientCertificateAttributes(attributes, events.getFirst());
             flowFile = session.putAllAttributes(flowFile, attributes);
 
             getLogger().debug("Transferring {} to success", flowFile);
@@ -272,25 +253,9 @@ public class ListenTCP extends AbstractProcessor {
         eventBatcher = null;
     }
 
-    @Override
-    protected Collection<ValidationResult> customValidate(final ValidationContext validationContext) {
-        final List<ValidationResult> results = new ArrayList<>();
-
-        final String clientAuth = validationContext.getProperty(CLIENT_AUTH).getValue();
-        final SSLContextService sslContextService = validationContext.getProperty(SSL_CONTEXT_SERVICE).asControllerService(SSLContextService.class);
-
-        if (sslContextService != null && StringUtils.isBlank(clientAuth)) {
-            results.add(new ValidationResult.Builder()
-                    .explanation("Client Auth must be provided when using TLS/SSL")
-                    .valid(false).subject("Client Auth").build());
-        }
-
-        return results;
-    }
-
     protected Map<String, String> getAttributes(final FlowFileEventBatch<ByteArrayMessage> batch) {
         final List<ByteArrayMessage> events = batch.getEvents();
-        final String sender = events.get(0).getSender();
+        final String sender = events.getFirst().getSender();
         final Map<String, String> attributes = new HashMap<>(3);
         attributes.put("tcp.sender", sender);
         attributes.put("tcp.port", String.valueOf(port));
@@ -299,19 +264,19 @@ public class ListenTCP extends AbstractProcessor {
 
     protected String getTransitUri(final FlowFileEventBatch<ByteArrayMessage> batch) {
         final List<ByteArrayMessage> events = batch.getEvents();
-        final String sender = events.get(0).getSender();
+        final String sender = events.getFirst().getSender();
         final String senderHost = sender.startsWith("/") && sender.length() > 1 ? sender.substring(1) : sender;
         return String.format("tcp://%s:%d", senderHost, port);
     }
 
     @Override
     public final Set<Relationship> getRelationships() {
-        return this.relationships;
+        return RELATIONSHIPS;
     }
 
     @Override
     public List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return descriptors;
+        return PROPERTY_DESCRIPTORS;
     }
 
     private String getMessageDemarcator(final ProcessContext context) {
@@ -322,7 +287,7 @@ public class ListenTCP extends AbstractProcessor {
 
     private EventBatcher<ByteArrayMessage> getEventBatcher() {
         if (eventBatcher == null) {
-            eventBatcher = new EventBatcher<ByteArrayMessage>(getLogger(), events, errorEvents) {
+            eventBatcher = new EventBatcher<>(getLogger(), events, errorEvents) {
                 @Override
                 protected String getBatchKey(ByteArrayMessage event) {
                     return event.getSender();

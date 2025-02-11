@@ -52,6 +52,7 @@ public final class NarClassLoaders {
     private volatile InitContext initContext;
     private static final Logger logger = LoggerFactory.getLogger(NarClassLoaders.class);
 
+    @SuppressWarnings("PMD.UnusedPrivateField")
     private final static class InitContext {
 
         private final File frameworkWorkingDir;
@@ -101,13 +102,13 @@ public final class NarClassLoaders {
     }
 
     public void init(File frameworkWorkingDir, File extensionsWorkingDir) throws IOException, ClassNotFoundException {
-        init(frameworkWorkingDir, extensionsWorkingDir, NarClassLoaders.FRAMEWORK_NAR_ID);
+        init(frameworkWorkingDir, extensionsWorkingDir, FRAMEWORK_NAR_ID);
     }
 
     // Default to NiFi's framework NAR ID
     public void init(final ClassLoader rootClassloader,
                      final File frameworkWorkingDir, final File extensionsWorkingDir, final boolean logDetails) throws IOException, ClassNotFoundException {
-        init(rootClassloader, frameworkWorkingDir, extensionsWorkingDir, NarClassLoaders.FRAMEWORK_NAR_ID, logDetails);
+        init(rootClassloader, frameworkWorkingDir, extensionsWorkingDir, FRAMEWORK_NAR_ID, logDetails);
     }
 
     /**
@@ -507,6 +508,19 @@ public final class NarClassLoaders {
         return initContext.bundles.values().stream()
                 .filter(b -> b.getBundleDetails().getCoordinate().equals(bundleCoordinate))
                 .findFirst();
+    }
+
+    /**
+     * Removes the given bundle from the init context.
+     *
+     * @param bundle the bundle to remove
+     */
+    public void removeBundle(final Bundle bundle) {
+        try {
+            initContext.bundles.remove(bundle.getBundleDetails().getWorkingDirectory().getCanonicalPath());
+        } catch (final Exception e) {
+            logger.warn("Failed to remove bundle [{}]", bundle.getBundleDetails().getCoordinate(), e);
+        }
     }
 
     /**

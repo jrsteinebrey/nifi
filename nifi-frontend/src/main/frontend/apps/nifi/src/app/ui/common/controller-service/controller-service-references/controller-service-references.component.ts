@@ -22,20 +22,17 @@ import {
     ControllerServiceReferencingComponentEntity,
     ValidationErrorsTipInput
 } from '../../../../state/shared';
-import { NiFiCommon } from '../../../../service/nifi-common.service';
 import { MatTreeModule } from '@angular/material/tree';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { NgClass, NgTemplateOutlet } from '@angular/common';
-import { NifiTooltipDirective } from '../../tooltips/nifi-tooltip.directive';
+import { NifiTooltipDirective, NiFiCommon } from '@nifi/shared';
 import { ValidationErrorsTip } from '../../tooltips/validation-errors-tip/validation-errors-tip.component';
 import { BulletinsTip } from '../../tooltips/bulletins-tip/bulletins-tip.component';
-import { RouterLink } from '@angular/router';
 import { MatDialogModule } from '@angular/material/dialog';
 
 @Component({
     selector: 'controller-service-references',
-    standalone: true,
     templateUrl: './controller-service-references.component.html',
     imports: [
         MatTreeModule,
@@ -44,12 +41,12 @@ import { MatDialogModule } from '@angular/material/dialog';
         NgTemplateOutlet,
         NgClass,
         NifiTooltipDirective,
-        RouterLink,
         MatDialogModule
     ],
     styleUrls: ['./controller-service-references.component.scss']
 })
 export class ControllerServiceReferences {
+    @Input() disabledLinks: boolean = false;
     @Input() serviceReferences!: ControllerServiceReferencingComponentEntity[];
     @Input() goToReferencingComponent!: (component: ControllerServiceReferencingComponent) => void;
 
@@ -85,19 +82,19 @@ export class ControllerServiceReferences {
 
     getNonServiceStateIcon(reference: ControllerServiceReferencingComponent): string {
         if (reference.state == 'STOPPED') {
-            return 'stopped fa fa-stop warn-color-lighter';
+            return 'stopped fa fa-stop error-color-variant';
         } else if (reference.state == 'RUNNING') {
-            return 'running fa fa-play success-color-lighter';
+            return 'running fa fa-play success-color-default';
         } else {
-            return 'disabled icon icon-enable-false surface-color';
+            return 'disabled icon icon-enable-false neutral-color';
         }
     }
 
     getServiceStateIcon(reference: ControllerServiceReferencingComponent): string {
         if (reference.state == 'ENABLED') {
-            return 'enabled fa fa-flash success-color';
+            return 'enabled fa fa-flash success-color-variant';
         } else {
-            return 'disabled icon icon-enable-false surface-color';
+            return 'disabled icon icon-enable-false neutral-color';
         }
     }
 

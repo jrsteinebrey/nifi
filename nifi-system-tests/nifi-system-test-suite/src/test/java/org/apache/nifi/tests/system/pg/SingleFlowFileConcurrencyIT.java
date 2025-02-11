@@ -20,7 +20,7 @@ package org.apache.nifi.tests.system.pg;
 import org.apache.nifi.groups.FlowFileConcurrency;
 import org.apache.nifi.groups.FlowFileOutboundPolicy;
 import org.apache.nifi.tests.system.NiFiSystemIT;
-import org.apache.nifi.toolkit.cli.impl.client.nifi.NiFiClientException;
+import org.apache.nifi.toolkit.client.NiFiClientException;
 import org.apache.nifi.web.api.entity.ConnectionEntity;
 import org.apache.nifi.web.api.entity.FlowFileEntity;
 import org.apache.nifi.web.api.entity.PortEntity;
@@ -121,9 +121,9 @@ public class SingleFlowFileConcurrencyIT extends NiFiSystemIT {
 
         // Connect Generate -> Input Port -> Count -> Output Port -> Terminate
         // Also connect InputPort -> Out2 -> Terminate
-        final ConnectionEntity generateToInput = getClientUtil().createConnection(generate, inputPort, "success");
+        getClientUtil().createConnection(generate, inputPort, "success");
         final ConnectionEntity inputToSleep = getClientUtil().createConnection(inputPort, sleep);
-        final ConnectionEntity sleepToOutput = getClientUtil().createConnection(sleep, outputPort, "success");
+        getClientUtil().createConnection(sleep, outputPort, "success");
         final ConnectionEntity inputToSecondOut = getClientUtil().createConnection(inputPort, secondOut);
         final ConnectionEntity outputToTerminate = getClientUtil().createConnection(outputPort, terminate);
         final ConnectionEntity secondOutToTerminate = getClientUtil().createConnection(secondOut, terminate);
@@ -192,7 +192,7 @@ public class SingleFlowFileConcurrencyIT extends NiFiSystemIT {
 
         // Connect Generate -> Input Port -> Count -> Output Port -> Terminate
         // Also connect InputPort -> Out2 -> Terminate
-        final ConnectionEntity generateToInput = getClientUtil().createConnection(generate, inputPort, "success");
+        getClientUtil().createConnection(generate, inputPort, "success");
         final ConnectionEntity inputToOutput = getClientUtil().createConnection(inputPort, outputPort);
         final ConnectionEntity inputToSecondOut = getClientUtil().createConnection(inputPort, secondOut);
         final ConnectionEntity outputToTerminate = getClientUtil().createConnection(outputPort, terminate);

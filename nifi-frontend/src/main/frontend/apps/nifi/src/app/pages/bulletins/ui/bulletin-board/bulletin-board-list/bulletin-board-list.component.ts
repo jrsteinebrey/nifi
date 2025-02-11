@@ -23,30 +23,28 @@ import {
     EventEmitter,
     inject,
     Input,
+    OnDestroy,
     Output,
     ViewChild
 } from '@angular/core';
-
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatOptionModule } from '@angular/material/core';
 import { MatSelectModule } from '@angular/material/select';
 import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
+import { BulletinEntity, ComponentType, NiFiCommon } from '@nifi/shared';
 import { BulletinBoardEvent, BulletinBoardFilterArgs, BulletinBoardItem } from '../../../state/bulletin-board';
-import { BulletinEntity, ComponentType } from '../../../../../state/shared';
 import { debounceTime, delay, Subject } from 'rxjs';
 import { RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
     selector: 'bulletin-board-list',
-    standalone: true,
     imports: [MatFormFieldModule, MatInputModule, MatOptionModule, MatSelectModule, ReactiveFormsModule, RouterLink],
     templateUrl: './bulletin-board-list.component.html',
     styleUrls: ['./bulletin-board-list.component.scss']
 })
-export class BulletinBoardList implements AfterViewInit {
+export class BulletinBoardList implements AfterViewInit, OnDestroy {
     filterTerm = '';
     filterColumn: 'message' | 'name' | 'id' | 'groupId' = 'message';
     filterForm: FormGroup;
@@ -104,6 +102,10 @@ export class BulletinBoardList implements AfterViewInit {
             });
     }
 
+    ngOnDestroy(): void {
+        this.bulletinsChanged$.complete();
+    }
+
     private scrollToBottom() {
         if (this.scroll) {
             this.scroll.nativeElement.scroll({
@@ -143,12 +145,12 @@ export class BulletinBoardList implements AfterViewInit {
     getSeverity(severity: string) {
         switch (severity.toLowerCase()) {
             case 'error':
-                return 'bulletin-error warn-color';
+                return 'bulletin-error error-color';
             case 'warn':
             case 'warning':
                 return 'bulletin-warn caution-color';
             default:
-                return 'bulletin-normal success-color-darker';
+                return 'bulletin-normal success-color-default';
         }
     }
 

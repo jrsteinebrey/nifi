@@ -22,7 +22,6 @@ import { CanvasState } from '../../../../../state';
 import { createRemoteProcessGroup } from '../../../../../state/flow/flow.actions';
 import { selectSaving } from '../../../../../state/flow/flow.selectors';
 import { AsyncPipe } from '@angular/common';
-import { ErrorBanner } from '../../../../../../../ui/common/error-banner/error-banner.component';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -32,15 +31,14 @@ import { NifiSpinnerDirective } from '../../../../../../../ui/common/spinner/nif
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
 import { CreateComponentRequest } from '../../../../../state/flow';
-import { TextTip } from '../../../../../../../ui/common/tooltips/text-tip/text-tip.component';
-import { NifiTooltipDirective } from '../../../../../../../ui/common/tooltips/nifi-tooltip.directive';
-import { CloseOnEscapeDialog } from '../../../../../../../ui/common/close-on-escape-dialog/close-on-escape-dialog.component';
+import { NifiTooltipDirective, TextTip } from '@nifi/shared';
+import { CloseOnEscapeDialog } from '@nifi/shared';
+import { ErrorContextKey } from '../../../../../../../state/error';
+import { ContextErrorBanner } from '../../../../../../../ui/common/context-error-banner/context-error-banner.component';
 
 @Component({
-    standalone: true,
     imports: [
         AsyncPipe,
-        ErrorBanner,
         MatButtonModule,
         MatDialogModule,
         MatFormFieldModule,
@@ -50,7 +48,8 @@ import { CloseOnEscapeDialog } from '../../../../../../../ui/common/close-on-esc
         MatOptionModule,
         MatSelectModule,
         MatIconModule,
-        NifiTooltipDirective
+        NifiTooltipDirective,
+        ContextErrorBanner
     ],
     templateUrl: './create-remote-process-group.component.html',
     styleUrls: ['./create-remote-process-group.component.scss']
@@ -99,4 +98,5 @@ export class CreateRemoteProcessGroup extends CloseOnEscapeDialog {
     }
 
     protected readonly TextTip = TextTip;
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

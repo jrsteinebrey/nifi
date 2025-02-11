@@ -23,7 +23,7 @@ import org.apache.nifi.provenance.ProvenanceEventType;
 import org.apache.nifi.provenance.SearchableFields;
 import org.apache.nifi.provenance.search.SearchableField;
 import org.apache.nifi.tests.system.NiFiSystemIT;
-import org.apache.nifi.toolkit.cli.impl.client.nifi.NiFiClientException;
+import org.apache.nifi.toolkit.client.NiFiClientException;
 import org.apache.nifi.web.api.dto.FlowFileSummaryDTO;
 import org.apache.nifi.web.api.dto.SystemDiagnosticsSnapshotDTO.ResourceClaimDetailsDTO;
 import org.apache.nifi.web.api.dto.VersionControlInformationDTO;
@@ -46,6 +46,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -80,6 +81,62 @@ public class StatelessBasicsIT extends NiFiSystemIT {
     @BeforeEach
     public void captureStartClaimantCount() throws NiFiClientException, IOException {
         startClaimantCount = getClaimantCounts();
+    }
+
+    @Test
+    public void testOrderingIntraSession() throws NiFiClientException, IOException, InterruptedException {
+        final int batchSize = 100;
+
+        statelessGroup = getClientUtil().createProcessGroup("testOrderingIntraSession", "root");
+        getClientUtil().markStateless(statelessGroup, "1 min");
+
+        final ProcessorEntity generate = getClientUtil().createProcessor(GENERATE_FLOWFILE, statelessGroup.getId());
+        final Map<String, String> generateProperties = new HashMap<>();
+        generateProperties.put("Text", HELLO_WORLD);
+        generateProperties.put("Batch Size", String.valueOf(batchSize));
+        generateProperties.put("Counter", "${nextInt()}");
+        getClientUtil().updateProcessorProperties(generate, generateProperties);
+
+        final ProcessorEntity router = getClientUtil().createProcessor("ReOrderFlowFiles", statelessGroup.getId());
+        getClientUtil().updateProcessorProperties(router, Map.of("First Group Selection Criteria", "${Counter:mod(2):equals(0)}"));
+
+        // Verify that FlowFiles are ordered correctly within stateless flow.
+        final ProcessorEntity verifyProcessor = getClientUtil().createProcessor("VerifyEvenThenOdd", statelessGroup.getId());
+        getClientUtil().updateProcessorProperties(verifyProcessor, Map.of("Attribute Name", "Counter"));
+
+        final PortEntity outputPort = getClientUtil().createOutputPort("Out", statelessGroup.getId());
+
+        getClientUtil().createConnection(generate, router, "success");
+        getClientUtil().createConnection(router, verifyProcessor, "success");
+        getClientUtil().createConnection(verifyProcessor, outputPort, "success");
+        getClientUtil().setAutoTerminatedRelationships(verifyProcessor, "failure");
+
+        final ProcessorEntity terminate = getClientUtil().createProcessor(TERMINATE_FLOWFILE);
+        final ConnectionEntity outputToTerminate = getClientUtil().createConnection(outputPort, terminate);
+        getClientUtil().updateConnectionPrioritizer(outputToTerminate, "FirstInFirstOutPrioritizer");
+
+        getClientUtil().waitForValidProcessor(generate.getId());
+        getClientUtil().waitForValidProcessor(router.getId());
+        getClientUtil().waitForValidProcessor(verifyProcessor.getId());
+        getClientUtil().startProcessGroupComponents(statelessGroup.getId());
+
+        waitForQueueCount(outputToTerminate.getId(), batchSize);
+        getClientUtil().stopProcessGroupComponents(statelessGroup.getId());
+
+        final List<String> actualCounterValues = new ArrayList<>();
+        for (int i = 0; i < batchSize; i++) {
+            final FlowFileEntity flowFileEntity = getClientUtil().getQueueFlowFile(outputToTerminate.getId(), i);
+            actualCounterValues.add(flowFileEntity.getFlowFile().getAttributes().get("Counter"));
+        }
+
+        int expectedCounter = 0;
+        for (int i = 0; i < batchSize; i++) {
+            assertEquals(String.valueOf(expectedCounter), actualCounterValues.get(i));
+            expectedCounter += 2;
+            if (expectedCounter >= batchSize) {
+                expectedCounter = 1;
+            }
+        }
     }
 
     @Test
@@ -749,7 +806,7 @@ public class StatelessBasicsIT extends NiFiSystemIT {
         getClientUtil().createConnection(reverseContents, outputPort, SUCCESS, statelessGroup.getId());
 
         // Save v2 of the flow
-        final VersionControlInformationEntity v2Vci = getClientUtil().saveFlowVersion(statelessGroup, registryClient, vci);
+        getClientUtil().saveFlowVersion(statelessGroup, registryClient, vci);
         waitFor(() -> VersionControlInformationDTO.UP_TO_DATE.equals(getClientUtil().getVersionControlState(statelessGroup.getId())) );
 
         // Let a FlowFile go through and verify the results

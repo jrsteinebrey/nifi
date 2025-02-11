@@ -65,7 +65,7 @@ import java.util.concurrent.TimeUnit;
 import static org.apache.nifi.processors.aws.util.RegionUtilV1.S3_REGION;
 
 @SupportsBatching
-@SeeAlso({PutS3Object.class, DeleteS3Object.class, ListS3.class})
+@SeeAlso({PutS3Object.class, DeleteS3Object.class, ListS3.class, CopyS3Object.class, GetS3ObjectMetadata.class, TagS3Object.class})
 @InputRequirement(Requirement.INPUT_REQUIRED)
 @Tags({"Amazon", "S3", "AWS", "Get", "Fetch"})
 @CapabilityDescription("Retrieves the contents of an S3 Object and writes it to the content of a FlowFile")
@@ -271,7 +271,7 @@ public class FetchS3Object extends AbstractS3Processor {
             .required(false)
             .build();
 
-    public static final List<PropertyDescriptor> properties = List.of(
+    public static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
         BUCKET_WITH_DEFAULT_VALUE,
         KEY,
         S3_REGION,
@@ -291,7 +291,7 @@ public class FetchS3Object extends AbstractS3Processor {
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return properties;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -423,7 +423,7 @@ public class FetchS3Object extends AbstractS3Processor {
             if (metadata.getVersionId() != null) {
                 attributes.put("s3.version", metadata.getVersionId());
             }
-        } catch (final IOException | AmazonClientException ioe) {
+        } catch (final IllegalArgumentException | IOException | AmazonClientException ioe) {
             flowFile = extractExceptionDetails(ioe, session, flowFile);
             getLogger().error("Failed to retrieve S3 Object for {}; routing to failure", flowFile, ioe);
             flowFile = session.penalize(flowFile);

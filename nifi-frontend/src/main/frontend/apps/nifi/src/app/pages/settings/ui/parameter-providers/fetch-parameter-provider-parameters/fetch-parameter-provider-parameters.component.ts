@@ -19,10 +19,8 @@ import { Component, DestroyRef, inject, Inject, Input, OnInit } from '@angular/c
 import { CommonModule } from '@angular/common';
 import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ErrorBanner } from '../../../../../ui/common/error-banner/error-banner.component';
 import { MatButtonModule } from '@angular/material/button';
 import { NifiSpinnerDirective } from '../../../../../ui/common/spinner/nifi-spinner.directive';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
 import {
     FetchedParameterMapping,
     FetchParameterProviderDialogRequest,
@@ -35,30 +33,27 @@ import {
     ParameterStatusEntity
 } from '../../../state/parameter-providers';
 import { debounceTime, Observable, Subject } from 'rxjs';
-import { TextTip } from '../../../../../ui/common/tooltips/text-tip/text-tip.component';
-import { NifiTooltipDirective } from '../../../../../ui/common/tooltips/nifi-tooltip.directive';
+import { TextTip, NiFiCommon, NifiTooltipDirective, AffectedComponentEntity, SortPipe, JoinPipe } from '@nifi/shared';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatSortModule, Sort } from '@angular/material/sort';
 import { ParameterGroupsTable } from './parameter-groups-table/parameter-groups-table.component';
 import { MatCheckboxChange, MatCheckboxModule } from '@angular/material/checkbox';
 import { MatInputModule } from '@angular/material/input';
 import { ParameterReferences } from '../../../../../ui/common/parameter-references/parameter-references.component';
-import { AffectedComponentEntity } from '../../../../../state/shared';
 import * as ParameterProviderActions from '../../../state/parameter-providers/parameter-providers.actions';
 import { Store } from '@ngrx/store';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { PipesModule } from '../../../../../pipes/pipes.module';
 import { ClusterConnectionService } from '../../../../../service/cluster-connection.service';
-import { CloseOnEscapeDialog } from '../../../../../ui/common/close-on-escape-dialog/close-on-escape-dialog.component';
+import { CloseOnEscapeDialog } from '@nifi/shared';
+import { ErrorContextKey } from '../../../../../state/error';
+import { ContextErrorBanner } from '../../../../../ui/common/context-error-banner/context-error-banner.component';
 
 @Component({
     selector: 'fetch-parameter-provider-parameters',
-    standalone: true,
     imports: [
         CommonModule,
         MatDialogModule,
         ReactiveFormsModule,
-        ErrorBanner,
         MatButtonModule,
         NifiSpinnerDirective,
         NifiTooltipDirective,
@@ -68,7 +63,9 @@ import { CloseOnEscapeDialog } from '../../../../../ui/common/close-on-escape-di
         MatCheckboxModule,
         MatInputModule,
         ParameterReferences,
-        PipesModule
+        SortPipe,
+        JoinPipe,
+        ContextErrorBanner
     ],
     templateUrl: './fetch-parameter-provider-parameters.component.html',
     styleUrls: ['./fetch-parameter-provider-parameters.component.scss']
@@ -120,6 +117,12 @@ export class FetchParameterProviderParameters extends CloseOnEscapeDialog implem
         this.parameterGroupConfigurations = this.parameterProvider.component.parameterGroupConfigurations.slice();
         this.parameterGroupConfigurations.forEach((parameterGroupConfig) => {
             const params = this.getParameterSensitivitiesAsFormControls(parameterGroupConfig);
+
+            const sensitivitiesGroup = this.formBuilder.group({});
+            Object.entries(params).forEach(([name, control]) => {
+                sensitivitiesGroup.addControl(name, control);
+            });
+
             this.fetchParametersForm.addControl(
                 parameterGroupConfig.groupName,
                 this.formBuilder.group({
@@ -128,7 +131,7 @@ export class FetchParameterProviderParameters extends CloseOnEscapeDialog implem
                         parameterGroupConfig.parameterContextName,
                         Validators.required
                     ),
-                    parameterSensitivities: this.formBuilder.group(params)
+                    parameterSensitivities: sensitivitiesGroup
                 })
             );
             this.parameterGroupNames.push(parameterGroupConfig.groupName);
@@ -171,7 +174,7 @@ export class FetchParameterProviderParameters extends CloseOnEscapeDialog implem
             // watch for changes to the parameter context name inputs, update the local map
             this.parameterGroupConfigurations.forEach((groupConfig) => {
                 this.fetchParametersForm
-                    .get(`${groupConfig.groupName}.parameterContextName`)
+                    .get([groupConfig.groupName, 'parameterContextName'])
                     ?.valueChanges.pipe(debounceTime(200), takeUntilDestroyed(this.destroyRef))
                     .subscribe((name) => {
                         if (Object.hasOwn(this.parameterContextsToCreate, groupConfig.groupName)) {
@@ -225,14 +228,14 @@ export class FetchParameterProviderParameters extends CloseOnEscapeDialog implem
 
     canEditParameterContextName(parameterGroupConfig: ParameterGroupConfiguration): boolean {
         // can only edit the context name if the create parameter context checkbox is checked.
-        return this.fetchParametersForm.get(`${parameterGroupConfig.groupName}.createParameterContext`)?.value;
+        return this.fetchParametersForm.get([parameterGroupConfig.groupName, 'createParameterContext'])?.value;
     }
 
     showParameterList(parameterGroupConfig: ParameterGroupConfiguration): boolean {
         // show only a list of parameters if the group is not synced with a parameter context and the user isn't actively trying to create a context for it
         return (
             !this.isSynced(parameterGroupConfig) &&
-            !this.fetchParametersForm.get(`${parameterGroupConfig.groupName}.createParameterContext`)?.value
+            !this.fetchParametersForm.get([parameterGroupConfig.groupName, 'createParameterContext'])?.value
         );
     }
 
@@ -269,9 +272,11 @@ export class FetchParameterProviderParameters extends CloseOnEscapeDialog implem
     }
 
     getFormControl(parameter: ParameterSensitivity, parameterGroupConfig: ParameterGroupConfiguration): FormControl {
-        return this.fetchParametersForm.get(
-            `${parameterGroupConfig.groupName}.parameterSensitivities.${parameter.name}`
-        ) as FormControl;
+        return this.fetchParametersForm.get([
+            parameterGroupConfig.groupName,
+            'parameterSensitivities',
+            parameter.name
+        ]) as FormControl;
     }
 
     private getParameterMapping(parameterGroupConfig: ParameterGroupConfiguration): {
@@ -563,23 +568,27 @@ export class FetchParameterProviderParameters extends CloseOnEscapeDialog implem
         const groupConfigs: ParameterGroupConfiguration[] = this.parameterGroupConfigurations
             .filter((initialGroup) => {
                 // filter out any non-synchronized groups that the user hasn't decided to create a parameter context for
-                const createParameterContext = this.fetchParametersForm.get(
-                    `${initialGroup.groupName}.createParameterContext`
-                );
+                const createParameterContext = this.fetchParametersForm.get([
+                    initialGroup.groupName,
+                    'createParameterContext'
+                ]);
                 return initialGroup.synchronized || !!createParameterContext?.value;
             })
             .map((initialGroup) => {
                 const parameterSensitivities: { [key: string]: null | 'SENSITIVE' | 'NON_SENSITIVE' } = {};
 
-                const parameterContextName = this.fetchParametersForm.get(
-                    `${initialGroup.groupName}.parameterContextName`
-                )?.value;
+                const parameterContextName = this.fetchParametersForm.get([
+                    initialGroup.groupName,
+                    'parameterContextName'
+                ])?.value;
 
                 // convert to the backend model for sensitivities
                 Object.entries(initialGroup.parameterSensitivities).forEach(([key, value]) => {
-                    const formParamSensitivity = this.fetchParametersForm.get(
-                        `${initialGroup.groupName}.parameterSensitivities.${key}`
-                    );
+                    const formParamSensitivity = this.fetchParametersForm.get([
+                        initialGroup.groupName,
+                        'parameterSensitivities',
+                        key
+                    ]);
                     if (formParamSensitivity) {
                         parameterSensitivities[key] = formParamSensitivity.value ? 'SENSITIVE' : 'NON_SENSITIVE';
                     } else {
@@ -606,4 +615,6 @@ export class FetchParameterProviderParameters extends CloseOnEscapeDialog implem
     override isDirty(): boolean {
         return this.fetchParametersForm.dirty;
     }
+
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

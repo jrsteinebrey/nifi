@@ -19,6 +19,7 @@ import { Injectable } from '@angular/core';
 import { CanvasUtils } from './canvas-utils.service';
 import { Store } from '@ngrx/store';
 import { CanvasState } from '../state';
+import * as FlowActions from '../state/flow/flow.actions';
 import {
     centerSelectedComponents,
     downloadFlow,
@@ -50,7 +51,7 @@ import {
     terminateThreads,
     updatePositions
 } from '../state/flow/flow.actions';
-import { ComponentType } from '../../../state/shared';
+import { ComponentType } from '@nifi/shared';
 import {
     ConfirmStopVersionControlRequest,
     MoveComponentRequest,
@@ -70,7 +71,6 @@ import * as d3 from 'd3';
 import { Client } from '../../../service/client.service';
 import { CanvasView } from './canvas-view.service';
 import { CanvasActionsService } from './canvas-actions.service';
-import * as FlowActions from '../state/flow/flow.actions';
 import { DraggableBehavior } from './behavior/draggable-behavior.service';
 import { BackNavigation } from '../../../state/navigation';
 
@@ -657,7 +657,7 @@ export class CanvasContextMenu implements ContextMenuDefinitionProvider {
                 condition: (selection: d3.Selection<any, any, any, any>) => {
                     return this.canvasUtils.hasParameterContext(selection);
                 },
-                clazz: 'fa',
+                clazz: 'fa fa-list-alt primary-color',
                 text: 'Parameters',
                 action: (selection: d3.Selection<any, any, any, any>) => {
                     let id;
@@ -903,15 +903,19 @@ export class CanvasContextMenu implements ContextMenuDefinitionProvider {
                 clazz: 'fa fa-area-chart',
                 text: 'View Status History',
                 action: (selection: any) => {
-                    const selectionData = selection.datum();
-                    this.store.dispatch(
-                        navigateToViewStatusHistoryForComponent({
-                            request: {
-                                type: selectionData.type,
-                                id: selectionData.id
-                            }
-                        })
-                    );
+                    if (this.canvasUtils.emptySelection(selection)) {
+                        this.store.dispatch(FlowActions.navigateToViewStatusHistoryForCurrentProcessGroup());
+                    } else {
+                        const selectionData = selection.datum();
+                        this.store.dispatch(
+                            navigateToViewStatusHistoryForComponent({
+                                request: {
+                                    type: selectionData.type,
+                                    id: selectionData.id
+                                }
+                            })
+                        );
+                    }
                 }
             },
             {
@@ -977,7 +981,8 @@ export class CanvasContextMenu implements ContextMenuDefinitionProvider {
                                     context: 'Processor'
                                 } as BackNavigation,
                                 parameters: {
-                                    select: selectionData.component.type,
+                                    componentType: ComponentType.Processor,
+                                    type: selectionData.component.type,
                                     group: selectionData.component.bundle.group,
                                     artifact: selectionData.component.bundle.artifact,
                                     version: selectionData.component.bundle.version
@@ -1216,8 +1221,20 @@ export class CanvasContextMenu implements ContextMenuDefinitionProvider {
                 isSeparator: true
             },
             {
-                condition: () => {
-                    return this.canvasUtils.isNotRootGroup();
+                condition: (selection: d3.Selection<any, any, any, any>) => {
+                    if (selection.empty()) {
+                        return false;
+                    }
+
+                    if (!this.canvasUtils.canModify(selection)) {
+                        return false;
+                    }
+
+                    return (
+                        this.canvasUtils.isNotRootGroup() &&
+                        this.canvasUtils.canModifyParentGroup() &&
+                        this.canvasUtils.isDisconnected(selection)
+                    );
                 },
                 clazz: 'fa fa-arrows',
                 text: 'Move To Parent Group',

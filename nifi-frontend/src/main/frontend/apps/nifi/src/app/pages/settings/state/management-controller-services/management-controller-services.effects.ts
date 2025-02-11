@@ -28,10 +28,8 @@ import { NiFiState } from '../../../../state';
 import { selectControllerServiceTypes } from '../../../../state/extension-types/extension-types.selectors';
 import { CreateControllerService } from '../../../../ui/common/controller-service/create-controller-service/create-controller-service.component';
 import { Client } from '../../../../service/client.service';
-import { YesNoDialog } from '../../../../ui/common/yes-no-dialog/yes-no-dialog.component';
 import { EditControllerService } from '../../../../ui/common/controller-service/edit-controller-service/edit-controller-service.component';
 import {
-    ComponentType,
     ControllerServiceReferencingComponent,
     EditControllerServiceDialogRequest,
     OpenChangeComponentVersionDialogRequest,
@@ -44,7 +42,7 @@ import { DisableControllerService } from '../../../../ui/common/controller-servi
 import { PropertyTableHelperService } from '../../../../service/property-table-helper.service';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ErrorHelper } from '../../../../service/error-helper.service';
-import { LARGE_DIALOG, SMALL_DIALOG, XL_DIALOG } from '../../../../index';
+import { ComponentType, LARGE_DIALOG, SMALL_DIALOG, XL_DIALOG, YesNoDialog } from '@nifi/shared';
 import { ChangeComponentVersionDialog } from '../../../../ui/common/change-component-version-dialog/change-component-version-dialog';
 import { ExtensionTypesService } from '../../../../service/extension-types.service';
 import {
@@ -57,6 +55,7 @@ import {
 } from '../../../../state/property-verification/property-verification.selectors';
 import { VerifyPropertiesRequestContext } from '../../../../state/property-verification';
 import { BackNavigation } from '../../../../state/navigation';
+import { ErrorContextKey } from '../../../../state/error';
 
 @Injectable()
 export class ManagementControllerServicesEffects {
@@ -159,18 +158,18 @@ export class ManagementControllerServicesEffects {
         this.actions$.pipe(
             ofType(ManagementControllerServicesActions.createControllerServiceSuccess),
             map((action) => action.response),
-            tap(() => {
+            tap((response) => {
                 this.dialog.closeAll();
-            }),
-            switchMap((response) =>
-                of(
+
+                this.store.dispatch(
                     ManagementControllerServicesActions.selectControllerService({
                         request: {
                             id: response.controllerService.id
                         }
                     })
-                )
-            )
+                );
+            }),
+            switchMap(() => of(ManagementControllerServicesActions.loadManagementControllerServices()))
         )
     );
 
@@ -392,7 +391,6 @@ export class ManagementControllerServicesEffects {
                         });
 
                     editDialogReference.afterClosed().subscribe((response) => {
-                        this.store.dispatch(ErrorActions.clearBannerErrors());
                         this.store.dispatch(resetPropertyVerificationState());
 
                         if (response != 'ROUTED') {
@@ -446,7 +444,13 @@ export class ManagementControllerServicesEffects {
         this.actions$.pipe(
             ofType(ManagementControllerServicesActions.managementControllerServicesBannerApiError),
             map((action) => action.error),
-            switchMap((error) => of(ErrorActions.addBannerError({ error })))
+            switchMap((error) =>
+                of(
+                    ErrorActions.addBannerError({
+                        errorContext: { errors: [error], context: ErrorContextKey.CONTROLLER_SERVICES }
+                    })
+                )
+            )
         )
     );
 
@@ -596,6 +600,13 @@ export class ManagementControllerServicesEffects {
                     )
                 )
             )
+        )
+    );
+
+    deleteControllerServiceSuccess$ = createEffect(() =>
+        this.actions$.pipe(
+            ofType(ManagementControllerServicesActions.deleteControllerServiceSuccess),
+            switchMap(() => of(ManagementControllerServicesActions.loadManagementControllerServices()))
         )
     );
 

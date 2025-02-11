@@ -21,24 +21,19 @@ import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } 
 import { MatInputModule } from '@angular/material/input';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatButtonModule } from '@angular/material/button';
-import { AsyncPipe } from '@angular/common';
 import {
     ProvenanceRequest,
     ProvenanceSearchDialogRequest,
     SearchableField
 } from '../../../state/provenance-event-listing';
 import { MatDatepickerModule } from '@angular/material/datepicker';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
-import { SelectOption } from '../../../../../state/shared';
-import { TextTip } from '../../../../../ui/common/tooltips/text-tip/text-tip.component';
+import { NiFiCommon, TextTip, NifiTooltipDirective } from '@nifi/shared';
 import { MatOption } from '@angular/material/autocomplete';
 import { MatSelect } from '@angular/material/select';
-import { NifiTooltipDirective } from '../../../../../ui/common/tooltips/nifi-tooltip.directive';
-import { CloseOnEscapeDialog } from '../../../../../ui/common/close-on-escape-dialog/close-on-escape-dialog.component';
+import { CloseOnEscapeDialog, SelectOption } from '@nifi/shared';
 
 @Component({
     selector: 'provenance-search-dialog',
-    standalone: true,
     templateUrl: './provenance-search-dialog.component.html',
     imports: [
         ReactiveFormsModule,
@@ -46,7 +41,6 @@ import { CloseOnEscapeDialog } from '../../../../../ui/common/close-on-escape-di
         MatInputModule,
         MatCheckboxModule,
         MatButtonModule,
-        AsyncPipe,
         MatDatepickerModule,
         MatOption,
         MatSelect,
@@ -244,7 +238,7 @@ export class ProvenanceSearchDialog extends CloseOnEscapeDialog {
         const searchableFields: SearchableField[] = this.request.options.searchableFields;
         searchableFields.forEach((searchableField) => {
             // @ts-ignore
-            const searchableFieldForm: FormGroup = this.provenanceOptionsForm.get(searchableField.id);
+            const searchableFieldForm: FormGroup = this.provenanceOptionsForm.get([searchableField.id]);
             if (searchableFieldForm) {
                 const searchableFieldValue: string = searchableFieldForm.get('value')?.value;
                 if (searchableFieldValue) {

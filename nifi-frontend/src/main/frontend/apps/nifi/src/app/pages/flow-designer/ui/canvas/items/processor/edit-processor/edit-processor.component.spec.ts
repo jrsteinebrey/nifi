@@ -20,14 +20,14 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { EditProcessor } from './edit-processor.component';
 import { EditComponentDialogRequest } from '../../../../../state/flow';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
-import { ComponentType } from '../../../../../../../state/shared';
+import { ComponentType } from '@nifi/shared';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { ClusterConnectionService } from '../../../../../../../service/cluster-connection.service';
 
 import 'codemirror/addon/hint/show-hint';
 import { MockComponent } from 'ng-mocks';
-import { ErrorBanner } from '../../../../../../../ui/common/error-banner/error-banner.component';
 import { CanvasUtils } from '../../../../../service/canvas-utils.service';
+import { ContextErrorBanner } from '../../../../../../../ui/common/context-error-banner/context-error-banner.component';
 
 describe('EditProcessor', () => {
     let component: EditProcessor;
@@ -727,7 +727,7 @@ describe('EditProcessor', () => {
 
     beforeEach(() => {
         TestBed.configureTestingModule({
-            imports: [EditProcessor, MockComponent(ErrorBanner), NoopAnimationsModule],
+            imports: [EditProcessor, MockComponent(ContextErrorBanner), NoopAnimationsModule],
             providers: [
                 { provide: MAT_DIALOG_DATA, useValue: data },
                 {

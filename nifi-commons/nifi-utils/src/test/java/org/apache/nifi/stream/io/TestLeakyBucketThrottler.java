@@ -19,6 +19,8 @@ package org.apache.nifi.stream.io;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -34,6 +36,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Disabled("Tests are time-based")
 public class TestLeakyBucketThrottler {
+
+    private static final Logger logger = LoggerFactory.getLogger(TestLeakyBucketThrottler.class);
 
     @Test
     @Timeout(value = 10000, unit = TimeUnit.MILLISECONDS)
@@ -87,7 +91,7 @@ public class TestLeakyBucketThrottler {
         try (final LeakyBucketStreamThrottler throttler = new LeakyBucketStreamThrottler(1024 * 1024);
                 final ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             // create 3 threads, each sending ~2 MB
-            final List<Thread> threads = new ArrayList<Thread>();
+            final List<Thread> threads = new ArrayList<>();
             for (int i = 0; i < 3; i++) {
                 final Thread t = new WriterThread(i, throttler, baos);
                 threads.add(t);
@@ -144,7 +148,7 @@ public class TestLeakyBucketThrottler {
             long millisElapsed = now - startMillis;
             bytesWritten += data.length;
             float bytesPerSec = (float) bytesWritten / (float) millisElapsed * 1000F;
-            System.out.println(idx + " : copied data at a rate of " + bytesPerSec + " bytes/sec");
+            logger.info("{} : copied data at a rate of {} bytes/sec", idx, bytesPerSec);
         }
     }
 

@@ -20,7 +20,7 @@ import {
     ClusterTableFilter,
     ClusterTableFilterColumn
 } from '../../common/cluster-table-filter/cluster-table-filter.component';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
+import { NiFiCommon } from '@nifi/shared';
 import { ClusterTable } from '../../common/cluster-table/cluster-table.component';
 import { MatSortModule, Sort } from '@angular/material/sort';
 import { NodeSnapshot } from '../../../../../state/system-diagnostics';
@@ -28,7 +28,6 @@ import { MatTableModule } from '@angular/material/table';
 
 @Component({
     selector: 'cluster-system-table',
-    standalone: true,
     imports: [ClusterTableFilter, MatTableModule, MatSortModule],
     templateUrl: './cluster-system-table.component.html',
     styleUrl: './cluster-system-table.component.scss'
@@ -50,6 +49,10 @@ export class ClusterSystemTable extends ClusterTable<NodeSnapshot> {
 
     formatNodeAddress(item: NodeSnapshot): string {
         return `${item.address}:${item.apiPort}`;
+    }
+
+    formatFloat(value: number): string {
+        return this.nifiCommon.formatFloat(value);
     }
 
     override filterPredicate(item: NodeSnapshot, filter: string): boolean {

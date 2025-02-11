@@ -48,7 +48,6 @@ import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.AbstractProcessor;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
-import org.apache.nifi.processor.ProcessorInitializationContext;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
@@ -59,7 +58,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -172,47 +170,39 @@ public class PutSmbFile extends AbstractProcessor {
             .description("Files that could not be written to the output network path for some reason are transferred to this relationship")
             .build();
 
-    private List<PropertyDescriptor> descriptors;
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+            HOSTNAME,
+            SHARE,
+            DIRECTORY,
+            DOMAIN,
+            USERNAME,
+            PASSWORD,
+            CREATE_DIRS,
+            SHARE_ACCESS,
+            CONFLICT_RESOLUTION,
+            BATCH_SIZE,
+            RENAME_SUFFIX,
+            SMB_DIALECT,
+            USE_ENCRYPTION,
+            ENABLE_DFS,
+            TIMEOUT);
 
-    private Set<Relationship> relationships;
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS,
+            REL_FAILURE
+    );
 
     private SMBClient smbClient = null; // this gets synchronized when the `connect` method is called
     private Set<SMB2ShareAccess> sharedAccess;
 
     @Override
-    protected void init(final ProcessorInitializationContext context) {
-        final List<PropertyDescriptor> descriptors = new ArrayList<PropertyDescriptor>();
-        descriptors.add(HOSTNAME);
-        descriptors.add(SHARE);
-        descriptors.add(DIRECTORY);
-        descriptors.add(DOMAIN);
-        descriptors.add(USERNAME);
-        descriptors.add(PASSWORD);
-        descriptors.add(CREATE_DIRS);
-        descriptors.add(SHARE_ACCESS);
-        descriptors.add(CONFLICT_RESOLUTION);
-        descriptors.add(BATCH_SIZE);
-        descriptors.add(RENAME_SUFFIX);
-        descriptors.add(SMB_DIALECT);
-        descriptors.add(USE_ENCRYPTION);
-        descriptors.add(ENABLE_DFS);
-        descriptors.add(TIMEOUT);
-        this.descriptors = Collections.unmodifiableList(descriptors);
-
-        final Set<Relationship> relationships = new HashSet<Relationship>();
-        relationships.add(REL_SUCCESS);
-        relationships.add(REL_FAILURE);
-        this.relationships = Collections.unmodifiableSet(relationships);
-    }
-
-    @Override
     public Set<Relationship> getRelationships() {
-        return this.relationships;
+        return RELATIONSHIPS;
     }
 
     @Override
     public final List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return descriptors;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @OnScheduled

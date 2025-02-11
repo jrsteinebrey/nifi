@@ -17,22 +17,25 @@
 
 import { BreadcrumbEntity, Position } from '../shared';
 import {
-    BulletinEntity,
     Bundle,
     ComponentHistory,
-    ComponentType,
     DocumentedType,
     ParameterContextEntity,
-    ParameterContextReferenceEntity,
-    Permissions,
     RegistryClientEntity,
-    Revision,
-    SelectOption,
     SparseVersionedFlow,
     VersionedFlowSnapshotMetadataEntity
 } from '../../../../state/shared';
 import { HttpErrorResponse } from '@angular/common/http';
 import { BackNavigation } from '../../../../state/navigation';
+import {
+    BulletinEntity,
+    ComponentType,
+    ParameterContextReferenceEntity,
+    Permissions,
+    Revision,
+    SelectOption
+} from '@nifi/shared';
+import { CopyResponseEntity, PasteRequestStrategy } from '../../../../state/copy';
 
 export const flowFeatureKey = 'flowState';
 
@@ -69,6 +72,7 @@ export interface LoadProcessGroupResponse {
     flowStatus: ControllerStatusEntity;
     controllerBulletins: ControllerBulletinsEntity;
     connectedStateChanged: boolean;
+    registryClients: RegistryClientEntity[];
 }
 
 export interface LoadConnectionSuccess {
@@ -347,7 +351,7 @@ export interface OpenComponentDialogRequest {
 export interface NavigateToManageComponentPoliciesRequest {
     resource: string;
     id: string;
-    backNavigationContext: string;
+    backNavigation: BackNavigation;
 }
 
 export interface EditComponentDialogRequest {
@@ -355,6 +359,7 @@ export interface EditComponentDialogRequest {
     uri: string;
     entity: any;
     history?: ComponentHistory;
+    parameterContexts?: ParameterContextEntity[];
 }
 
 export interface EditRemotePortDialogRequest extends EditComponentDialogRequest {
@@ -454,21 +459,37 @@ export interface MoveComponentsRequest {
     groupId: string;
 }
 
-export interface CopyComponentRequest extends SnippetComponentRequest {}
-
-export interface CopyRequest {
-    components: CopyComponentRequest[];
-    origin: Position;
-    dimensions: any;
-}
+///////////////////////////////////////////////////////////
 
 export interface PasteRequest {
-    pasteLocation?: Position;
+    copyResponse: CopyResponseEntity;
+    strategy: PasteRequestStrategy;
+    fitToScreen?: boolean;
+    bbox?: any;
 }
 
-export interface PasteResponse {
-    flow: Flow;
+export interface PasteRequestEntity {
+    copyResponse: CopyResponseEntity;
+    revision: Revision;
+    disconnectedNodeAcknowledged?: boolean;
 }
+
+export interface PasteRequestContext {
+    processGroupId: string;
+    pasteRequest: PasteRequestEntity;
+    pasteStrategy: PasteRequestStrategy;
+}
+
+export interface PasteResponseEntity {
+    flow: Flow;
+    revision: Revision;
+}
+
+export interface PasteResponseContext extends PasteResponseEntity {
+    pasteRequest: PasteRequest;
+}
+
+///////////////////////////////////////////////////////////
 
 export interface DeleteComponentRequest {
     id: string;
@@ -537,6 +558,7 @@ export interface CopiedSnippet {
 
 export interface VersionControlTipInput {
     versionControlInformation: VersionControlInformation;
+    registryClients?: RegistryClientEntity[];
 }
 
 /*
@@ -590,6 +612,7 @@ export interface ProcessGroupFlow {
 
 export interface ProcessGroupFlowEntity {
     permissions: Permissions;
+    revision: Revision;
     processGroupFlow: ProcessGroupFlow;
 }
 
@@ -632,6 +655,7 @@ export interface FlowState {
     flowStatus: ControllerStatusEntity;
     refreshRpgDetails: RefreshRemoteProcessGroupPollingDetailsRequest | null;
     controllerBulletins: ControllerBulletinsEntity;
+    registryClients: RegistryClientEntity[];
     dragging: boolean;
     transitionRequired: boolean;
     skipTransform: boolean;
@@ -639,10 +663,11 @@ export interface FlowState {
     saving: boolean;
     navigationCollapsed: boolean;
     operationCollapsed: boolean;
+    flowAnalysisOpen: boolean;
     versionSaving: boolean;
     changeVersionRequest: FlowUpdateRequestEntity | null;
-    copiedSnippet: CopiedSnippet | null;
-    status: 'pending' | 'loading' | 'success';
+    pollingProcessor: StartPollingProcessorUntilStoppedRequest | null;
+    status: 'pending' | 'loading' | 'success' | 'complete';
 }
 
 export interface RunOnceRequest {
@@ -773,6 +798,10 @@ export interface StopComponentRequest {
     type: ComponentType;
     revision: Revision;
     errorStrategy: 'snackbar' | 'banner';
+}
+
+export interface StartPollingProcessorUntilStoppedRequest {
+    id: string;
 }
 
 export interface StopProcessGroupRequest {

@@ -21,6 +21,11 @@ import org.apache.nifi.authorization.AuthorizeAccess;
 import org.apache.nifi.authorization.RequestAction;
 import org.apache.nifi.authorization.user.NiFiUser;
 import org.apache.nifi.bundle.BundleCoordinate;
+import org.apache.nifi.c2.protocol.component.api.ControllerServiceDefinition;
+import org.apache.nifi.c2.protocol.component.api.FlowAnalysisRuleDefinition;
+import org.apache.nifi.c2.protocol.component.api.ParameterProviderDefinition;
+import org.apache.nifi.c2.protocol.component.api.ProcessorDefinition;
+import org.apache.nifi.c2.protocol.component.api.ReportingTaskDefinition;
 import org.apache.nifi.c2.protocol.component.api.RuntimeManifest;
 import org.apache.nifi.components.ConfigurableComponent;
 import org.apache.nifi.controller.ScheduledState;
@@ -29,10 +34,11 @@ import org.apache.nifi.controller.service.ControllerServiceState;
 import org.apache.nifi.diagnostics.DiagnosticLevel;
 import org.apache.nifi.flow.ExternalControllerServiceReference;
 import org.apache.nifi.flow.ParameterProviderReference;
-import org.apache.nifi.flow.VersionedReportingTaskSnapshot;
 import org.apache.nifi.flow.VersionedParameterContext;
 import org.apache.nifi.flow.VersionedProcessGroup;
+import org.apache.nifi.flow.VersionedReportingTaskSnapshot;
 import org.apache.nifi.groups.ProcessGroup;
+import org.apache.nifi.groups.VersionedComponentAdditions;
 import org.apache.nifi.parameter.ParameterContext;
 import org.apache.nifi.parameter.ParameterGroupConfiguration;
 import org.apache.nifi.registry.flow.FlowLocation;
@@ -92,6 +98,7 @@ import org.apache.nifi.web.api.entity.AccessPolicyEntity;
 import org.apache.nifi.web.api.entity.ActionEntity;
 import org.apache.nifi.web.api.entity.ActivateControllerServicesEntity;
 import org.apache.nifi.web.api.entity.AffectedComponentEntity;
+import org.apache.nifi.web.api.entity.AssetEntity;
 import org.apache.nifi.web.api.entity.BulletinEntity;
 import org.apache.nifi.web.api.entity.ComponentValidationResultEntity;
 import org.apache.nifi.web.api.entity.ConfigurationAnalysisEntity;
@@ -102,6 +109,8 @@ import org.apache.nifi.web.api.entity.ControllerBulletinsEntity;
 import org.apache.nifi.web.api.entity.ControllerConfigurationEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceEntity;
 import org.apache.nifi.web.api.entity.ControllerServiceReferencingComponentsEntity;
+import org.apache.nifi.web.api.entity.CopyRequestEntity;
+import org.apache.nifi.web.api.entity.CopyResponseEntity;
 import org.apache.nifi.web.api.entity.CurrentUserEntity;
 import org.apache.nifi.web.api.entity.FlowAnalysisResultEntity;
 import org.apache.nifi.web.api.entity.FlowAnalysisRuleEntity;
@@ -114,9 +123,13 @@ import org.apache.nifi.web.api.entity.FlowRegistryBucketEntity;
 import org.apache.nifi.web.api.entity.FlowRegistryClientEntity;
 import org.apache.nifi.web.api.entity.FunnelEntity;
 import org.apache.nifi.web.api.entity.LabelEntity;
+import org.apache.nifi.web.api.entity.LatestProvenanceEventsEntity;
+import org.apache.nifi.web.api.entity.NarDetailsEntity;
+import org.apache.nifi.web.api.entity.NarSummaryEntity;
 import org.apache.nifi.web.api.entity.ParameterContextEntity;
 import org.apache.nifi.web.api.entity.ParameterProviderEntity;
 import org.apache.nifi.web.api.entity.ParameterProviderReferencingComponentsEntity;
+import org.apache.nifi.web.api.entity.PasteResponseEntity;
 import org.apache.nifi.web.api.entity.PortEntity;
 import org.apache.nifi.web.api.entity.PortStatusEntity;
 import org.apache.nifi.web.api.entity.ProcessGroupEntity;
@@ -145,6 +158,8 @@ import org.apache.nifi.web.api.entity.VersionedFlowSnapshotMetadataEntity;
 import org.apache.nifi.web.api.entity.VersionedReportingTaskImportResponseEntity;
 import org.apache.nifi.web.api.request.FlowMetricsRegistry;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
@@ -319,6 +334,14 @@ public interface NiFiServiceFacade {
     ProvenanceEventDTO getProvenanceEvent(Long id);
 
     /**
+     * Gets the latest provenance events for the specified component.
+     * @param componentId the ID of the components to retrieve the latest events for
+     * @param eventLimit the maximum number of events to return
+     * @return the latest provenance events
+     */
+    LatestProvenanceEventsEntity getLatestProvenanceEvents(String componentId, int eventLimit);
+
+    /**
      * Gets the configuration for this controller.
      *
      * @return Controller configuration transfer object
@@ -478,6 +501,72 @@ public interface NiFiServiceFacade {
      * @return the runtime manifest
      */
     RuntimeManifest getRuntimeManifest();
+
+    /**
+     * Return the ProcessorDefinition the specified Processor.
+     *
+     * @param group The bundle group
+     * @param artifact The bundle artifact
+     * @param version The bundle version
+     * @param type The Processor type
+     * @return The ProcessorDefinition
+     */
+    ProcessorDefinition getProcessorDefinition(String group, String artifact, String version, String type);
+
+    /**
+     * Return the ControllerServiceDefinition the specified Controller Service.
+     *
+     * @param group The bundle group
+     * @param artifact The bundle artifact
+     * @param version The bundle version
+     * @param type The Controller Service type
+     * @return The ControllerServiceDefinition
+     */
+    ControllerServiceDefinition getControllerServiceDefinition(String group, String artifact, String version, String type);
+
+    /**
+     * Return the ReportingTaskDefinition the specified Reporting Task.
+     *
+     * @param group The bundle group
+     * @param artifact The bundle artifact
+     * @param version The bundle version
+     * @param type The Reporting Task type
+     * @return The ReportingTaskDefinition
+     */
+    ReportingTaskDefinition getReportingTaskDefinition(String group, String artifact, String version, String type);
+
+    /**
+     * Return the ParameterProviderDefinition the specified Parameter Provider.
+     *
+     * @param group The bundle group
+     * @param artifact The bundle artifact
+     * @param version The bundle version
+     * @param type The Parameter Provider type
+     * @return The ParameterProviderDefinition
+     */
+    ParameterProviderDefinition getParameterProviderDefinition(String group, String artifact, String version, String type);
+
+    /**
+     * Return the FlowAnalysisRuleDefinition the specified Flow Analysis Rule.
+     *
+     * @param group The bundle group
+     * @param artifact The bundle artifact
+     * @param version The bundle version
+     * @param type The Flow Analysis Rule type
+     * @return The FlowAnalysisRuleDefinition
+     */
+    FlowAnalysisRuleDefinition getFlowAnalysisRuleDefinition(String group, String artifact, String version, String type);
+
+    /**
+     * Return the additionalDetails for the specified component.
+     *
+     * @param group The bundle group
+     * @param artifact The bundle artifact
+     * @param version The bundle version
+     * @param type The component type
+     * @return The additional details
+     */
+    String getAdditionalDetails(String group, String artifact, String version, String type);
 
     /**
      * Returns the list of parameter provider types.
@@ -1579,6 +1668,15 @@ public interface NiFiServiceFacade {
     FlowSnapshotContainer getVersionedFlowSnapshotByGroupId(String processGroupId);
 
     /**
+     * Copies the requested components from the specified Process Group.
+     *
+     * @param groupId the group id
+     * @param copyRequest the copy request
+     * @return the copy response
+     */
+    CopyResponseEntity copyComponents(String groupId, CopyRequestEntity copyRequest);
+
+    /**
      * Get the current state of the Process Group with the given ID, converted to a Versioned Flow Snapshot
      *
      * @param processGroupId the ID of the Process Group
@@ -1676,6 +1774,17 @@ public interface NiFiServiceFacade {
      * @throws IllegalStateException if the Process Group cannot have its local modifications reverted
      */
     void verifyCanRevertLocalModifications(String groupId, RegisteredFlowSnapshot versionedFlowSnapshot);
+
+    /**
+     * Adds versioned components to the specified Process Group
+     *
+     * @param revision the revision of the Process Group
+     * @param groupId the ID of the Process Group
+     * @param additions the components to add
+     * @param componentIdSeed the seed to use for generating new component ID's
+     * @return the Paste response entity
+     */
+    PasteResponseEntity pasteComponents(Revision revision, String groupId, VersionedComponentAdditions additions, String componentIdSeed);
 
     /**
      * Updates the Process group with the given ID to match the new snapshot
@@ -2434,31 +2543,34 @@ public interface NiFiServiceFacade {
      * Gets the flows for the current user for the specified registry and bucket.
      *
      * @param registryClientId registry client id
+     * @param branch the branch
      * @param bucketId bucket id
      * @return the flows
      */
-    Set<VersionedFlowEntity> getFlowsForUser(String registryClientId, String bucketId);
+    Set<VersionedFlowEntity> getFlowsForUser(String registryClientId, String branch, String bucketId);
 
 
     /**
      * Returns the details of a versioned flow from a given bucket of a given registry.
      *
      * @param registryClientId registry client id
+     * @param branch the branch
      * @param bucketId bucket id
      * @param flowId flow id
      * @return the flow details
      */
-    VersionedFlowEntity getFlowForUser(String registryClientId, String bucketId, String flowId);
+    VersionedFlowEntity getFlowForUser(String registryClientId, String branch, String bucketId, String flowId);
 
     /**
      * Gets the versions of the specified registry, bucket, and flow for the current user.
      *
      * @param registryClientId registry client id
+     * @param branch the branch
      * @param bucketId bucket id
      * @param flowId flow id
      * @return the versions of the flow
      */
-    Set<VersionedFlowSnapshotMetadataEntity> getFlowVersionsForUser(String registryClientId, String bucketId, String flowId);
+    Set<VersionedFlowSnapshotMetadataEntity> getFlowVersionsForUser(String registryClientId, String branch, String bucketId, String flowId);
 
     /**
      * Updates the specified registry using the specified revision.
@@ -2667,8 +2779,9 @@ public interface NiFiServiceFacade {
      *  @param flowSnapshotContainer the flow snapshot container
      * @param parentGroupId the ID of the Process Group from which the Controller Services are inherited
      * @param user the NiFi user on whose behalf the request is happening; this user is used for validation so that only the Controller Services that the user has READ permissions to are included
+     * @return Any unresolved controller services
      */
-    void resolveInheritedControllerServices(FlowSnapshotContainer flowSnapshotContainer, String parentGroupId, NiFiUser user);
+    Set<String> resolveInheritedControllerServices(FlowSnapshotContainer flowSnapshotContainer, String parentGroupId, NiFiUser user);
 
     /**
      * For any Parameter Provider that is found in the given Versioned Process Group, attempts to find an existing Parameter Provider that matches the definition. If any is found,
@@ -2676,8 +2789,9 @@ public interface NiFiServiceFacade {
      *
      * @param versionedFlowSnapshot the flow snapshot
      * @param user the NiFi user on whose behalf the request is happening; this user is used for validation so that only the Parameter Providers that the user has READ permissions to are included
+     * @return any unresolved parameter provider ids
      */
-    void resolveParameterProviders(RegisteredFlowSnapshot versionedFlowSnapshot, NiFiUser user);
+    Set<String> resolveParameterProviders(RegisteredFlowSnapshot versionedFlowSnapshot, NiFiUser user);
 
     /**
      * @param type the component type
@@ -2832,4 +2946,86 @@ public interface NiFiServiceFacade {
      * @return rule violations produced by the analysis of the process group
      */
     FlowAnalysisResultEntity getFlowAnalysisResult(String processGroupId);
+
+    // ----------------------------------------
+    // NAR Manager methods
+    // ----------------------------------------
+
+    /**
+     * Saves and installs an uploaded NAR contained in the input stream.
+     *
+     * Note - "upload" is purposely not part of the AOP write lock since an upload may take a significant amount of time and should not block all other operations.
+     *
+     * @param inputStream the contents of the NAR
+     * @return the summary entity for the given NAR
+     * @throws IOException if an I/O error occurs reading the input stream or persisting the NAR
+     */
+    NarSummaryEntity uploadNar(InputStream inputStream) throws IOException;
+
+    /**
+     * @return the summaries for all NARs contained in the NAR Manager
+     */
+    Set<NarSummaryEntity> getNarSummaries();
+
+    /**
+     * Retrieves the summary for the NAR with the given identifier.
+     *
+     * @param identifier the NAR identifier
+     * @return the summary
+     */
+    NarSummaryEntity getNarSummary(String identifier);
+
+    /**
+     * Retrieves the details for the given NAR.
+     *
+     * @param identifier the NAR identifier
+     * @return the entity containing the details
+     */
+    NarDetailsEntity getNarDetails(String identifier);
+
+    /**
+     * Gets an input stream to read the content of the given NAR.
+     *
+     * @param identifier the NAR identifier
+     * @return the input stream containing the NAR content
+     */
+    InputStream readNar(String identifier);
+
+    /**
+     * Verifies the given NAR can be deleted.
+     *
+     * @param identifier the NAR identifier
+     * @param forceDelete indicates if the NAR should be deleted even when components are instantiated
+     */
+    void verifyDeleteNar(String identifier, boolean forceDelete);
+
+    /**
+     * Deletes the given NAR.
+     *
+     * @param identifier the NAR identifier
+     * @return the summary of the deleted NAR
+     * @throws IOException if an I/O error occurs deleting the NAR
+     */
+    NarSummaryEntity deleteNar(String identifier) throws IOException;
+
+    // ----------------------------------------
+    // Asset Manager methods
+    // ----------------------------------------
+
+    /**
+     * Verifies the given asset can be deleted from the given parameter context.
+     *
+     * @param parameterContextId the parameter context id
+     * @param assetId the asset id
+     */
+    void verifyDeleteAsset(String parameterContextId, String assetId);
+
+    /**
+     * Deletes the given asset from the given parameter context.
+     *
+     * @param parameterContextId the parameter context id
+     * @param assetId the asset id
+     */
+    AssetEntity deleteAsset(String parameterContextId, String assetId);
+
 }

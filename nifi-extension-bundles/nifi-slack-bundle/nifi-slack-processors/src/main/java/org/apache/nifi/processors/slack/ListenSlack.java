@@ -32,6 +32,8 @@ import com.slack.api.bolt.socket_mode.SocketModeApp;
 import com.slack.api.model.User;
 import com.slack.api.model.event.AppMentionEvent;
 import com.slack.api.model.event.FileSharedEvent;
+import com.slack.api.model.event.MemberJoinedChannelEvent;
+import com.slack.api.model.event.MessageChannelJoinEvent;
 import com.slack.api.model.event.MessageEvent;
 import com.slack.api.model.event.MessageFileShareEvent;
 import org.apache.nifi.annotation.behavior.InputRequirement;
@@ -58,8 +60,6 @@ import org.apache.nifi.processors.slack.consume.UserDetailsLookup;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -84,10 +84,10 @@ import java.util.regex.Pattern;
     "See Usage / Additional Details for more information about how to configure this Processor and enable it to retrieve messages and commands from Slack.")
 public class ListenSlack extends AbstractProcessor {
 
-    private static final ObjectMapper objectMapper;
+    private static final ObjectMapper OBJECT_MAPPER;
     static {
-        objectMapper = new ObjectMapper();
-        objectMapper.registerModule(new JavaTimeModule());
+        OBJECT_MAPPER = new ObjectMapper();
+        OBJECT_MAPPER.registerModule(new JavaTimeModule());
     }
 
     static final AllowableValue RECEIVE_MESSAGE_EVENTS = new AllowableValue("Receive Message Events", "Receive Message Events",
@@ -96,6 +96,8 @@ public class ListenSlack extends AbstractProcessor {
         "The Processor is to receive only slack messages that mention the bot user (App Mention Events)");
     static final AllowableValue RECEIVE_COMMANDS = new AllowableValue("Receive Commands", "Receive Commands",
         "The Processor is to receive Commands from Slack that are specific to your application. The Processor will not receive Message Events.");
+    static final AllowableValue RECEIVE_JOINED_CHANNEL_EVENTS = new AllowableValue("Receive Joined Channel Events", "Receive Joined Channel Events",
+        "The Processor is to receive only events when a member is joining a channel. The Processor will not receive Message Events.");
 
 
     static PropertyDescriptor APP_TOKEN = new PropertyDescriptor.Builder()
@@ -119,10 +121,10 @@ public class ListenSlack extends AbstractProcessor {
         .description("Specifies the type of Event that the Processor should respond to")
         .required(true)
         .defaultValue(RECEIVE_MENTION_EVENTS.getValue())
-        .allowableValues(RECEIVE_MENTION_EVENTS, RECEIVE_MESSAGE_EVENTS, RECEIVE_COMMANDS)
+        .allowableValues(RECEIVE_MENTION_EVENTS, RECEIVE_MESSAGE_EVENTS, RECEIVE_COMMANDS, RECEIVE_JOINED_CHANNEL_EVENTS)
         .build();
 
-    final PropertyDescriptor RESOLVE_USER_DETAILS = new PropertyDescriptor.Builder()
+    static final PropertyDescriptor RESOLVE_USER_DETAILS = new PropertyDescriptor.Builder()
         .name("Resolve User Details")
         .description("Specifies whether the Processor should lookup details about the Slack User who sent the received message. " +
             "If true, the output JSON will contain an additional field named 'userDetails'. " +
@@ -132,13 +134,24 @@ public class ListenSlack extends AbstractProcessor {
         .required(true)
         .defaultValue("false")
         .allowableValues("true", "false")
-        .dependsOn(EVENT_TYPE, RECEIVE_MESSAGE_EVENTS, RECEIVE_MENTION_EVENTS)
+        .dependsOn(EVENT_TYPE, RECEIVE_MESSAGE_EVENTS, RECEIVE_MENTION_EVENTS, RECEIVE_JOINED_CHANNEL_EVENTS)
         .build();
 
     static Relationship REL_SUCCESS = new Relationship.Builder()
         .name("success")
         .description("All FlowFiles that are created will be sent to this Relationship.")
         .build();
+
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+            APP_TOKEN,
+            BOT_TOKEN,
+            EVENT_TYPE,
+            RESOLVE_USER_DETAILS
+    );
+
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS
+    );
 
     private final TransferQueue<EventWrapper> eventTransferQueue = new LinkedTransferQueue<>();
     private volatile SocketModeApp socketModeApp;
@@ -147,16 +160,12 @@ public class ListenSlack extends AbstractProcessor {
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return Arrays.asList(
-            APP_TOKEN,
-            BOT_TOKEN,
-            EVENT_TYPE,
-            RESOLVE_USER_DETAILS);
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
     public Set<Relationship> getRelationships() {
-        return Collections.singleton(REL_SUCCESS);
+        return RELATIONSHIPS;
     }
 
 
@@ -179,6 +188,12 @@ public class ListenSlack extends AbstractProcessor {
         } else if (context.getProperty(EVENT_TYPE).getValue().equals(RECEIVE_MENTION_EVENTS.getValue())) {
             slackApp.event(AppMentionEvent.class, this::handleEvent);
             // When there's an AppMention, we'll also get a MessageEvent. We need to handle this event, or we'll get warnings in the logs
+            // that no Event Handler is registered, and it will respond back to Slack with a 404. To avoid this, we just acknowledge the event.
+            slackApp.event(MessageEvent.class, (payload, ctx) -> ctx.ack());
+        } else if (context.getProperty(EVENT_TYPE).getValue().equals(RECEIVE_JOINED_CHANNEL_EVENTS.getValue())) {
+            slackApp.event(MemberJoinedChannelEvent.class, this::handleEvent);
+            slackApp.event(MessageChannelJoinEvent.class, this::handleEvent);
+            // When there's an MemberJoinedChannel event, we'll also get a MessageEvent. We need to handle this event, or we'll get warnings in the logs
             // that no Event Handler is registered, and it will respond back to Slack with a 404. To avoid this, we just acknowledge the event.
             slackApp.event(MessageEvent.class, (payload, ctx) -> ctx.ack());
         } else {
@@ -237,20 +252,20 @@ public class ListenSlack extends AbstractProcessor {
 
         FlowFile flowFile = session.create();
         try (final OutputStream out = session.write(flowFile);
-             final JsonGenerator generator = objectMapper.createGenerator(out)) {
+             final JsonGenerator generator = OBJECT_MAPPER.createGenerator(out)) {
 
             // If we need to resolve user details, we need a way to inject it into the JSON. Since we have an object model at this point,
             // we serialize it to a string, then deserialize it back into a JsonNode, and then inject it into the JSON.
             if (context.getProperty(RESOLVE_USER_DETAILS).asBoolean()) {
-                final String stringRepresentation = objectMapper.writeValueAsString(messageEvent);
-                final JsonNode jsonNode = objectMapper.readTree(stringRepresentation);
+                final String stringRepresentation = OBJECT_MAPPER.writeValueAsString(messageEvent);
+                final JsonNode jsonNode = OBJECT_MAPPER.readTree(stringRepresentation);
                 if (jsonNode.hasNonNull("user")) {
                     final String userId = jsonNode.get("user").asText();
                     final User userDetails = userDetailsLookup.getUserDetails(userId);
                     if (userDetails != null) {
                         final ObjectNode objectNode = (ObjectNode) jsonNode;
-                        final String userDetailsJson = objectMapper.writeValueAsString(userDetails);
-                        final JsonNode userDetailsNode = objectMapper.readTree(userDetailsJson);
+                        final String userDetailsJson = OBJECT_MAPPER.writeValueAsString(userDetails);
+                        final JsonNode userDetailsNode = OBJECT_MAPPER.readTree(userDetailsJson);
                         objectNode.set("userDetails", userDetailsNode);
                     }
                 }

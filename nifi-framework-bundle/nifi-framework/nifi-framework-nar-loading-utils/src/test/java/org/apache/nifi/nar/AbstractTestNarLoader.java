@@ -32,6 +32,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Collection;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -85,11 +86,19 @@ public abstract class AbstractTestNarLoader {
         // Create class we are testing
         narLoader = new StandardNarLoader(
                 properties.getExtensionsWorkingDirectory(),
-                properties.getComponentDocumentationWorkingDirectory(),
                 narClassLoaders,
                 extensionManager,
                 extensionMapping,
-                (bundles) -> {
+                new ExtensionUiLoader() {
+                    @Override
+                    public void loadExtensionUis(final Collection<Bundle> bundles) {
+
+                    }
+
+                    @Override
+                    public void unloadExtensionUis(final Collection<Bundle> bundles) {
+
+                    }
                 },
                 NarUnpackMode.UNPACK_INDIVIDUAL_JARS);
     }
@@ -100,7 +109,7 @@ public abstract class AbstractTestNarLoader {
             return;
         }
 
-        Files.walkFileTree(directory, new SimpleFileVisitor<Path>() {
+        Files.walkFileTree(directory, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                 Files.delete(file);

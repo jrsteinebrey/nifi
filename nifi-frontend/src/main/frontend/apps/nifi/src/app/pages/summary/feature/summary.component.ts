@@ -22,7 +22,7 @@ import { loadSummaryListing, resetSummaryState } from '../state/summary-listing/
 import { loadClusterSummary, searchCluster } from '../../../state/cluster-summary/cluster-summary.actions';
 import { selectClusterSummary } from '../../../state/cluster-summary/cluster-summary.selectors';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { isDefinedAndNotNull } from '../../../state/shared';
+import { isDefinedAndNotNull } from '@nifi/shared';
 import { selectSelectedClusterNode } from '../state/summary-listing/summary-listing.selectors';
 
 interface TabLink {
@@ -33,7 +33,8 @@ interface TabLink {
 @Component({
     selector: 'summary',
     templateUrl: './summary.component.html',
-    styleUrls: ['./summary.component.scss']
+    styleUrls: ['./summary.component.scss'],
+    standalone: false
 })
 export class Summary implements OnInit, OnDestroy {
     tabLinks: TabLink[] = [

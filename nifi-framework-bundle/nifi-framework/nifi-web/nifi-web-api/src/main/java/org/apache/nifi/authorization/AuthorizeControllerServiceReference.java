@@ -30,6 +30,7 @@ import org.apache.nifi.web.ResourceNotFoundException;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Authorizes references to Controller Services. Utilizes when Processors, Controller Services, and Reporting Tasks are created and updated.
@@ -62,7 +63,7 @@ public final class AuthorizeControllerServiceReference {
                         if (authorizeTransitiveServices) {
                             authorizeControllerServiceReferences(currentServiceAuthorizable, authorizer, lookup, authorizeTransitiveServices);
                         }
-                    } catch (ResourceNotFoundException e) {
+                    } catch (ResourceNotFoundException ignored) {
                         // ignore if the resource is not found, if the referenced service was previously deleted, it should not stop this action
                     }
                 }
@@ -106,7 +107,7 @@ public final class AuthorizeControllerServiceReference {
                             try {
                                 final Authorizable currentServiceAuthorizable = lookup.getControllerService(currentValue).getAuthorizable();
                                 currentServiceAuthorizable.authorize(authorizer, RequestAction.READ, user);
-                            } catch (ResourceNotFoundException e) {
+                            } catch (ResourceNotFoundException ignored) {
                                 // ignore if the resource is not found, if currentValue was previously deleted, it should not stop assignment of proposedValue
                             }
                         }
@@ -162,7 +163,42 @@ public final class AuthorizeControllerServiceReference {
             Authorizable serviceAuthorizable = service.getAuthorizable();
 
             serviceAuthorizable.authorize(authorizer, RequestAction.READ, user);
-            serviceAuthorizable.authorize(authorizer, RequestAction.WRITE, user);
         });
+    }
+
+    /**
+     * Unresolved Controller Services may be unresolved because
+     * - The identifier matches an existing Controller Service id (unresolved because the proposed id was unchanged from resolved id)
+     * - An applicable Controller Service does not exist
+     * - The user lacks permission to an applicable Controller Service
+     *
+     * If any of those unresolved Controller Services do match a local Controller Service we need to authorize access to it.
+     *
+     * @param groupId the group id
+     * @param unresolvedControllerServices the unresolved Controller Services
+     * @param authorizer the Authorizer
+     * @param lookup the AuthorizableLookup
+     * @param user the current user
+     */
+    public static void authorizeUnresolvedControllerServiceReferences(final String groupId, final Set<String> unresolvedControllerServices,
+                                                                      final Authorizer authorizer, final AuthorizableLookup lookup, final NiFiUser user) {
+
+        // if there are no unresolved Controller Services we can return
+        if (unresolvedControllerServices.isEmpty()) {
+            return;
+        }
+
+        lookup.getControllerServices(groupId, cs -> {
+            // if the unresolved controller service directly contains the id of a locally available service, include it for authorization
+            final boolean containsId = unresolvedControllerServices.contains(cs.getIdentifier());
+            if (containsId) {
+                return true;
+            }
+
+            // if the unresolved controller service contains the versioned id of a locally available service, include it for authorization
+            final Optional<String> versionedId = cs.getVersionedComponentId();
+            return versionedId.filter(unresolvedControllerServices::contains).isPresent();
+        })
+        .forEach(ca -> ca.getAuthorizable().authorize(authorizer, RequestAction.READ, user));
     }
 }

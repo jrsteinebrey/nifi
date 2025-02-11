@@ -22,12 +22,7 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { MatButtonModule } from '@angular/material/button';
 import { NifiSpinnerDirective } from '../../../../../ui/common/spinner/nifi-spinner.directive';
 import { Observable, of } from 'rxjs';
-import {
-    InlineServiceCreationRequest,
-    InlineServiceCreationResponse,
-    ParameterContextReferenceEntity,
-    Property
-} from '../../../../../state/shared';
+import { InlineServiceCreationRequest, InlineServiceCreationResponse, Property } from '../../../../../state/shared';
 import {
     EditParameterProviderRequest,
     ParameterProviderEntity,
@@ -35,17 +30,19 @@ import {
 } from '../../../state/parameter-providers';
 import { AbstractControl, FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Client } from '../../../../../service/client.service';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { ControllerServiceReferences } from '../../../../../ui/common/controller-service/controller-service-references/controller-service-references.component';
 import { ParameterProviderReferences } from '../parameter-context-references/parameter-provider-references.component';
 import { PropertyTable } from '../../../../../ui/common/property-table/property-table.component';
-import { ErrorBanner } from '../../../../../ui/common/error-banner/error-banner.component';
 import { CommonModule } from '@angular/common';
 import { ClusterConnectionService } from '../../../../../service/cluster-connection.service';
-import { TextTip } from '../../../../../ui/common/tooltips/text-tip/text-tip.component';
-import { NifiTooltipDirective } from '../../../../../ui/common/tooltips/nifi-tooltip.directive';
+import {
+    TextTip,
+    NiFiCommon,
+    NifiTooltipDirective,
+    CopyDirective,
+    ParameterContextReferenceEntity
+} from '@nifi/shared';
 import {
     ConfigVerificationResult,
     ModifiedProperties,
@@ -53,10 +50,11 @@ import {
 } from '../../../../../state/property-verification';
 import { PropertyVerification } from '../../../../../ui/common/property-verification/property-verification.component';
 import { TabbedDialog } from '../../../../../ui/common/tabbed-dialog/tabbed-dialog.component';
+import { ErrorContextKey } from '../../../../../state/error';
+import { ContextErrorBanner } from '../../../../../ui/common/context-error-banner/context-error-banner.component';
 
 @Component({
     selector: 'edit-parameter-provider',
-    standalone: true,
     imports: [
         MatDialogModule,
         MatTabsModule,
@@ -65,13 +63,13 @@ import { TabbedDialog } from '../../../../../ui/common/tabbed-dialog/tabbed-dial
         ReactiveFormsModule,
         MatFormFieldModule,
         MatInputModule,
-        ControllerServiceReferences,
         ParameterProviderReferences,
         PropertyTable,
-        ErrorBanner,
         CommonModule,
         NifiTooltipDirective,
-        PropertyVerification
+        PropertyVerification,
+        ContextErrorBanner,
+        CopyDirective
     ],
     templateUrl: './edit-parameter-provider.component.html',
     styleUrls: ['./edit-parameter-provider.component.scss']
@@ -185,4 +183,6 @@ export class EditParameterProvider extends TabbedDialog {
             properties: this.getModifiedProperties()
         });
     }
+
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

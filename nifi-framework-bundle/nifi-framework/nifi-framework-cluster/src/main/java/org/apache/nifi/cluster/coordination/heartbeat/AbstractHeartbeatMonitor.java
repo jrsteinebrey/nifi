@@ -77,15 +77,12 @@ public abstract class AbstractHeartbeatMonitor implements HeartbeatMonitor {
             logger.error("Failed to start Heartbeat Monitor", e);
         }
 
-        this.future = flowEngine.scheduleWithFixedDelay(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    monitorHeartbeats();
-                } catch (final Exception e) {
-                    clusterCoordinator.reportEvent(null, Severity.ERROR, "Failed to process heartbeats from nodes due to " + e.toString());
-                    logger.error("Failed to process heartbeats", e);
-                }
+        this.future = flowEngine.scheduleWithFixedDelay(() -> {
+            try {
+                monitorHeartbeats();
+            } catch (final Exception e) {
+                clusterCoordinator.reportEvent(null, Severity.ERROR, "Failed to process heartbeats from nodes due to " + e);
+                logger.error("Failed to process heartbeats", e);
             }
         }, heartbeatIntervalMillis, heartbeatIntervalMillis, TimeUnit.MILLISECONDS);
     }
@@ -154,8 +151,7 @@ public abstract class AbstractHeartbeatMonitor implements HeartbeatMonitor {
             } catch (final Exception e) {
                 clusterCoordinator.reportEvent(null, Severity.ERROR,
                         "Received heartbeat from " + heartbeat.getNodeIdentifier() + " but failed to process heartbeat due to " + e);
-                logger.error("Failed to process heartbeat from {} due to {}", heartbeat.getNodeIdentifier(), e.toString());
-                logger.error("", e);
+                logger.error("Failed to process heartbeat from {}", heartbeat.getNodeIdentifier(), e);
             }
         }
 
@@ -193,8 +189,7 @@ public abstract class AbstractHeartbeatMonitor implements HeartbeatMonitor {
                     try {
                         removeHeartbeat(nodeIdentifier);
                     } catch (final Exception e) {
-                        logger.warn("Failed to remove heartbeat for {} due to {}", nodeIdentifier, e.toString());
-                        logger.warn("", e);
+                        logger.warn("Failed to remove heartbeat for {}", nodeIdentifier, e);
                     }
                 }
             }
@@ -287,6 +282,11 @@ public abstract class AbstractHeartbeatMonitor implements HeartbeatMonitor {
             if (connectionRequestTime != null && heartbeat.getTimestamp() < connectionRequestTime) {
                 clusterCoordinator.reportEvent(nodeId, Severity.INFO, "Received heartbeat but ignoring because it was reported before the node was last asked to reconnect.");
                 removeHeartbeat(nodeId);
+                return;
+            }
+
+            if (!clusterCoordinator.isApiReachable(nodeId)) {
+                logger.info("Node API Address [{}] not reachable: cluster connection request deferred pending successful network connection", nodeId);
                 return;
             }
 

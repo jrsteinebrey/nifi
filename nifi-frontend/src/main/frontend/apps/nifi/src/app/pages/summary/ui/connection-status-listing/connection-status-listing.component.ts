@@ -33,7 +33,7 @@ import { selectCurrentUser } from '../../../../state/current-user/current-user.s
 import { filter, map, switchMap, take } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { getStatusHistoryAndOpenDialog } from '../../../../state/status-history/status-history.actions';
-import { ComponentType, isDefinedAndNotNull } from '../../../../state/shared';
+import { ComponentType, isDefinedAndNotNull } from '@nifi/shared';
 import { loadClusterSummary } from '../../../../state/cluster-summary/cluster-summary.actions';
 import { ConnectionStatusSnapshotEntity } from '../../state';
 import {
@@ -46,7 +46,8 @@ import { NodeSearchResult } from '../../../../state/cluster-summary';
 @Component({
     selector: 'connection-status-listing',
     templateUrl: './connection-status-listing.component.html',
-    styleUrls: ['./connection-status-listing.component.scss']
+    styleUrls: ['./connection-status-listing.component.scss'],
+    standalone: false
 })
 export class ConnectionStatusListing {
     loadedTimestamp$ = this.store.select(selectSummaryListingLoadedTimestamp);

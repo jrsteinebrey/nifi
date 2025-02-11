@@ -36,7 +36,6 @@ import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { FlowConfigurationHistoryTable } from './flow-configuration-history-table/flow-configuration-history-table.component';
 import { Sort } from '@angular/material/sort';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { isDefinedAndNotNull } from '../../../../state/shared';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -45,7 +44,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { selectAbout } from '../../../../state/about/about.selectors';
 import { debounceTime } from 'rxjs';
-import { NiFiCommon } from '../../../../service/nifi-common.service';
+import { isDefinedAndNotNull, NiFiCommon } from '@nifi/shared';
 import { MatButtonModule } from '@angular/material/button';
 import { selectCurrentUser } from '../../../../state/current-user/current-user.selectors';
 
@@ -56,7 +55,6 @@ interface FilterableColumn {
 
 @Component({
     selector: 'flow-configuration-history-listing',
-    standalone: true,
     imports: [
         CommonModule,
         NgxSkeletonLoaderModule,

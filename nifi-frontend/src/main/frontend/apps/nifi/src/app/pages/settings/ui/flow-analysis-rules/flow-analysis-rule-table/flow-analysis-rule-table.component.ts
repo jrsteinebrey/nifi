@@ -18,24 +18,20 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule } from '@angular/material/dialog';
-import { RouterLink } from '@angular/router';
 import { NgClass } from '@angular/common';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatSortModule, Sort } from '@angular/material/sort';
 import { FlowAnalysisRuleEntity } from '../../../state/flow-analysis-rules';
-import { TextTip } from '../../../../../ui/common/tooltips/text-tip/text-tip.component';
 import { BulletinsTip } from '../../../../../ui/common/tooltips/bulletins-tip/bulletins-tip.component';
 import { ValidationErrorsTip } from '../../../../../ui/common/tooltips/validation-errors-tip/validation-errors-tip.component';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
+import { NiFiCommon, TextTip, NifiTooltipDirective } from '@nifi/shared';
 import { BulletinsTipInput, ValidationErrorsTipInput } from '../../../../../state/shared';
-import { NifiTooltipDirective } from '../../../../../ui/common/tooltips/nifi-tooltip.directive';
 import { ReportingTaskEntity } from '../../../state/reporting-tasks';
 import { CurrentUser } from '../../../../../state/current-user';
 import { MatMenu, MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
 
 @Component({
     selector: 'flow-analysis-rule-table',
-    standalone: true,
     templateUrl: './flow-analysis-rule-table.component.html',
     imports: [
         MatButtonModule,
@@ -44,7 +40,6 @@ import { MatMenu, MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
         MatSortModule,
         NgClass,
         NifiTooltipDirective,
-        RouterLink,
         MatMenu,
         MatMenuItem,
         MatMenuTrigger
@@ -163,14 +158,14 @@ export class FlowAnalysisRuleTable {
 
     getStateIcon(entity: FlowAnalysisRuleEntity): string {
         if (entity.status.validationStatus === 'VALIDATING') {
-            return 'validating surface-color fa fa-spin fa-circle-o-notch';
+            return 'validating neutral-color fa fa-spin fa-circle-o-notch';
         } else if (entity.status.validationStatus === 'INVALID') {
             return 'invalid fa fa-warning caution-color';
         } else {
             if (entity.status.runStatus === 'DISABLED') {
-                return 'disabled surface-color icon icon-enable-false';
+                return 'disabled neutral-color icon icon-enable-false';
             } else if (entity.status.runStatus === 'ENABLED') {
-                return 'enabled success-color fa fa-flash';
+                return 'enabled success-color-variant fa fa-flash';
             }
         }
         return '';

@@ -54,6 +54,8 @@ export class CanvasView {
     private birdseyeTranslateInProgress = false;
     private allowTransition = false;
 
+    private canvasInitialized: boolean = false;
+
     constructor(
         private store: Store<CanvasState>,
         private canvasUtils: CanvasUtils,
@@ -64,41 +66,7 @@ export class CanvasView {
         private funnelManager: FunnelManager,
         private labelManager: LabelManager,
         private connectionManager: ConnectionManager
-    ) {}
-
-    public init(svg: any, canvas: any): void {
-        WebFont.load({
-            custom: {
-                families: ['Roboto', 'flowfont', 'FontAwesome']
-            },
-            active: function () {
-                // re-render once the fonts have loaded, without the fonts
-                // positions of elements on the canvas may be incorrect
-                self.processorManager.render();
-                self.processGroupManager.render();
-                self.remoteProcessGroupManager.render();
-                self.portManager.render();
-                self.labelManager.render();
-                self.funnelManager.render();
-                self.connectionManager.render();
-            }
-        });
-
-        this.svg = svg;
-        this.canvas = canvas;
-
-        this.k = INITIAL_SCALE;
-        this.x = INITIAL_TRANSLATE.x;
-        this.y = INITIAL_TRANSLATE.y;
-
-        this.labelManager.init();
-        this.funnelManager.init();
-        this.portManager.init();
-        this.remoteProcessGroupManager.init();
-        this.processGroupManager.init();
-        this.processorManager.init();
-        this.connectionManager.init();
-
+    ) {
         const self: CanvasView = this;
         let refreshed: Promise<void> | null;
         let panning = false;
@@ -133,8 +101,6 @@ export class CanvasView {
                 if (!self.isBirdseyeEvent()) {
                     // ensure the canvas was actually refreshed
                     if (refreshed) {
-                        self.updateCanvasVisibility();
-
                         // dispatch the current transform
                         self.store.dispatch(
                             transformComplete({
@@ -147,6 +113,8 @@ export class CanvasView {
                                 }
                             })
                         );
+
+                        self.updateCanvasVisibility();
 
                         // refresh the birdseye
                         refreshed.then(function () {
@@ -166,9 +134,56 @@ export class CanvasView {
                 // reset the panning flag
                 panning = false;
             });
+    }
+
+    public init(svg: any, canvas: any): void {
+        const self: CanvasView = this;
+
+        WebFont.load({
+            custom: {
+                families: ['Inter', 'flowfont', 'FontAwesome']
+            },
+            active: function () {
+                // re-render once the fonts have loaded, without the fonts
+                // positions of elements on the canvas may be incorrect
+                self.processorManager.render();
+                self.processGroupManager.render();
+                self.remoteProcessGroupManager.render();
+                self.portManager.render();
+                self.labelManager.render();
+                self.funnelManager.render();
+                self.connectionManager.render();
+            }
+        });
+
+        this.svg = svg;
+        this.canvas = canvas;
+
+        this.k = INITIAL_SCALE;
+        this.x = INITIAL_TRANSLATE.x;
+        this.y = INITIAL_TRANSLATE.y;
+
+        this.labelManager.init();
+        this.funnelManager.init();
+        this.portManager.init();
+        this.remoteProcessGroupManager.init();
+        this.processGroupManager.init();
+        this.processorManager.init();
+        this.connectionManager.init();
 
         // add the behavior to the canvas and disable dbl click zoom
         this.svg.call(this.behavior).on('dblclick.zoom', null);
+
+        this.canvasInitialized = true;
+    }
+
+    public getCanvasBoundingClientRect(): DOMRect | null {
+        const canvasContainer: any = document.getElementById('canvas-container');
+        if (canvasContainer == null) {
+            return null;
+        }
+
+        return canvasContainer.getBoundingClientRect() as DOMRect;
     }
 
     // filters zoom events as programmatically modifying the translate or scale now triggers the handlers
@@ -246,7 +261,7 @@ export class CanvasView {
     }
 
     /**
-     * Determines if a bounding box is fully in the current viewable canvas area.
+     * Determines if a bounding box is in the current viewable canvas area.
      *
      * @param {type} boundingBox       Bounding box to check.
      * @param {boolean} strict         If true, the entire bounding box must be in the viewport.
@@ -254,17 +269,10 @@ export class CanvasView {
      * @returns {boolean}
      */
     public isBoundingBoxInViewport(boundingBox: any, strict: boolean): boolean {
-        const selection: any = this.canvasUtils.getSelection();
-        if (selection.size() !== 1) {
-            return false;
-        }
-
         const canvasContainer: any = document.getElementById('canvas-container');
         if (!canvasContainer) {
             return false;
         }
-
-        const yOffset = canvasContainer.getBoundingClientRect().top;
 
         // scale the translation
         const translate = [this.x / this.k, this.y / this.k];
@@ -281,8 +289,8 @@ export class CanvasView {
 
         const left = Math.ceil(boundingBox.x);
         const right = Math.floor(boundingBox.x + boundingBox.width);
-        const top = Math.ceil(boundingBox.y - yOffset / this.k);
-        const bottom = Math.floor(boundingBox.y - yOffset / this.k + boundingBox.height);
+        const top = Math.ceil(boundingBox.y);
+        const bottom = Math.floor(boundingBox.y + boundingBox.height);
 
         if (strict) {
             return !(left < screenLeft || right > screenRight || top < screenTop || bottom > screenBottom);
@@ -491,6 +499,13 @@ export class CanvasView {
         return bbox;
     }
 
+    /**
+     * Translates a position to the space visible on the canvas
+     *
+     * @param position
+     *
+     * @returns {Position | null}
+     */
     public getCanvasPosition(position: Position): Position | null {
         const canvasContainer: any = document.getElementById('canvas-container');
         if (!canvasContainer) {
@@ -522,7 +537,11 @@ export class CanvasView {
         return null;
     }
 
-    private centerBoundingBox(boundingBox: any): void {
+    /**
+     * Centers the canvas to a bounding box. If a scale is provided, it will zoom to that scale.
+     * @param {type} boundingBox
+     */
+    public centerBoundingBox(boundingBox: any): void {
         let scale: number = this.k;
         if (boundingBox.scale != null) {
             scale = boundingBox.scale;
@@ -775,5 +794,28 @@ export class CanvasView {
                 resolve();
             }
         });
+    }
+
+    public isCanvasInitialized(): boolean {
+        return this.canvasInitialized;
+    }
+
+    public destroy(): void {
+        this.canvasInitialized = false;
+
+        this.labelManager.destroy();
+        this.funnelManager.destroy();
+        this.portManager.destroy();
+        this.remoteProcessGroupManager.destroy();
+        this.processGroupManager.destroy();
+        this.processorManager.destroy();
+        this.connectionManager.destroy();
+
+        this.k = INITIAL_SCALE;
+        this.x = INITIAL_TRANSLATE.x;
+        this.y = INITIAL_TRANSLATE.y;
+
+        this.svg = null;
+        this.canvas = null;
     }
 }

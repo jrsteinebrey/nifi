@@ -39,13 +39,11 @@ import {
     stopRemotePortTransmission
 } from '../../state/manage-remote-ports/manage-remote-ports.actions';
 import { initialState } from '../../state/manage-remote-ports/manage-remote-ports.reducer';
-import { isDefinedAndNotNull } from '../../../../state/shared';
 import { selectCurrentUser } from '../../../../state/current-user/current-user.selectors';
 import { NiFiState } from '../../../../state';
-import { NiFiCommon } from '../../../../service/nifi-common.service';
+import { isDefinedAndNotNull, NiFiCommon, TextTip } from '@nifi/shared';
 import { MatTableDataSource } from '@angular/material/table';
 import { Sort } from '@angular/material/sort';
-import { TextTip } from '../../../../ui/common/tooltips/text-tip/text-tip.component';
 import { concatLatestFrom } from '@ngrx/operators';
 import {
     selectFlowConfiguration,
@@ -55,7 +53,8 @@ import { selectAbout } from '../../../../state/about/about.selectors';
 
 @Component({
     templateUrl: './manage-remote-ports.component.html',
-    styleUrls: ['./manage-remote-ports.component.scss']
+    styleUrls: ['./manage-remote-ports.component.scss'],
+    standalone: false
 })
 export class ManageRemotePorts implements OnDestroy {
     initialSortColumn: 'name' | 'type' | 'tasks' | 'count' | 'size' | 'duration' | 'compression' | 'actions' = 'name';

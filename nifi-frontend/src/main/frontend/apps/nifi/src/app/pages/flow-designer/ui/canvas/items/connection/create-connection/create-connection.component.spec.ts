@@ -22,7 +22,8 @@ import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { provideMockStore } from '@ngrx/store/testing';
 import { initialState } from '../../../../../state/flow/flow.reducer';
 import { CreateConnectionDialogRequest } from '../../../../../state/flow';
-import { ComponentType, DocumentedType } from '../../../../../../../state/shared';
+import { ComponentType } from '@nifi/shared';
+import { DocumentedType } from '../../../../../../../state/shared';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { of } from 'rxjs';
 import { ClusterConnectionService } from '../../../../../../../service/cluster-connection.service';
@@ -253,7 +254,7 @@ describe('CreateConnection', () => {
                             concurrentlySchedulableTaskCount: 1,
                             autoTerminatedRelationships: [],
                             comments: '',
-                            customUiUrl: '/nifi-update-attribute-ui-2.0.0-SNAPSHOT/configure',
+                            customUiUrl: '/nifi-update-attribute-ui-2.0.0-SNAPSHOT',
                             lossTolerant: false,
                             defaultConcurrentTasks: {
                                 TIMER_DRIVEN: '1',

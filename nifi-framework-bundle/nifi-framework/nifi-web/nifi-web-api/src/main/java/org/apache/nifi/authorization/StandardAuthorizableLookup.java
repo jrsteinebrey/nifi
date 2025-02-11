@@ -28,6 +28,7 @@ import org.apache.nifi.authorization.resource.ResourceFactory;
 import org.apache.nifi.authorization.resource.ResourceType;
 import org.apache.nifi.authorization.resource.RestrictedComponentsAuthorizableFactory;
 import org.apache.nifi.authorization.resource.TenantAuthorizable;
+import org.apache.nifi.authorization.resource.VersionedComponentAuthorizable;
 import org.apache.nifi.authorization.user.NiFiUser;
 import org.apache.nifi.bundle.BundleCoordinate;
 import org.apache.nifi.components.ConfigurableComponent;
@@ -70,14 +71,19 @@ import org.apache.nifi.web.dao.ProcessorDAO;
 import org.apache.nifi.web.dao.RemoteProcessGroupDAO;
 import org.apache.nifi.web.dao.ReportingTaskDAO;
 import org.apache.nifi.web.dao.SnippetDAO;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Component;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
-
-class StandardAuthorizableLookup implements AuthorizableLookup {
+@Component
+public class StandardAuthorizableLookup implements AuthorizableLookup {
 
     private static final TenantAuthorizable TENANT_AUTHORIZABLE = new TenantAuthorizable();
 
@@ -292,6 +298,11 @@ class StandardAuthorizableLookup implements AuthorizableLookup {
     }
 
     @Override
+    public ProcessGroupAuthorizable getRootProcessGroup() {
+        return getProcessGroup(controllerFacade.getRootGroupId());
+    }
+
+    @Override
     public ProcessGroupAuthorizable getProcessGroup(final String id) {
         final ProcessGroup processGroup = processGroupDAO.getProcessGroup(id);
         return new StandardProcessGroupAuthorizable(processGroup, controllerFacade.getExtensionManager());
@@ -310,6 +321,39 @@ class StandardAuthorizableLookup implements AuthorizableLookup {
     @Override
     public Authorizable getFunnel(final String id) {
         return funnelDAO.getFunnel(id);
+    }
+
+    @Override
+    public Set<ComponentAuthorizable> getControllerServices(final String groupId, final Predicate<VersionedComponentAuthorizable> filter) {
+        return controllerServiceDAO.getControllerServices(groupId, true, false).stream()
+                .filter(cs -> filter.test(new VersionedComponentAuthorizable() {
+                        @Override
+                        public Optional<String> getVersionedComponentId() {
+                            return cs.getVersionedComponentId();
+                        }
+
+                        @Override
+                        public String getIdentifier() {
+                            return cs.getIdentifier();
+                        }
+
+                        @Override
+                        public String getProcessGroupIdentifier() {
+                            return cs.getProcessGroupIdentifier();
+                        }
+
+                        @Override
+                        public Authorizable getParentAuthorizable() {
+                            return cs.getParentAuthorizable();
+                        }
+
+                        @Override
+                        public Resource getResource() {
+                            return cs.getResource();
+                        }
+                    })
+                )
+                .map(controllerServiceNode -> new ControllerServiceComponentAuthorizable(controllerServiceNode, controllerFacade.getExtensionManager())).collect(Collectors.toSet());
     }
 
     @Override
@@ -386,6 +430,13 @@ class StandardAuthorizableLookup implements AuthorizableLookup {
     public ComponentAuthorizable getFlowAnalysisRule(final String id) {
         final FlowAnalysisRuleNode flowAnalysisRuleNode = flowAnalysisRuleDAO.getFlowAnalysisRule(id);
         return new FlowAnalysisRuleComponentAuthorizable(flowAnalysisRuleNode, controllerFacade.getExtensionManager());
+    }
+
+    @Override
+    public Set<ComponentAuthorizable> getParameterProviders(final Predicate<org.apache.nifi.authorization.resource.ComponentAuthorizable> filter) {
+        return parameterProviderDAO.getParameterProviders().stream()
+                .filter(filter)
+                .map(parameterProviderNode -> new ParameterProviderComponentAuthorizable(parameterProviderNode, controllerFacade.getExtensionManager())).collect(Collectors.toSet());
     }
 
     @Override
@@ -723,7 +774,7 @@ class StandardAuthorizableLookup implements AuthorizableLookup {
                 try {
                     final BundleCoordinate bundle = BundleUtils.getCompatibleBundle(extensionManager, processor.getType(), processor.getBundle());
                     processors.add(getConfigurableComponent(processor.getType(), new BundleDTO(bundle.getGroup(), bundle.getId(), bundle.getVersion())));
-                } catch (final IllegalStateException e) {
+                } catch (final IllegalStateException ignored) {
                     // no compatible bundles... no additional auth checks necessary... if created, will be ghosted
                 }
             });
@@ -734,7 +785,7 @@ class StandardAuthorizableLookup implements AuthorizableLookup {
                 try {
                     final BundleCoordinate bundle = BundleUtils.getCompatibleBundle(extensionManager, controllerService.getType(), controllerService.getBundle());
                     controllerServices.add(getConfigurableComponent(controllerService.getType(), new BundleDTO(bundle.getGroup(), bundle.getId(), bundle.getVersion())));
-                } catch (final IllegalStateException e) {
+                } catch (final IllegalStateException ignored) {
                     // no compatible bundles... no additional auth checks necessary... if created, will be ghosted
                 }
             });
@@ -1208,6 +1259,11 @@ class StandardAuthorizableLookup implements AuthorizableLookup {
         }
 
         @Override
+        public Optional<Authorizable> getParameterContextAuthorizable() {
+            return Optional.ofNullable(processGroup.getParameterContext());
+        }
+
+        @Override
         public ProcessGroup getProcessGroup() {
             return processGroup;
         }
@@ -1216,6 +1272,13 @@ class StandardAuthorizableLookup implements AuthorizableLookup {
         public Set<ComponentAuthorizable> getEncapsulatedProcessors() {
             return processGroup.findAllProcessors().stream().map(
                     processorNode -> new ProcessorComponentAuthorizable(processorNode, extensionManager)).collect(Collectors.toSet());
+        }
+
+        @Override
+        public Set<ComponentAuthorizable> getEncapsulatedProcessors(Predicate<org.apache.nifi.authorization.resource.ComponentAuthorizable> processorFilter) {
+            return processGroup.findAllProcessors().stream()
+                    .filter(processorFilter)
+                    .map(processorNode -> new ProcessorComponentAuthorizable(processorNode, extensionManager)).collect(Collectors.toSet());
         }
 
         @Override
@@ -1260,6 +1323,13 @@ class StandardAuthorizableLookup implements AuthorizableLookup {
             return processGroup.findAllControllerServices().stream().map(
                     controllerServiceNode -> new ControllerServiceComponentAuthorizable(controllerServiceNode, extensionManager)).collect(Collectors.toSet());
         }
+
+        @Override
+        public Set<ComponentAuthorizable> getEncapsulatedControllerServices(Predicate<org.apache.nifi.authorization.resource.ComponentAuthorizable> serviceFilter) {
+            return processGroup.findAllControllerServices().stream()
+                    .filter(serviceFilter)
+                    .map(controllerServiceNode -> new ControllerServiceComponentAuthorizable(controllerServiceNode, extensionManager)).collect(Collectors.toSet());
+        }
     }
 
     private static class StandardConnectionAuthorizable implements ConnectionAuthorizable {
@@ -1300,70 +1370,89 @@ class StandardAuthorizableLookup implements AuthorizableLookup {
         }
     }
 
+    @Autowired
     public void setProcessorDAO(ProcessorDAO processorDAO) {
         this.processorDAO = processorDAO;
     }
 
+    @Autowired
     public void setProcessGroupDAO(ProcessGroupDAO processGroupDAO) {
         this.processGroupDAO = processGroupDAO;
     }
 
+    @Autowired
     public void setRemoteProcessGroupDAO(RemoteProcessGroupDAO remoteProcessGroupDAO) {
         this.remoteProcessGroupDAO = remoteProcessGroupDAO;
     }
 
+    @Autowired
     public void setLabelDAO(LabelDAO labelDAO) {
         this.labelDAO = labelDAO;
     }
 
+    @Autowired
     public void setFunnelDAO(FunnelDAO funnelDAO) {
         this.funnelDAO = funnelDAO;
     }
 
+    @Autowired
     public void setSnippetDAO(SnippetDAO snippetDAO) {
         this.snippetDAO = snippetDAO;
     }
 
+    @Qualifier("standardInputPortDAO")
+    @Autowired
     public void setInputPortDAO(PortDAO inputPortDAO) {
         this.inputPortDAO = inputPortDAO;
     }
 
+    @Qualifier("standardOutputPortDAO")
+    @Autowired
     public void setOutputPortDAO(PortDAO outputPortDAO) {
         this.outputPortDAO = outputPortDAO;
     }
 
+    @Autowired
     public void setConnectionDAO(ConnectionDAO connectionDAO) {
         this.connectionDAO = connectionDAO;
     }
 
+    @Autowired
     public void setControllerServiceDAO(ControllerServiceDAO controllerServiceDAO) {
         this.controllerServiceDAO = controllerServiceDAO;
     }
 
+    @Autowired
     public void setReportingTaskDAO(ReportingTaskDAO reportingTaskDAO) {
         this.reportingTaskDAO = reportingTaskDAO;
     }
 
+    @Autowired
     public void setFlowAnalysisRuleDAO(FlowAnalysisRuleDAO flowAnalysisRuleDAO) {
         this.flowAnalysisRuleDAO = flowAnalysisRuleDAO;
     }
 
+    @Autowired
     public void setParameterProviderDAO(final ParameterProviderDAO parameterProviderDAO) {
         this.parameterProviderDAO = parameterProviderDAO;
     }
 
+    @Autowired
     public void setFlowRegistryDAO(FlowRegistryDAO flowRegistryDAO) {
         this.flowRegistryDAO = flowRegistryDAO;
     }
 
+    @Autowired
     public void setAccessPolicyDAO(AccessPolicyDAO accessPolicyDAO) {
         this.accessPolicyDAO = accessPolicyDAO;
     }
 
+    @Autowired
     public void setParameterContextDAO(ParameterContextDAO parameterContextDAO) {
         this.parameterContextDAO = parameterContextDAO;
     }
 
+    @Autowired
     public void setControllerFacade(ControllerFacade controllerFacade) {
         this.controllerFacade = controllerFacade;
     }

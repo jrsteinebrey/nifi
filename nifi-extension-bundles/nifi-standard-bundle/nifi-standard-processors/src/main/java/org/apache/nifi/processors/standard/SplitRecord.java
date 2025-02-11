@@ -35,7 +35,6 @@ import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.exception.ProcessException;
-import org.apache.nifi.processor.io.InputStreamCallback;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.schema.access.SchemaNotFoundException;
 import org.apache.nifi.serialization.MalformedRecordException;
@@ -49,12 +48,9 @@ import org.apache.nifi.serialization.record.Record;
 import org.apache.nifi.serialization.record.RecordSchema;
 import org.apache.nifi.serialization.record.RecordSet;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -100,6 +96,12 @@ public class SplitRecord extends AbstractProcessor {
         .required(true)
         .build();
 
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+            RECORD_READER,
+            RECORD_WRITER,
+            RECORDS_PER_SPLIT
+    );
+
     static final Relationship REL_SPLITS = new Relationship.Builder()
         .name("splits")
         .description("The individual 'segments' of the original FlowFile will be routed to this relationship.")
@@ -114,22 +116,20 @@ public class SplitRecord extends AbstractProcessor {
             + "the unchanged FlowFile will be routed to this relationship.")
         .build();
 
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SPLITS,
+            REL_ORIGINAL,
+            REL_FAILURE
+    );
+
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        final List<PropertyDescriptor> properties = new ArrayList<>();
-        properties.add(RECORD_READER);
-        properties.add(RECORD_WRITER);
-        properties.add(RECORDS_PER_SPLIT);
-        return properties;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
     public Set<Relationship> getRelationships() {
-        final Set<Relationship> relationships = new HashSet<>();
-        relationships.add(REL_SPLITS);
-        relationships.add(REL_ORIGINAL);
-        relationships.add(REL_FAILURE);
-        return relationships;
+        return RELATIONSHIPS;
     }
 
     @Override
@@ -148,53 +148,50 @@ public class SplitRecord extends AbstractProcessor {
         final Map<String, String> originalAttributes = original.getAttributes();
         final String fragmentId = UUID.randomUUID().toString();
         try {
-            session.read(original, new InputStreamCallback() {
-                @Override
-                public void process(final InputStream in) throws IOException {
-                    try (final RecordReader reader = readerFactory.createRecordReader(originalAttributes, in, original.getSize(), getLogger())) {
+            session.read(original, in -> {
+                try (final RecordReader reader = readerFactory.createRecordReader(originalAttributes, in, original.getSize(), getLogger())) {
 
-                        final RecordSchema schema = writerFactory.getSchema(originalAttributes, reader.getSchema());
+                    final RecordSchema schema = writerFactory.getSchema(originalAttributes, reader.getSchema());
 
-                        final RecordSet recordSet = reader.createRecordSet();
-                        final PushBackRecordSet pushbackSet = new PushBackRecordSet(recordSet);
+                    final RecordSet recordSet = reader.createRecordSet();
+                    final PushBackRecordSet pushbackSet = new PushBackRecordSet(recordSet);
 
-                        int fragmentIndex = 0;
-                        while (pushbackSet.isAnotherRecord()) {
-                            FlowFile split = session.create(original);
+                    int fragmentIndex = 0;
+                    while (pushbackSet.isAnotherRecord()) {
+                        FlowFile split = session.create(original);
 
-                            try {
-                                final Map<String, String> attributes = new HashMap<>();
-                                final WriteResult writeResult;
+                        try {
+                            final Map<String, String> attributes = new HashMap<>();
+                            final WriteResult writeResult;
 
-                                try (final OutputStream out = session.write(split);
-                                    final RecordSetWriter writer = writerFactory.createWriter(getLogger(), schema, out, split)) {
-                                        if (maxRecords == 1) {
-                                            final Record record = pushbackSet.next();
-                                            writeResult = writer.write(record);
-                                        } else {
-                                            final RecordSet limitedSet = pushbackSet.limit(maxRecords);
-                                            writeResult = writer.write(limitedSet);
-                                        }
+                            try (final OutputStream out = session.write(split);
+                                final RecordSetWriter writer = writerFactory.createWriter(getLogger(), schema, out, split)) {
+                                    if (maxRecords == 1) {
+                                        final Record record = pushbackSet.next();
+                                        writeResult = writer.write(record);
+                                    } else {
+                                        final RecordSet limitedSet = pushbackSet.limit(maxRecords);
+                                        writeResult = writer.write(limitedSet);
+                                    }
 
-                                        attributes.put("record.count", String.valueOf(writeResult.getRecordCount()));
-                                        attributes.put(CoreAttributes.MIME_TYPE.key(), writer.getMimeType());
-                                        attributes.put(FRAGMENT_INDEX, String.valueOf(fragmentIndex));
-                                        attributes.put(FRAGMENT_ID, fragmentId);
-                                        attributes.put(SEGMENT_ORIGINAL_FILENAME, original.getAttribute(CoreAttributes.FILENAME.key()));
-                                        attributes.putAll(writeResult.getAttributes());
+                                    attributes.put("record.count", String.valueOf(writeResult.getRecordCount()));
+                                    attributes.put(CoreAttributes.MIME_TYPE.key(), writer.getMimeType());
+                                    attributes.put(FRAGMENT_INDEX, String.valueOf(fragmentIndex));
+                                    attributes.put(FRAGMENT_ID, fragmentId);
+                                    attributes.put(SEGMENT_ORIGINAL_FILENAME, original.getAttribute(CoreAttributes.FILENAME.key()));
+                                    attributes.putAll(writeResult.getAttributes());
 
-                                        session.adjustCounter("Records Split", writeResult.getRecordCount(), false);
-                                }
-
-                                split = session.putAllAttributes(split, attributes);
-                            } finally {
-                                splits.add(split);
+                                    session.adjustCounter("Records Split", writeResult.getRecordCount(), false);
                             }
-                            fragmentIndex++;
+
+                            split = session.putAllAttributes(split, attributes);
+                        } finally {
+                            splits.add(split);
                         }
-                    } catch (final SchemaNotFoundException | MalformedRecordException e) {
-                        throw new ProcessException("Failed to parse incoming data", e);
+                        fragmentIndex++;
                     }
+                } catch (final SchemaNotFoundException | MalformedRecordException e) {
+                    throw new ProcessException("Failed to parse incoming data", e);
                 }
             });
         } catch (final ProcessException pe) {

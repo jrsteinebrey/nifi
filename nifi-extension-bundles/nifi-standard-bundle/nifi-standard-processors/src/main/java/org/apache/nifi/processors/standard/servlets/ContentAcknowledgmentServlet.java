@@ -31,7 +31,6 @@ import jakarta.ws.rs.Path;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.ProcessSession;
-import org.apache.nifi.processor.Processor;
 import org.apache.nifi.processors.standard.ListenHTTP;
 import org.apache.nifi.processors.standard.ListenHTTP.FlowFileEntryTimeWrapper;
 import org.apache.nifi.security.cert.StandardPrincipalFormatter;
@@ -43,7 +42,6 @@ public class ContentAcknowledgmentServlet extends HttpServlet {
     public static final String DEFAULT_FOUND_SUBJECT = "none";
     private static final long serialVersionUID = -2675148117984902978L;
 
-    private Processor processor;
     private Pattern authorizedPattern;
     private ComponentLog logger;
     private ConcurrentMap<String, FlowFileEntryTimeWrapper> flowFileMap;
@@ -53,7 +51,6 @@ public class ContentAcknowledgmentServlet extends HttpServlet {
     @Override
     public void init(final ServletConfig config) throws ServletException {
         final ServletContext context = config.getServletContext();
-        this.processor = (Processor) context.getAttribute(ListenHTTP.CONTEXT_ATTRIBUTE_PROCESSOR);
         this.logger = (ComponentLog) context.getAttribute(ListenHTTP.CONTEXT_ATTRIBUTE_LOGGER);
         this.authorizedPattern = (Pattern) context.getAttribute(ListenHTTP.CONTEXT_ATTRIBUTE_AUTHORITY_PATTERN);
         this.flowFileMap = (ConcurrentMap<String, FlowFileEntryTimeWrapper>) context.getAttribute(ListenHTTP.CONTEXT_ATTRIBUTE_FLOWFILE_MAP);
@@ -118,7 +115,7 @@ public class ContentAcknowledgmentServlet extends HttpServlet {
 
             logger.info("received {} files/{} bytes from Remote Host: [{}] Port [{}] SubjectDN [{}] in {} milliseconds at a rate of {}; "
                     + "transferring to 'success': {}",
-                    new Object[]{flowFiles.size(), totalFlowFileSize, request.getRemoteHost(), request.getRemotePort(), foundSubject, transferTime, transferRate, flowFiles});
+                    flowFiles.size(), totalFlowFileSize, request.getRemoteHost(), request.getRemotePort(), foundSubject, transferTime, transferRate, flowFiles);
 
             final String sendingSubject = foundSubject;
             final ProcessSession session = timeWrapper.getSession();
@@ -129,13 +126,13 @@ public class ContentAcknowledgmentServlet extends HttpServlet {
                     response.flushBuffer();
                 } catch (final Exception e) {
                     logger.error("Received DELETE for HOLD with ID {} from Remote Host: [{}] Port [{}] SubjectDN [{}]. FlowFiles were released but failed to acknowledge them.",
-                        new Object[]{uuid, request.getRemoteHost(), request.getRemotePort(), sendingSubject, e.toString()});
+                            uuid, request.getRemoteHost(), request.getRemotePort(), sendingSubject, e.toString());
                 }
             });
         } catch (final Throwable t) {
             timeWrapper.getSession().rollback();
             logger.error("Received DELETE for HOLD with ID {} from Remote Host: [{}] Port [{}] SubjectDN [{}], but failed to process the request due to {}",
-                    new Object[]{uuid, request.getRemoteHost(), request.getRemotePort(), foundSubject, t.toString()});
+                    uuid, request.getRemoteHost(), request.getRemotePort(), foundSubject, t.toString());
             if (logger.isDebugEnabled()) {
                 logger.error("", t);
             }

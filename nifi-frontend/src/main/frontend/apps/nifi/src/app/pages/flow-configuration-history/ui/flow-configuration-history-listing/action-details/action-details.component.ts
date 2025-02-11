@@ -28,14 +28,12 @@ import {
     PurgeActionDetails,
     RemoteProcessGroupDetails
 } from '../../../state/flow-configuration-history-listing';
-import { PipesModule } from '../../../../../pipes/pipes.module';
+import { CloseOnEscapeDialog, CopyDirective } from '@nifi/shared';
 import { MatButtonModule } from '@angular/material/button';
-import { CloseOnEscapeDialog } from '../../../../../ui/common/close-on-escape-dialog/close-on-escape-dialog.component';
 
 @Component({
     selector: 'action-details',
-    standalone: true,
-    imports: [CommonModule, MatDialogModule, PipesModule, MatButtonModule],
+    imports: [CommonModule, MatDialogModule, MatButtonModule, CopyDirective],
     templateUrl: './action-details.component.html',
     styleUrls: ['./action-details.component.scss']
 })

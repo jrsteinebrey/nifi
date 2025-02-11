@@ -44,16 +44,10 @@ import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.AbstractProcessor;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
-import org.apache.nifi.processor.ProcessorInitializationContext;
 import org.apache.nifi.processor.Relationship;
-import org.apache.nifi.processor.io.InputStreamCallback;
-import org.apache.nifi.processor.io.OutputStreamCallback;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.stream.io.util.LineDemarcator;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -130,7 +124,6 @@ public class RouteText extends AbstractProcessor {
     private static final String matchesRegularExpressionValue = "Matches Regular Expression";
     private static final String containsRegularExpressionValue = "Contains Regular Expression";
     private static final String satisfiesExpression = "Satisfies Expression";
-
 
     public static final AllowableValue ROUTE_TO_MATCHING_PROPERTY_NAME = new AllowableValue(routePropertyNameValue, routePropertyNameValue,
         "Lines will be routed to each relationship whose corresponding expression evaluates to 'true'");
@@ -212,6 +205,15 @@ public class RouteText extends AbstractProcessor {
         .defaultValue("UTF-8")
         .build();
 
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+            ROUTE_STRATEGY,
+            MATCH_STRATEGY,
+            CHARACTER_SET,
+            TRIM_WHITESPACE,
+            IGNORE_CASE,
+            GROUPING_REGEX
+    );
+
     public static final Relationship REL_ORIGINAL = new Relationship.Builder()
         .name("original")
         .description("The original input file will be routed to this destination when the lines have been successfully routed to 1 or more relationships")
@@ -225,10 +227,10 @@ public class RouteText extends AbstractProcessor {
         .description("Data that satisfies the required user-defined rules will be routed to this Relationship")
         .build();
 
-    private static Group EMPTY_GROUP = new Group(Collections.emptyList());
+    private static final Group EMPTY_GROUP = new Group(Collections.emptyList());
 
-    private AtomicReference<Set<Relationship>> relationships = new AtomicReference<>();
-    private List<PropertyDescriptor> properties;
+    private final AtomicReference<Set<Relationship>> relationships =
+            new AtomicReference<>(Set.of(REL_ORIGINAL, REL_NO_MATCH));
     private volatile String configuredRouteStrategy = ROUTE_STRATEGY.getDefaultValue();
     private volatile Set<String> dynamicPropertyNames = new HashSet<>();
 
@@ -256,30 +258,13 @@ public class RouteText extends AbstractProcessor {
     }
 
     @Override
-    protected void init(final ProcessorInitializationContext context) {
-        final Set<Relationship> set = new HashSet<>();
-        set.add(REL_ORIGINAL);
-        set.add(REL_NO_MATCH);
-        relationships = new AtomicReference<>(set);
-
-        final List<PropertyDescriptor> properties = new ArrayList<>();
-        properties.add(ROUTE_STRATEGY);
-        properties.add(MATCH_STRATEGY);
-        properties.add(CHARACTER_SET);
-        properties.add(TRIM_WHITESPACE);
-        properties.add(IGNORE_CASE);
-        properties.add(GROUPING_REGEX);
-        this.properties = Collections.unmodifiableList(properties);
-    }
-
-    @Override
     public Set<Relationship> getRelationships() {
         return relationships.get();
     }
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return properties;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -309,7 +294,7 @@ public class RouteText extends AbstractProcessor {
                 newDynamicPropertyNames.add(descriptor.getName());
             }
 
-            this.dynamicPropertyNames = Collections.unmodifiableSet(newDynamicPropertyNames);
+            this.dynamicPropertyNames = Set.copyOf(newDynamicPropertyNames);
         }
 
         // formulate the new set of Relationships
@@ -441,87 +426,84 @@ public class RouteText extends AbstractProcessor {
         final Map<Relationship, Map<Group, FlowFile>> flowFileMap = new HashMap<>();
         final Pattern groupPattern = groupingRegex;
 
-        session.read(originalFlowFile, new InputStreamCallback() {
-            @Override
-            public void process(final InputStream in) throws IOException {
-                try (final LineDemarcator demarcator = new LineDemarcator(in, charset, Integer.MAX_VALUE, 8192)) {
+        session.read(originalFlowFile, in -> {
+            try (final LineDemarcator demarcator = new LineDemarcator(in, charset, Integer.MAX_VALUE, 8192)) {
 
-                    final Map<String, String> variables = new HashMap<>(2);
+                final Map<String, String> variables = new HashMap<>(2);
 
-                    int lineCount = 0;
-                    String line;
-                    while ((line = demarcator.nextLine()) != null) {
+                int lineCount = 0;
+                String line;
+                while ((line = demarcator.nextLine()) != null) {
 
-                        final String matchLine;
-                        if (trim) {
-                            matchLine = line.trim();
+                    final String matchLine;
+                    if (trim) {
+                        matchLine = line.trim();
+                    } else {
+                        // Always trim off the new-line and carriage return characters before evaluating the line.
+                        // The NLKBufferedReader maintains these characters so that when we write the line out we can maintain
+                        // these characters. However, we don't actually want to match against these characters.
+                        final String lineWithoutEndings;
+                        final int indexOfCR = line.indexOf("\r");
+                        final int indexOfNL = line.indexOf("\n");
+                        if (indexOfCR > 0 && indexOfNL > 0) {
+                            lineWithoutEndings = line.substring(0, Math.min(indexOfCR, indexOfNL));
+                        } else if (indexOfCR > 0) {
+                            lineWithoutEndings = line.substring(0, indexOfCR);
+                        } else if (indexOfNL > 0) {
+                            lineWithoutEndings = line.substring(0, indexOfNL);
                         } else {
-                            // Always trim off the new-line and carriage return characters before evaluating the line.
-                            // The NLKBufferedReader maintains these characters so that when we write the line out we can maintain
-                            // these characters. However, we don't actually want to match against these characters.
-                            final String lineWithoutEndings;
-                            final int indexOfCR = line.indexOf("\r");
-                            final int indexOfNL = line.indexOf("\n");
-                            if (indexOfCR > 0 && indexOfNL > 0) {
-                                lineWithoutEndings = line.substring(0, Math.min(indexOfCR, indexOfNL));
-                            } else if (indexOfCR > 0) {
-                                lineWithoutEndings = line.substring(0, indexOfCR);
-                            } else if (indexOfNL > 0) {
-                                lineWithoutEndings = line.substring(0, indexOfNL);
-                            } else {
-                                lineWithoutEndings = line;
-                            }
-
-                            matchLine = lineWithoutEndings;
+                            lineWithoutEndings = line;
                         }
 
-                        variables.put("line", line);
-                        variables.put("lineNo", String.valueOf(++lineCount));
+                        matchLine = lineWithoutEndings;
+                    }
 
-                        int propertiesThatMatchedLine = 0;
-                        for (final Map.Entry<Relationship, Object> entry : propValueMap.entrySet()) {
-                            boolean lineMatchesProperty = lineMatches(matchLine, entry.getValue(), matchStrategy, ignoreCase, originalFlowFile, variables);
-                            if (lineMatchesProperty) {
-                                propertiesThatMatchedLine++;
-                            }
+                    variables.put("line", line);
+                    variables.put("lineNo", String.valueOf(++lineCount));
 
-                            if (lineMatchesProperty && ROUTE_TO_MATCHING_PROPERTY_NAME.getValue().equals(routeStrategy)) {
-                                // route each individual line to each Relationship that matches. This one matches.
-                                final Relationship relationship = entry.getKey();
-
-                                final Group group = getGroup(matchLine, groupPattern);
-                                appendLine(session, flowFileMap, relationship, originalFlowFile, line, charset, group);
-                                continue;
-                            }
-
-                            // break as soon as possible to avoid calculating things we don't need to calculate.
-                            if (lineMatchesProperty && ROUTE_TO_MATCHED_WHEN_ANY_PROPERTY_MATCHES.getValue().equals(routeStrategy)) {
-                                break;
-                            }
-
-                            if (!lineMatchesProperty && ROUTE_TO_MATCHED_WHEN_ALL_PROPERTIES_MATCH.getValue().equals(routeStrategy)) {
-                                break;
-                            }
+                    int propertiesThatMatchedLine = 0;
+                    for (final Map.Entry<Relationship, Object> entry : propValueMap.entrySet()) {
+                        boolean lineMatchesProperty = lineMatches(matchLine, entry.getValue(), matchStrategy, ignoreCase, originalFlowFile, variables);
+                        if (lineMatchesProperty) {
+                            propertiesThatMatchedLine++;
                         }
 
-                        final Relationship relationship;
-                        if (ROUTE_TO_MATCHING_PROPERTY_NAME.getValue().equals(routeStrategy) && propertiesThatMatchedLine > 0) {
-                            // Set relationship to null so that we do not append the line to each FlowFile again. #appendLine is called
-                            // above within the loop, as the line may need to go to multiple different FlowFiles.
-                            relationship = null;
-                        } else if (ROUTE_TO_MATCHED_WHEN_ANY_PROPERTY_MATCHES.getValue().equals(routeStrategy) && propertiesThatMatchedLine > 0) {
-                            relationship = REL_MATCH;
-                        } else if (ROUTE_TO_MATCHED_WHEN_ALL_PROPERTIES_MATCH.getValue().equals(routeStrategy) && propertiesThatMatchedLine == propValueMap.size()) {
-                            relationship = REL_MATCH;
-                        } else {
-                            relationship = REL_NO_MATCH;
-                        }
+                        if (lineMatchesProperty && ROUTE_TO_MATCHING_PROPERTY_NAME.getValue().equals(routeStrategy)) {
+                            // route each individual line to each Relationship that matches. This one matches.
+                            final Relationship relationship = entry.getKey();
 
-                        // If the target relationship (usually REL_NO_MATCH) is auto-terminated, don't bother creating the flowfile or writing to it.
-                        if (relationship != null && !context.isAutoTerminated(relationship)) {
                             final Group group = getGroup(matchLine, groupPattern);
                             appendLine(session, flowFileMap, relationship, originalFlowFile, line, charset, group);
+                            continue;
                         }
+
+                        // break as soon as possible to avoid calculating things we don't need to calculate.
+                        if (lineMatchesProperty && ROUTE_TO_MATCHED_WHEN_ANY_PROPERTY_MATCHES.getValue().equals(routeStrategy)) {
+                            break;
+                        }
+
+                        if (!lineMatchesProperty && ROUTE_TO_MATCHED_WHEN_ALL_PROPERTIES_MATCH.getValue().equals(routeStrategy)) {
+                            break;
+                        }
+                    }
+
+                    final Relationship relationship;
+                    if (ROUTE_TO_MATCHING_PROPERTY_NAME.getValue().equals(routeStrategy) && propertiesThatMatchedLine > 0) {
+                        // Set relationship to null so that we do not append the line to each FlowFile again. #appendLine is called
+                        // above within the loop, as the line may need to go to multiple different FlowFiles.
+                        relationship = null;
+                    } else if (ROUTE_TO_MATCHED_WHEN_ANY_PROPERTY_MATCHES.getValue().equals(routeStrategy) && propertiesThatMatchedLine > 0) {
+                        relationship = REL_MATCH;
+                    } else if (ROUTE_TO_MATCHED_WHEN_ALL_PROPERTIES_MATCH.getValue().equals(routeStrategy) && propertiesThatMatchedLine == propValueMap.size()) {
+                        relationship = REL_MATCH;
+                    } else {
+                        relationship = REL_NO_MATCH;
+                    }
+
+                    // If the target relationship (usually REL_NO_MATCH) is auto-terminated, don't bother creating the flowfile or writing to it.
+                    if (relationship != null && !context.isAutoTerminated(relationship)) {
+                        final Group group = getGroup(matchLine, groupPattern);
+                        appendLine(session, flowFileMap, relationship, originalFlowFile, line, charset, group);
                     }
                 }
             }
@@ -535,12 +517,11 @@ public class RouteText extends AbstractProcessor {
                 final Group group = flowFileEntry.getKey();
                 final FlowFile flowFile = flowFileEntry.getValue();
 
-                final Map<String, String> attributes = new HashMap<>(2);
-                attributes.put(ROUTE_ATTRIBUTE_KEY, relationship.getName());
-                attributes.put(GROUP_ATTRIBUTE_KEY, StringUtils.join(group.getCapturedValues(), ", "));
-
                 logger.info("Created {} from {}; routing to relationship {}", flowFile, originalFlowFile, relationship.getName());
-                FlowFile updatedFlowFile = session.putAllAttributes(flowFile, attributes);
+                FlowFile updatedFlowFile = session.putAllAttributes(flowFile, Map.of(
+                        ROUTE_ATTRIBUTE_KEY, relationship.getName(),
+                        GROUP_ATTRIBUTE_KEY, StringUtils.join(group.getCapturedValues(), ", ")
+                ));
                 session.getProvenanceReporter().route(updatedFlowFile, entry.getKey());
                 session.transfer(updatedFlowFile, entry.getKey());
             }
@@ -582,12 +563,7 @@ public class RouteText extends AbstractProcessor {
             flowFile = session.create(original);
         }
 
-        flowFile = session.append(flowFile, new OutputStreamCallback() {
-            @Override
-            public void process(final OutputStream out) throws IOException {
-                out.write(line.getBytes(charset));
-            }
-        });
+        flowFile = session.append(flowFile, out -> out.write(line.getBytes(charset)));
 
         groupToFlowFileMap.put(group, flowFile);
     }

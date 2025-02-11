@@ -16,13 +16,8 @@
  */
 package org.apache.nifi.web.security.configuration;
 
-import org.apache.nifi.security.util.SslContextFactory;
-import org.apache.nifi.security.util.StandardTlsConfiguration;
-import org.apache.nifi.security.util.TlsConfiguration;
-import org.apache.nifi.security.util.TlsException;
 import org.apache.nifi.util.FormatUtils;
 import org.apache.nifi.util.NiFiProperties;
-import org.apache.nifi.web.security.oidc.OidcConfigurationException;
 import org.apache.nifi.web.security.oidc.registration.ClientRegistrationProvider;
 import org.apache.nifi.web.security.oidc.registration.DisabledClientRegistrationRepository;
 import org.apache.nifi.web.security.oidc.registration.StandardClientRegistrationProvider;
@@ -39,7 +34,7 @@ import org.springframework.security.oauth2.client.registration.ClientRegistratio
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository;
 import org.springframework.security.oauth2.core.http.converter.OAuth2AccessTokenResponseHttpMessageConverter;
-import org.springframework.web.client.RestOperations;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestTemplate;
 
 import javax.net.ssl.SSLContext;
@@ -61,9 +56,14 @@ public class ClientRegistrationConfiguration {
 
     private final NiFiProperties properties;
 
-    @Autowired
-    public ClientRegistrationConfiguration(final NiFiProperties properties) {
+    private final SSLContext sslContext;
+
+    public ClientRegistrationConfiguration(
+            @Autowired final NiFiProperties properties,
+            @Autowired(required = false) final SSLContext sslContext
+    ) {
         this.properties = Objects.requireNonNull(properties, "Application properties required");
+        this.sslContext = sslContext;
     }
 
     /**
@@ -75,7 +75,7 @@ public class ClientRegistrationConfiguration {
     public ClientRegistrationRepository clientRegistrationRepository() {
         final ClientRegistrationRepository clientRegistrationRepository;
         if (properties.isOidcEnabled()) {
-            final ClientRegistrationProvider clientRegistrationProvider = new StandardClientRegistrationProvider(properties, oidcRestOperations());
+            final ClientRegistrationProvider clientRegistrationProvider = new StandardClientRegistrationProvider(properties, oidcRestClient());
             final ClientRegistration clientRegistration = clientRegistrationProvider.getClientRegistration();
             clientRegistrationRepository = new InMemoryClientRegistrationRepository(clientRegistration);
         } else {
@@ -84,6 +84,15 @@ public class ClientRegistrationConfiguration {
         return clientRegistrationRepository;
     }
 
+    /**
+     * OpenID Connect REST Client for communication with Authorization Servers
+     *
+     * @return REST Client
+     */
+    @Bean
+    public RestClient oidcRestClient() {
+        return RestClient.create(oidcRestOperations());
+    }
 
     /**
      * OpenID Connect REST Operations for communication with Authorization Servers
@@ -91,7 +100,7 @@ public class ClientRegistrationConfiguration {
      * @return REST Operations
      */
     @Bean
-    public RestOperations oidcRestOperations() {
+    public RestTemplate oidcRestOperations() {
         final RestTemplate restTemplate = new RestTemplate(oidcClientHttpRequestFactory());
         restTemplate.setErrorHandler(new OAuth2ErrorResponseErrorHandler());
         restTemplate.setMessageConverters(
@@ -124,7 +133,7 @@ public class ClientRegistrationConfiguration {
         final HttpClient.Builder builder = HttpClient.newBuilder().connectTimeout(connectTimeout);
 
         if (NIFI_TRUSTSTORE_STRATEGY.equals(properties.getOidcClientTruststoreStrategy())) {
-            setSslSocketFactory(builder);
+            builder.sslContext(sslContext);
         }
 
         return builder.build();
@@ -137,17 +146,6 @@ public class ClientRegistrationConfiguration {
             return Duration.ofMillis(rounded);
         } catch (final RuntimeException e) {
             return DEFAULT_SOCKET_TIMEOUT;
-        }
-    }
-
-    private void setSslSocketFactory(final HttpClient.Builder builder) {
-        final TlsConfiguration tlsConfiguration = StandardTlsConfiguration.fromNiFiProperties(properties);
-
-        try {
-            final SSLContext sslContext = Objects.requireNonNull(SslContextFactory.createSslContext(tlsConfiguration), "SSLContext required");
-            builder.sslContext(sslContext);
-        } catch (final TlsException e) {
-            throw new OidcConfigurationException("OpenID Connect HTTP TLS configuration failed", e);
         }
     }
 }

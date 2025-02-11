@@ -19,6 +19,7 @@ package org.apache.nifi.processors.standard;
 
 import org.apache.nifi.controller.AbstractControllerService;
 import org.apache.nifi.flowfile.FlowFile;
+import org.apache.nifi.json.JsonParserFactory;
 import org.apache.nifi.json.JsonRecordSetWriter;
 import org.apache.nifi.json.JsonTreeReader;
 import org.apache.nifi.json.JsonTreeRowRecordReader;
@@ -297,7 +298,7 @@ public class TestForkRecord {
         fields.add(new RecordField("accounts", accountsType));
         final RecordSchema schema = new SimpleRecordSchema(fields);
 
-        final List<RecordField> fieldsWrite = new ArrayList<RecordField>();
+        final List<RecordField> fieldsWrite = new ArrayList<>();
         fieldsWrite.add(new RecordField("id", RecordFieldType.INT.getDataType()));
         fieldsWrite.add(new RecordField("amount", RecordFieldType.DOUBLE.getDataType()));
         final RecordSchema schemaWrite = new SimpleRecordSchema(fieldsWrite);
@@ -452,6 +453,8 @@ public class TestForkRecord {
 
     private class JsonRecordReader extends AbstractControllerService implements RecordReaderFactory {
 
+        private static final JsonParserFactory jsonParserFactory = new JsonParserFactory();
+
         RecordSchema schema;
 
         public JsonRecordReader(RecordSchema schema) {
@@ -459,16 +462,15 @@ public class TestForkRecord {
         }
 
         @Override
-        public RecordReader createRecordReader(FlowFile flowFile, InputStream in, ComponentLog logger) throws MalformedRecordException, IOException, SchemaNotFoundException {
-            return new JsonTreeRowRecordReader(in, logger, schema, dateFormat, timeFormat, timestampFormat);
+        public RecordReader createRecordReader(FlowFile flowFile, InputStream in, ComponentLog logger) throws MalformedRecordException, IOException {
+            return new JsonTreeRowRecordReader(in, logger, schema, dateFormat, timeFormat, timestampFormat, null, null, null, null, jsonParserFactory);
         }
 
         @Override
         public RecordReader createRecordReader(Map<String, String> variables, InputStream in, long inputLength, ComponentLog logger)
-                throws MalformedRecordException, IOException, SchemaNotFoundException {
-            return new JsonTreeRowRecordReader(in, logger, schema, dateFormat, timeFormat, timestampFormat);
+                throws MalformedRecordException, IOException {
+            return new JsonTreeRowRecordReader(in, logger, schema, dateFormat, timeFormat, timestampFormat, null, null, null, null, jsonParserFactory);
         }
-
     }
 
     private class CustomRecordWriter extends MockRecordWriter {

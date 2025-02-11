@@ -21,11 +21,10 @@ import { CreateControllerServiceDialogRequest, DocumentedType } from '../../../.
 import { ExtensionCreation } from '../../extension-creation/extension-creation.component';
 import { Observable } from 'rxjs';
 import { AsyncPipe } from '@angular/common';
-import { CloseOnEscapeDialog } from '../../close-on-escape-dialog/close-on-escape-dialog.component';
+import { CloseOnEscapeDialog } from '@nifi/shared';
 
 @Component({
     selector: 'create-controller-service',
-    standalone: true,
     imports: [ExtensionCreation, AsyncPipe],
     templateUrl: './create-controller-service.component.html',
     styleUrls: ['./create-controller-service.component.scss']

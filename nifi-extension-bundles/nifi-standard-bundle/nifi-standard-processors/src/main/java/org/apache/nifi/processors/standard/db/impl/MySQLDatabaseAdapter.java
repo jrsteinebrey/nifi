@@ -23,7 +23,6 @@ import java.sql.JDBCType;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -53,12 +52,6 @@ public class MySQLDatabaseAdapter extends GenericDatabaseAdapter {
     }
 
     @Override
-    public String unwrapIdentifier(String identifier) {
-        // Removes double quotes and back-ticks.
-        return identifier == null ? null : identifier.replaceAll("[\"`]", "");
-    }
-
-    @Override
     public boolean supportsUpsert() {
         return true;
     }
@@ -66,17 +59,6 @@ public class MySQLDatabaseAdapter extends GenericDatabaseAdapter {
     @Override
     public boolean supportsInsertIgnore() {
         return true;
-    }
-
-    /**
-     * Tells How many times the column values need to be inserted into the prepared statement. Some DBs (such as MySQL) need the values specified twice in the statement,
-     * some need only to specify them once.
-     *
-     * @return An integer corresponding to the number of times to insert column values into the prepared statement for UPSERT, or -1 if upsert is not supported.
-     */
-    @Override
-    public int getTimesToAddColumnObjectsForUpsert() {
-        return 2;
     }
 
     @Override
@@ -91,8 +73,7 @@ public class MySQLDatabaseAdapter extends GenericDatabaseAdapter {
             throw new IllegalArgumentException("Key column names cannot be null or empty");
         }
 
-        String columns = columnNames.stream()
-                .collect(Collectors.joining(", "));
+        String columns = String.join(", ", columnNames);
 
         String parameterizedInsertValues = columnNames.stream()
                 .map(__ -> "?")
@@ -126,8 +107,7 @@ public class MySQLDatabaseAdapter extends GenericDatabaseAdapter {
             throw new IllegalArgumentException("Key column names cannot be null or empty");
         }
 
-        String columns = columnNames.stream()
-                .collect(Collectors.joining(", "));
+        String columns = String.join(", ", columnNames);
 
         String parameterizedInsertValues = columnNames.stream()
                 .map(__ -> "?")
@@ -157,7 +137,7 @@ public class MySQLDatabaseAdapter extends GenericDatabaseAdapter {
     }
 
     @Override
-    public List<String> getAlterTableStatements(final String tableName, final List<ColumnDescription> columnsToAdd, final boolean quoteTableName, final boolean quoteColumnNames) {
+    public String getAlterTableStatement(final String tableName, final List<ColumnDescription> columnsToAdd, final boolean quoteTableName, final boolean quoteColumnNames) {
         List<String> columnsAndDatatypes = new ArrayList<>(columnsToAdd.size());
         for (ColumnDescription column : columnsToAdd) {
             String dataType = getSQLForDataType(column.getDataType());
@@ -171,13 +151,13 @@ public class MySQLDatabaseAdapter extends GenericDatabaseAdapter {
         }
 
         StringBuilder alterTableStatement = new StringBuilder();
-        return Collections.singletonList(alterTableStatement.append("ALTER TABLE ")
+        return alterTableStatement.append("ALTER TABLE ")
                 .append(quoteTableName ? getTableQuoteString() : "")
                 .append(tableName)
                 .append(quoteTableName ? getTableQuoteString() : "")
                 .append(" ")
                 .append(String.join(", ", columnsAndDatatypes))
-                .toString());
+                .toString();
     }
 
     @Override

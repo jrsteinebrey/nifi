@@ -58,7 +58,7 @@ import org.apache.nifi.serialization.SimpleRecordSchema;
 import org.apache.nifi.serialization.record.MapRecord;
 import org.apache.nifi.serialization.record.Record;
 import org.apache.nifi.serialization.record.RecordSchema;
-import org.apache.nifi.ssl.SSLContextService;
+import org.apache.nifi.ssl.SSLContextProvider;
 import org.apache.nifi.util.StringUtils;
 
 import javax.net.ssl.SSLContext;
@@ -124,7 +124,7 @@ public class RestLookupService extends AbstractControllerService implements Reco
         .description("The SSL Context Service used to provide client certificate information for TLS/SSL "
                 + "connections.")
         .required(false)
-        .identifiesControllerService(SSLContextService.class)
+        .identifiesControllerService(SSLContextProvider.class)
         .build();
 
     public static final PropertyDescriptor AUTHENTICATION_STRATEGY = new PropertyDescriptor.Builder()
@@ -206,39 +206,35 @@ public class RestLookupService extends AbstractControllerService implements Reco
 
     private static final ProxySpec[] PROXY_SPECS = {ProxySpec.HTTP_AUTH, ProxySpec.SOCKS};
     public static final PropertyDescriptor PROXY_CONFIGURATION_SERVICE
-            = ProxyConfiguration.createProxyConfigPropertyDescriptor(true, PROXY_SPECS);
+            = ProxyConfiguration.createProxyConfigPropertyDescriptor(PROXY_SPECS);
 
     static final String MIME_TYPE_KEY = "mime.type";
     static final String BODY_KEY = "request.body";
     static final String METHOD_KEY = "request.method";
 
-    static final List<PropertyDescriptor> DESCRIPTORS;
-    static final Set<String> KEYS;
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+        URL,
+        RECORD_READER,
+        RECORD_PATH,
+        RESPONSE_HANDLING_STRATEGY,
+        SSL_CONTEXT_SERVICE,
+        AUTHENTICATION_STRATEGY,
+        OAUTH2_ACCESS_TOKEN_PROVIDER,
+        PROXY_CONFIGURATION_SERVICE,
+        PROP_BASIC_AUTH_USERNAME,
+        PROP_BASIC_AUTH_PASSWORD,
+        PROP_DIGEST_AUTH,
+        PROP_CONNECT_TIMEOUT,
+        PROP_READ_TIMEOUT
+    );
+
+    static final Set<String> KEYS = Set.of();
 
     static final List<String> VALID_VERBS = Arrays.asList("delete", "get", "post", "put");
 
-    static {
-        DESCRIPTORS = Collections.unmodifiableList(Arrays.asList(
-            URL,
-            RECORD_READER,
-            RECORD_PATH,
-            RESPONSE_HANDLING_STRATEGY,
-            SSL_CONTEXT_SERVICE,
-            AUTHENTICATION_STRATEGY,
-            OAUTH2_ACCESS_TOKEN_PROVIDER,
-            PROXY_CONFIGURATION_SERVICE,
-            PROP_BASIC_AUTH_USERNAME,
-            PROP_BASIC_AUTH_PASSWORD,
-            PROP_DIGEST_AUTH,
-            PROP_CONNECT_TIMEOUT,
-            PROP_READ_TIMEOUT
-        ));
-        KEYS = Collections.emptySet();
-    }
-
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return DESCRIPTORS;
+        return PROPERTY_DESCRIPTORS;
     }
 
     private volatile ProxyConfigurationService proxyConfigurationService;
@@ -280,10 +276,10 @@ public class RestLookupService extends AbstractControllerService implements Reco
         }
 
         // Apply the TLS configuration if present
-        final SSLContextService sslService = context.getProperty(SSL_CONTEXT_SERVICE).asControllerService(SSLContextService.class);
-        if (sslService != null) {
-            final SSLContext sslContext = sslService.createContext();
-            final X509TrustManager trustManager = sslService.createTrustManager();
+        final SSLContextProvider sslContextProvider = context.getProperty(SSL_CONTEXT_SERVICE).asControllerService(SSLContextProvider.class);
+        if (sslContextProvider != null) {
+            final SSLContext sslContext = sslContextProvider.createContext();
+            final X509TrustManager trustManager = sslContextProvider.createTrustManager();
             builder.sslSocketFactory(sslContext.getSocketFactory(), trustManager);
         }
 
@@ -372,7 +368,7 @@ public class RestLookupService extends AbstractControllerService implements Reco
 
             if (getLogger().isDebugEnabled()) {
                 getLogger().debug("Response code {} was returned for coordinate {}",
-                        new Object[]{response.code(), coordinates});
+                        response.code(), coordinates);
             }
 
             if (!response.isSuccessful()

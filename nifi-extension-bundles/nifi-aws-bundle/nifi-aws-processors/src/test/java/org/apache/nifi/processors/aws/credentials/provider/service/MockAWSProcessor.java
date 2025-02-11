@@ -26,14 +26,12 @@ import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
 import org.apache.nifi.processors.aws.AbstractAWSCredentialsProviderProcessor;
 
-import java.util.Arrays;
 import java.util.List;
 
 import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderControllerService.ASSUME_ROLE_ARN;
 import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderControllerService.ASSUME_ROLE_EXTERNAL_ID;
 import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderControllerService.ASSUME_ROLE_NAME;
-import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderControllerService.ASSUME_ROLE_PROXY_HOST;
-import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderControllerService.ASSUME_ROLE_PROXY_PORT;
+import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderControllerService.ASSUME_ROLE_PROXY_CONFIGURATION_SERVICE;
 import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderControllerService.ASSUME_ROLE_STS_CUSTOM_SIGNER_CLASS_NAME;
 import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderControllerService.ASSUME_ROLE_STS_CUSTOM_SIGNER_MODULE_LOCATION;
 import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderControllerService.ASSUME_ROLE_STS_ENDPOINT;
@@ -50,7 +48,7 @@ import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCre
  */
 public class MockAWSProcessor extends AbstractAWSCredentialsProviderProcessor<AmazonS3Client> {
 
-    public final List<PropertyDescriptor> properties = Arrays.asList(
+    public static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
             USE_DEFAULT_CREDENTIALS,
             PROFILE_NAME,
             USE_ANONYMOUS_CREDENTIALS,
@@ -58,8 +56,7 @@ public class MockAWSProcessor extends AbstractAWSCredentialsProviderProcessor<Am
             ASSUME_ROLE_NAME,
             MAX_SESSION_TIME,
             ASSUME_ROLE_EXTERNAL_ID,
-            ASSUME_ROLE_PROXY_HOST,
-            ASSUME_ROLE_PROXY_PORT,
+            ASSUME_ROLE_PROXY_CONFIGURATION_SERVICE,
             ASSUME_ROLE_STS_REGION,
             ASSUME_ROLE_STS_ENDPOINT,
             ASSUME_ROLE_STS_SIGNER_OVERRIDE,
@@ -69,7 +66,7 @@ public class MockAWSProcessor extends AbstractAWSCredentialsProviderProcessor<Am
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return properties;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override

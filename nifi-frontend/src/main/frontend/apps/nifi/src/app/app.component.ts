@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { Component } from '@angular/core';
+import { Component, OnDestroy } from '@angular/core';
 import {
     GuardsCheckEnd,
     GuardsCheckStart,
@@ -25,8 +25,7 @@ import {
     Router
 } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Storage } from './service/storage.service';
-import { ThemingService } from './service/theming.service';
+import { Storage, ThemingService } from '@nifi/shared';
 import { MatDialog } from '@angular/material/dialog';
 import { NiFiState } from './state';
 import { Store } from '@ngrx/store';
@@ -35,15 +34,30 @@ import { popBackNavigation, pushBackNavigation } from './state/navigation/naviga
 import { filter, map, tap } from 'rxjs';
 import { concatLatestFrom } from '@ngrx/operators';
 import { selectBackNavigation } from './state/navigation/navigation.selectors';
+import { documentVisibilityChanged } from './state/document-visibility/document-visibility.actions';
+import { DocumentVisibility } from './state/document-visibility';
 
 @Component({
     selector: 'nifi',
     templateUrl: './app.component.html',
-    styleUrls: ['./app.component.scss']
+    styleUrls: ['./app.component.scss'],
+    standalone: false
 })
-export class AppComponent {
+export class AppComponent implements OnDestroy {
     title = 'nifi';
     guardLoading = true;
+
+    documentVisibilityListener: () => void = () => {
+        this.store.dispatch(
+            documentVisibilityChanged({
+                change: {
+                    documentVisibility:
+                        document.visibilityState === 'visible' ? DocumentVisibility.Visible : DocumentVisibility.Hidden,
+                    changedTimestamp: Date.now()
+                }
+            })
+        );
+    };
 
     constructor(
         private router: Router,
@@ -103,5 +117,11 @@ export class AppComponent {
                 this.themingService.toggleTheme(e.matches, theme);
             });
         }
+
+        document.addEventListener('visibilitychange', this.documentVisibilityListener);
+    }
+
+    ngOnDestroy(): void {
+        document.removeEventListener('visibilitychange', this.documentVisibilityListener);
     }
 }

@@ -34,7 +34,7 @@ import {
     selectClusterSearchResults,
     selectClusterSummary
 } from '../../../../state/cluster-summary/cluster-summary.selectors';
-import { ComponentType, isDefinedAndNotNull } from '../../../../state/shared';
+import { ComponentType, isDefinedAndNotNull } from '@nifi/shared';
 import { map } from 'rxjs';
 import { NodeSearchResult } from '../../../../state/cluster-summary';
 import * as ClusterStatusActions from '../../state/component-cluster-status/component-cluster-status.actions';
@@ -42,7 +42,8 @@ import * as ClusterStatusActions from '../../state/component-cluster-status/comp
 @Component({
     selector: 'output-port-status-listing',
     templateUrl: './output-port-status-listing.component.html',
-    styleUrls: ['./output-port-status-listing.component.scss']
+    styleUrls: ['./output-port-status-listing.component.scss'],
+    standalone: false
 })
 export class OutputPortStatusListing {
     portStatusSnapshots$ = this.store.select(selectOutputPortStatusSnapshots);

@@ -17,7 +17,7 @@
 
 <h2 mat-dialog-title>{{ readonly ? 'Process Group Details' : 'Edit Process Group' }}</h2>
 <form class="process-group-edit-form" [formGroup]="editProcessGroupForm">
-    <error-banner></error-banner>
+    <context-error-banner [context]="ErrorContextKey.PROCESS_GROUP"></context-error-banner>
     <mat-tab-group [(selectedIndex)]="selectedIndex" (selectedIndexChange)="tabChanged($event)">
         <mat-tab label="Settings">
             <mat-dialog-content>
@@ -29,38 +29,66 @@
                                 <input matInput formControlName="name" type="text" [readonly]="readonly" />
                             </mat-form-field>
                         </div>
-                        <div>
+                        <div class="flex flew-row w-full justify-start items-start">
                             <mat-form-field>
                                 <mat-label>Parameter Context</mat-label>
                                 <mat-select formControlName="parameterContext">
-                                    @for (option of parameterContextsOptions; track option) {
+                                    <mat-option
+                                        [value]="null"
+                                        [disabled]="readonly"
+                                        nifiTooltip
+                                        [tooltipComponentType]="TextTip"
+                                        [tooltipInputData]="'No parameter context'"
+                                        [delayClose]="false"
+                                        >No parameter context
+                                    </mat-option>
+                                    @for (
+                                        option of parameterContextsOptions | sortObjectByProperty: 'text';
+                                        track option.value
+                                    ) {
                                         @if (option.description) {
                                             <mat-option
                                                 [value]="option.value"
-                                                [disabled]="readonly"
+                                                [disabled]="readonly || option.disabled"
                                                 nifiTooltip
                                                 [tooltipComponentType]="TextTip"
                                                 [tooltipInputData]="option.description"
                                                 [delayClose]="false"
-                                                >{{ option.text }}</mat-option
-                                            >
+                                                >{{ option.text }}
+                                            </mat-option>
                                         } @else {
-                                            <mat-option [value]="option.value" [disabled]="readonly">{{
-                                                option.text
-                                            }}</mat-option>
+                                            <mat-option
+                                                [value]="option.value"
+                                                [disabled]="readonly || option.disabled"
+                                                nifiTooltip
+                                                [tooltipComponentType]="TextTip"
+                                                [tooltipInputData]="option.text"
+                                                [delayClose]="false"
+                                                >{{ option.text }}
+                                            </mat-option>
                                         }
                                     }
                                 </mat-select>
                             </mat-form-field>
+                            @if (currentUser$ | async; as currentUser) {
+                                @if (currentUser.parameterContextPermissions.canWrite) {
+                                    <button
+                                        mat-icon-button
+                                        class="primary-icon-button mt-1 ml-1"
+                                        (click)="openNewParameterContextDialog()"
+                                        title="Create parameter context">
+                                        <i class="fa fa-plus"></i>
+                                    </button>
+                                }
+                            }
                         </div>
-                        <div class="-mt-6 mb-4">
+                        <div class="-mt-4 mb-4">
                             <mat-checkbox
-                                color="primary"
                                 formControlName="applyParameterContextRecursively"
                                 name="applyParameterContextRecursively">
                                 Apply Recursively
                                 <i
-                                    class="fa fa-info-circle"
+                                    class="fa fa-info-circle primary-color"
                                     nifiTooltip
                                     [tooltipComponentType]="TextTip"
                                     tooltipInputData="When checked Parameter Context will be applied to the Process Group and all the embedded Process Groups recursively, if the user has the proper permissions on all the respective components. If the user does not have the proper permissions on any embedded Process Group, then the Parameter Context will not be applied for any components."></i>
@@ -69,7 +97,9 @@
                         <div>
                             <mat-form-field>
                                 <mat-label>Execution Engine</mat-label>
-                                <mat-select formControlName="executionEngine">
+                                <mat-select
+                                    formControlName="executionEngine"
+                                    (selectionChange)="executionEngineChanged($event.value)">
                                     @for (option of executionEngineOptions; track option) {
                                         <mat-option
                                             [value]="option.value"
@@ -84,6 +114,30 @@
                                 </mat-select>
                             </mat-form-field>
                         </div>
+                        @if (editProcessGroupForm.get('executionEngine')?.value === STATELESS) {
+                            <div>
+                                <mat-form-field>
+                                    <mat-label>Max Concurrent Tasks</mat-label>
+                                    <input
+                                        matInput
+                                        formControlName="maxConcurrentTasks"
+                                        name="maxConcurrentTasks"
+                                        type="number"
+                                        min="1"
+                                        [readonly]="readonly" />
+                                </mat-form-field>
+                            </div>
+                            <div>
+                                <mat-form-field>
+                                    <mat-label>Stateless Flow Timeout</mat-label>
+                                    <input
+                                        matInput
+                                        formControlName="statelessFlowTimeout"
+                                        type="text"
+                                        [readonly]="readonly" />
+                                </mat-form-field>
+                            </div>
+                        }
                         <div>
                             <mat-form-field>
                                 <mat-label>Process Group FlowFile Concurrency</mat-label>
@@ -209,16 +263,15 @@
     @if ({ value: (saving$ | async)! }; as saving) {
         <mat-dialog-actions align="end">
             @if (readonly) {
-                <button mat-button mat-dialog-close color="primary">Close</button>
+                <button mat-flat-button mat-dialog-close>Close</button>
             } @else {
                 <button mat-button mat-dialog-close>Cancel</button>
                 <button
                     [disabled]="!editProcessGroupForm.dirty || editProcessGroupForm.invalid || saving.value"
                     class="h-8"
                     type="button"
-                    color="primary"
                     (click)="submitForm()"
-                    mat-button>
+                    mat-flat-button>
                     <span *nifiSpinner="saving.value">Apply</span>
                 </button>
             }

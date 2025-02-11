@@ -41,13 +41,11 @@ import org.apache.nifi.flowfile.attributes.CoreAttributes;
 import org.apache.nifi.processor.DataUnit;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
-import org.apache.nifi.processor.ProcessorInitializationContext;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.security.util.ClientAuth;
-import org.apache.nifi.ssl.RestrictedSSLContextService;
-import org.apache.nifi.ssl.SSLContextService;
+import org.apache.nifi.ssl.SSLContextProvider;
 import org.apache.nifi.syslog.attributes.SyslogAttributes;
 import org.apache.nifi.syslog.events.SyslogEvent;
 import org.apache.nifi.syslog.parsers.SyslogParser;
@@ -60,9 +58,7 @@ import java.net.SocketException;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -173,7 +169,7 @@ public class ListenSyslog extends AbstractSyslogProcessor {
         .description("The Controller Service to use in order to obtain an SSL Context. If this property is set, syslog " +
                     "messages will be received over a secure connection.")
         .required(false)
-        .identifiesControllerService(RestrictedSSLContextService.class)
+        .identifiesControllerService(SSLContextProvider.class)
         .dependsOn(PROTOCOL, TCP_VALUE)
         .build();
     public static final PropertyDescriptor CLIENT_AUTH = new PropertyDescriptor.Builder()
@@ -196,6 +192,23 @@ public class ListenSyslog extends AbstractSyslogProcessor {
             .dependsOn(PROTOCOL, TCP_VALUE)
             .build();
 
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+            PROTOCOL,
+            PORT,
+            NETWORK_INTF_NAME,
+            SOCKET_KEEP_ALIVE,
+            SSL_CONTEXT_SERVICE,
+            CLIENT_AUTH,
+            RECV_BUFFER_SIZE,
+            MAX_MESSAGE_QUEUE_SIZE,
+            MAX_SOCKET_BUFFER_SIZE,
+            MAX_CONNECTIONS,
+            MAX_BATCH_SIZE,
+            MESSAGE_DELIMITER,
+            PARSE_MESSAGES,
+            CHARSET
+    );
+
     public static final Relationship REL_SUCCESS = new Relationship.Builder()
         .name("success")
         .description("Syslog messages that match one of the expected formats will be sent out this relationship as a FlowFile per message.")
@@ -205,12 +218,14 @@ public class ListenSyslog extends AbstractSyslogProcessor {
         .description("Syslog messages that do not match one of the expected formats will be sent out this relationship as a FlowFile per message.")
         .build();
 
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS,
+            REL_INVALID
+    );
+
     protected static final String RECEIVED_COUNTER = "Messages Received";
     protected static final String SUCCESS_COUNTER = "FlowFiles Transferred to Success";
     private static final String DEFAULT_MIME_TYPE = "text/plain";
-
-    private Set<Relationship> relationships;
-    private List<PropertyDescriptor> descriptors;
 
     private volatile EventServer eventServer;
     private volatile SyslogParser parser;
@@ -218,38 +233,13 @@ public class ListenSyslog extends AbstractSyslogProcessor {
     private volatile byte[] messageDemarcatorBytes; //it is only the array reference that is volatile - not the contents.
 
     @Override
-    protected void init(final ProcessorInitializationContext context) {
-        final List<PropertyDescriptor> descriptors = new ArrayList<>();
-        descriptors.add(PROTOCOL);
-        descriptors.add(PORT);
-        descriptors.add(NETWORK_INTF_NAME);
-        descriptors.add(SOCKET_KEEP_ALIVE);
-        descriptors.add(SSL_CONTEXT_SERVICE);
-        descriptors.add(CLIENT_AUTH);
-        descriptors.add(RECV_BUFFER_SIZE);
-        descriptors.add(MAX_MESSAGE_QUEUE_SIZE);
-        descriptors.add(MAX_SOCKET_BUFFER_SIZE);
-        descriptors.add(MAX_CONNECTIONS);
-        descriptors.add(MAX_BATCH_SIZE);
-        descriptors.add(MESSAGE_DELIMITER);
-        descriptors.add(PARSE_MESSAGES);
-        descriptors.add(CHARSET);
-        this.descriptors = Collections.unmodifiableList(descriptors);
-
-        final Set<Relationship> relationships = new HashSet<>();
-        relationships.add(REL_SUCCESS);
-        relationships.add(REL_INVALID);
-        this.relationships = Collections.unmodifiableSet(relationships);
-    }
-
-    @Override
     public Set<Relationship> getRelationships() {
-        return this.relationships;
+        return RELATIONSHIPS;
     }
 
     @Override
     public List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return descriptors;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -299,9 +289,9 @@ public class ListenSyslog extends AbstractSyslogProcessor {
         final Boolean socketKeepAlive = context.getProperty(SOCKET_KEEP_ALIVE).asBoolean();
         factory.setSocketKeepAlive(socketKeepAlive);
 
-        final SSLContextService sslContextService = context.getProperty(SSL_CONTEXT_SERVICE).asControllerService(SSLContextService.class);
-        if (sslContextService != null && TCP_VALUE.getValue().equals(protocol)) {
-            final SSLContext sslContext = sslContextService.createContext();
+        final SSLContextProvider sslContextProvider = context.getProperty(SSL_CONTEXT_SERVICE).asControllerService(SSLContextProvider.class);
+        if (sslContextProvider != null && TCP_VALUE.getValue().equals(protocol)) {
+            final SSLContext sslContext = sslContextProvider.createContext();
             ClientAuth clientAuth = ClientAuth.REQUIRED;
             final PropertyValue clientAuthProperty = context.getProperty(CLIENT_AUTH);
             if (clientAuthProperty.isSet()) {

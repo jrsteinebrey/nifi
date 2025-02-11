@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { AfterViewInit, Component, DestroyRef, inject, Inject, OnDestroy, OnInit } from '@angular/core';
+import { AfterViewInit, Component, DestroyRef, HostListener, inject, Inject, OnInit } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
 import { StatusHistoryService } from '../../../service/status-history.service';
 import { AsyncPipe, NgStyle } from '@angular/common';
@@ -42,23 +42,17 @@ import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import * as d3 from 'd3';
-import { NiFiCommon } from '../../../service/nifi-common.service';
-import { TextTip } from '../tooltips/text-tip/text-tip.component';
-import { NifiTooltipDirective } from '../tooltips/nifi-tooltip.directive';
-import { isDefinedAndNotNull } from '../../../state/shared';
+import { isDefinedAndNotNull, CloseOnEscapeDialog, NiFiCommon, NifiTooltipDirective, TextTip } from '@nifi/shared';
 import { MatCheckboxChange, MatCheckboxModule } from '@angular/material/checkbox';
-import { Resizable } from '../resizable/resizable.component';
 import { Instance, NIFI_NODE_CONFIG, Stats } from './index';
 import { StatusHistoryChart } from './status-history-chart/status-history-chart.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ErrorBanner } from '../error-banner/error-banner.component';
-import { clearBannerErrors } from '../../../state/error/error.actions';
-import { CloseOnEscapeDialog } from '../close-on-escape-dialog/close-on-escape-dialog.component';
+import { ErrorContextKey } from '../../../state/error';
+import { ContextErrorBanner } from '../context-error-banner/context-error-banner.component';
 
 @Component({
     selector: 'status-history',
     templateUrl: './status-history.component.html',
-    standalone: true,
     imports: [
         MatDialogModule,
         AsyncPipe,
@@ -69,20 +63,21 @@ import { CloseOnEscapeDialog } from '../close-on-escape-dialog/close-on-escape-d
         MatSelectModule,
         NifiTooltipDirective,
         MatCheckboxModule,
-        Resizable,
         StatusHistoryChart,
         NgStyle,
-        ErrorBanner
+        ContextErrorBanner
     ],
     styleUrls: ['./status-history.component.scss']
 })
-export class StatusHistory extends CloseOnEscapeDialog implements OnInit, OnDestroy, AfterViewInit {
+export class StatusHistory extends CloseOnEscapeDialog implements OnInit, AfterViewInit {
     request: StatusHistoryRequest;
     statusHistoryState$ = this.store.select(selectStatusHistoryState);
     componentDetails$ = this.store.select(selectStatusHistoryComponentDetails);
     statusHistory$ = this.store.select(selectStatusHistory);
     fieldDescriptors$ = this.store.select(selectStatusHistoryFieldDescriptors);
     fieldDescriptors: FieldDescriptor[] = [];
+
+    dialogMaximized = false;
 
     details: { key: string; value: string }[] = [];
 
@@ -202,10 +197,6 @@ export class StatusHistory extends CloseOnEscapeDialog implements OnInit, OnDest
         });
     }
 
-    ngOnDestroy(): void {
-        this.store.dispatch(clearBannerErrors());
-    }
-
     ngAfterViewInit(): void {
         // when the selected descriptor changes, update the chart
         this.statusHistoryForm
@@ -216,6 +207,16 @@ export class StatusHistory extends CloseOnEscapeDialog implements OnInit, OnDest
                     this.selectedDescriptor = descriptor;
                 }
             });
+    }
+
+    maximize() {
+        this.dialogMaximized = true;
+        this.resized();
+    }
+
+    minimize() {
+        this.dialogMaximized = false;
+        this.resized();
     }
 
     isInitialLoading(state: StatusHistoryState) {
@@ -237,6 +238,30 @@ export class StatusHistory extends CloseOnEscapeDialog implements OnInit, OnDest
     protected readonly Object = Object;
 
     protected readonly TextTip = TextTip;
+
+    areAllNodesSelected(instanceVisibility: any): boolean {
+        const unChecked = Object.entries(instanceVisibility)
+            .filter(([node, checked]) => node !== 'nifi-instance-id' && !checked)
+            .map(([, checked]) => checked);
+        return unChecked.length === 0;
+    }
+
+    areAnyNodesSelected(instanceVisibility: any): boolean {
+        const checked = Object.entries(instanceVisibility)
+            .filter(([node, checked]) => node !== 'nifi-instance-id' && checked)
+            .map(([, checked]) => checked);
+        return checked.length > 0 && checked.length < this.nodes.length;
+    }
+
+    selectAllNodesChanged(event: MatCheckboxChange) {
+        const checked: boolean = event.checked;
+        const tmpInstanceVisibility: any = {};
+        this.nodes.forEach((node: Instance) => {
+            tmpInstanceVisibility[node.id] = checked;
+        });
+        tmpInstanceVisibility['nifi-instance-id'] = this.instanceVisibility['nifi-instance-id'];
+        this.instanceVisibility = tmpInstanceVisibility;
+    }
 
     selectNode(event: MatCheckboxChange) {
         const instanceId: string = event.source.value;
@@ -267,6 +292,13 @@ export class StatusHistory extends CloseOnEscapeDialog implements OnInit, OnDest
         }
     }
 
+    @HostListener('window:resize', ['$event.target'])
+    windowResized() {
+        if (this.dialogMaximized) {
+            this.resized();
+        }
+    }
+
     getColor(stats: Stats, nodeId: string): string {
         if (stats.nodes && stats.nodes.length > 0) {
             const nodeColor = stats.nodes?.find((c) => c.id === nodeId);
@@ -274,8 +306,9 @@ export class StatusHistory extends CloseOnEscapeDialog implements OnInit, OnDest
                 return nodeColor.color;
             }
         }
-        return 'unset surface-color';
+        return 'unset neutral-color';
     }
 
     protected readonly NIFI_NODE_CONFIG = NIFI_NODE_CONFIG;
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

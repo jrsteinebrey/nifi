@@ -20,7 +20,7 @@ import { RouterModule, Routes } from '@angular/router';
 import { Canvas } from './canvas.component';
 import { AdvancedUi } from '../../../../ui/common/advanced-ui/advanced-ui.component';
 import { processorAdvancedUiParamsResolver } from '../../service/resolver/processor-advanced-ui-params.resolver';
-import { ComponentType } from '../../../../state/shared';
+import { ComponentType } from '@nifi/shared';
 
 const routes: Routes = [
     {
@@ -34,6 +34,10 @@ const routes: Routes = [
         children: [
             { path: 'bulk/:ids', component: Canvas },
             { path: 'edit', component: Canvas },
+            {
+                path: 'history',
+                component: Canvas
+            },
             {
                 path: ':type/:id',
                 component: Canvas,

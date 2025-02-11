@@ -23,17 +23,14 @@ import { CanvasState } from '../../../../../state';
 import {
     BranchEntity,
     BucketEntity,
-    isDefinedAndNotNull,
     RegistryClientEntity,
-    SelectOption,
     VersionedFlow,
     VersionedFlowEntity,
     VersionedFlowSnapshotMetadata,
     VersionedFlowSnapshotMetadataEntity
 } from '../../../../../../../state/shared';
 import { selectSaving } from '../../../../../state/flow/flow.selectors';
-import { AsyncPipe, JsonPipe, NgForOf, NgIf, NgTemplateOutlet } from '@angular/common';
-import { ErrorBanner } from '../../../../../../../ui/common/error-banner/error-banner.component';
+import { AsyncPipe, NgForOf, NgIf } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -41,27 +38,31 @@ import { MatOptionModule } from '@angular/material/core';
 import { MatSelectModule } from '@angular/material/select';
 import { NifiSpinnerDirective } from '../../../../../../../ui/common/spinner/nifi-spinner.directive';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { TextTip } from '../../../../../../../ui/common/tooltips/text-tip/text-tip.component';
-import { NifiTooltipDirective } from '../../../../../../../ui/common/tooltips/nifi-tooltip.directive';
 import { MatIconModule } from '@angular/material/icon';
 import { Observable, of, take } from 'rxjs';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatSortModule, Sort } from '@angular/material/sort';
-import { NiFiCommon } from '../../../../../../../service/nifi-common.service';
+import {
+    isDefinedAndNotNull,
+    SelectOption,
+    NiFiCommon,
+    TextTip,
+    NifiTooltipDirective,
+    CloseOnEscapeDialog
+} from '@nifi/shared';
 import { selectTimeOffset } from '../../../../../../../state/flow-configuration/flow-configuration.selectors';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Client } from '../../../../../../../service/client.service';
 import { importFromRegistry } from '../../../../../state/flow/flow.actions';
 import { ClusterConnectionService } from '../../../../../../../service/cluster-connection.service';
-import { CloseOnEscapeDialog } from '../../../../../../../ui/common/close-on-escape-dialog/close-on-escape-dialog.component';
+import { ErrorContextKey } from '../../../../../../../state/error';
+import { ContextErrorBanner } from '../../../../../../../ui/common/context-error-banner/context-error-banner.component';
 
 @Component({
     selector: 'import-from-registry',
-    standalone: true,
     imports: [
         AsyncPipe,
-        ErrorBanner,
         MatButtonModule,
         MatDialogModule,
         MatFormFieldModule,
@@ -74,24 +75,27 @@ import { CloseOnEscapeDialog } from '../../../../../../../ui/common/close-on-esc
         NgForOf,
         NifiTooltipDirective,
         MatIconModule,
-        NgTemplateOutlet,
-        JsonPipe,
         MatCheckboxModule,
         MatSortModule,
-        MatTableModule
+        MatTableModule,
+        ContextErrorBanner
     ],
     templateUrl: './import-from-registry.component.html',
     styleUrls: ['./import-from-registry.component.scss']
 })
 export class ImportFromRegistry extends CloseOnEscapeDialog implements OnInit {
     @Input() getBranches: (registryId: string) => Observable<BranchEntity[]> = () => of([]);
-    @Input() getBuckets!: (registryId: string, branch?: string) => Observable<BucketEntity[]>;
-    @Input() getFlows!: (registryId: string, bucketId: string, branch?: string) => Observable<VersionedFlowEntity[]>;
+    @Input() getBuckets!: (registryId: string, branch?: string | null) => Observable<BucketEntity[]>;
+    @Input() getFlows!: (
+        registryId: string,
+        bucketId: string,
+        branch?: string | null
+    ) => Observable<VersionedFlowEntity[]>;
     @Input() getFlowVersions!: (
         registryId: string,
         bucketId: string,
         flowId: string,
-        branch?: string
+        branch?: string | null
     ) => Observable<VersionedFlowSnapshotMetadataEntity[]>;
 
     saving$ = this.store.select(selectSaving);
@@ -135,9 +139,12 @@ export class ImportFromRegistry extends CloseOnEscapeDialog implements OnInit {
                 this.timeOffset = timeOffset;
             });
 
-        const sortedRegistries = dialogRequest.registryClients.slice().sort((a, b) => {
-            return this.nifiCommon.compareString(a.component.name, b.component.name);
-        });
+        const sortedRegistries = dialogRequest.registryClients
+            .slice()
+            .filter((registry) => registry.permissions.canRead)
+            .sort((a, b) => {
+                return this.nifiCommon.compareString(a.component.name, b.component.name);
+            });
 
         sortedRegistries.forEach((registryClient: RegistryClientEntity) => {
             if (registryClient.permissions.canRead) {
@@ -150,9 +157,10 @@ export class ImportFromRegistry extends CloseOnEscapeDialog implements OnInit {
             this.clientBranchingSupportMap.set(registryClient.id, registryClient.component.supportsBranching);
         });
 
+        const initialRegistry = this.registryClientOptions.length > 0 ? this.registryClientOptions[0].value : null;
         this.importFromRegistryForm = this.formBuilder.group({
-            registry: new FormControl(this.registryClientOptions[0].value, Validators.required),
-            branch: new FormControl('default', Validators.required),
+            registry: new FormControl(initialRegistry, Validators.required),
+            branch: new FormControl(null),
             bucket: new FormControl(null, Validators.required),
             flow: new FormControl(null, Validators.required),
             keepParameterContexts: new FormControl(true, Validators.required)
@@ -185,7 +193,7 @@ export class ImportFromRegistry extends CloseOnEscapeDialog implements OnInit {
 
     private clearBranches(): void {
         this.branchOptions = [];
-        this.importFromRegistryForm.get('branch')?.setValue('default');
+        this.importFromRegistryForm.get('branch')?.setValue(null);
         this.clearBuckets();
     }
 
@@ -204,19 +212,22 @@ export class ImportFromRegistry extends CloseOnEscapeDialog implements OnInit {
     bucketChanged(bucketId: string): void {
         this.clearFlows();
         const registryId = this.importFromRegistryForm.get('registry')?.value;
-        this.loadFlows(registryId, bucketId);
+        const branch = this.importFromRegistryForm.get('branch')?.value;
+        this.loadFlows(registryId, bucketId, branch);
     }
 
     private clearFlows() {
         this.importFromRegistryForm.get('flow')?.setValue(null);
         this.flowOptions = [];
         this.dataSource.data = [];
+        this.selectedFlowVersion = null;
     }
 
     flowChanged(flowId: string): void {
         const registryId = this.importFromRegistryForm.get('registry')?.value;
         const bucketId = this.importFromRegistryForm.get('bucket')?.value;
-        this.loadVersions(registryId, bucketId, flowId);
+        const branch = this.importFromRegistryForm.get('branch')?.value;
+        this.loadVersions(registryId, bucketId, flowId, branch);
     }
 
     loadBranches(registryId: string): void {
@@ -244,7 +255,7 @@ export class ImportFromRegistry extends CloseOnEscapeDialog implements OnInit {
         }
     }
 
-    loadBuckets(registryId: string, branch?: string): void {
+    loadBuckets(registryId: string, branch?: string | null): void {
         this.bucketOptions = [];
 
         this.getBuckets(registryId, branch)
@@ -270,7 +281,7 @@ export class ImportFromRegistry extends CloseOnEscapeDialog implements OnInit {
             });
     }
 
-    loadFlows(registryId: string, bucketId: string, branch?: string): void {
+    loadFlows(registryId: string, bucketId: string, branch?: string | null): void {
         this.flowOptions = [];
         this.flowLookup.clear();
 
@@ -297,8 +308,9 @@ export class ImportFromRegistry extends CloseOnEscapeDialog implements OnInit {
             });
     }
 
-    loadVersions(registryId: string, bucketId: string, flowId: string, branch?: string): void {
+    loadVersions(registryId: string, bucketId: string, flowId: string, branch?: string | null): void {
         this.dataSource.data = [];
+        this.selectedFlowVersion = null;
         this.selectedFlowDescription = this.flowLookup.get(flowId)?.description;
 
         this.getFlowVersions(registryId, bucketId, flowId, branch)
@@ -416,4 +428,6 @@ export class ImportFromRegistry extends CloseOnEscapeDialog implements OnInit {
     override isDirty(): boolean {
         return this.importFromRegistryForm.dirty;
     }
+
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

@@ -26,10 +26,9 @@ import { NiFiState } from '../../../../state';
 import { selectControllerServiceTypes } from '../../../../state/extension-types/extension-types.selectors';
 import { CreateControllerService } from '../../../../ui/common/controller-service/create-controller-service/create-controller-service.component';
 import { Client } from '../../../../service/client.service';
-import { YesNoDialog } from '../../../../ui/common/yes-no-dialog/yes-no-dialog.component';
+import { YesNoDialog } from '@nifi/shared';
 import { EditControllerService } from '../../../../ui/common/controller-service/edit-controller-service/edit-controller-service.component';
 import {
-    ComponentType,
     ControllerServiceReferencingComponent,
     EditControllerServiceDialogRequest,
     OpenChangeComponentVersionDialogRequest,
@@ -50,10 +49,8 @@ import * as ErrorActions from '../../../../state/error/error.actions';
 import { ErrorHelper } from '../../../../service/error-helper.service';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ParameterHelperService } from '../../service/parameter-helper.service';
-import { LARGE_DIALOG, SMALL_DIALOG, XL_DIALOG } from '../../../../index';
 import { ExtensionTypesService } from '../../../../service/extension-types.service';
 import { ChangeComponentVersionDialog } from '../../../../ui/common/change-component-version-dialog/change-component-version-dialog';
-import { FlowService } from '../../service/flow.service';
 import {
     resetPropertyVerificationState,
     verifyProperties
@@ -64,8 +61,9 @@ import {
 } from '../../../../state/property-verification/property-verification.selectors';
 import { VerifyPropertiesRequestContext } from '../../../../state/property-verification';
 import { BackNavigation } from '../../../../state/navigation';
-import { Storage } from '../../../../service/storage.service';
-import { NiFiCommon } from '../../../../service/nifi-common.service';
+import { ComponentType, LARGE_DIALOG, SMALL_DIALOG, XL_DIALOG, NiFiCommon, Storage } from '@nifi/shared';
+import { ErrorContextKey } from '../../../../state/error';
+import { ParameterContextService } from '../../../parameter-contexts/service/parameter-contexts.service';
 
 @Injectable()
 export class ControllerServicesEffects {
@@ -75,7 +73,7 @@ export class ControllerServicesEffects {
         private storage: Storage,
         private client: Client,
         private controllerServiceService: ControllerServiceService,
-        private flowService: FlowService,
+        private parameterContextService: ParameterContextService,
         private errorHelper: ErrorHelper,
         private dialog: MatDialog,
         private router: Router,
@@ -177,15 +175,33 @@ export class ControllerServicesEffects {
         )
     );
 
-    createControllerServiceSuccess$ = createEffect(
-        () =>
-            this.actions$.pipe(
-                ofType(ControllerServicesActions.createControllerServiceSuccess),
-                tap(() => {
-                    this.dialog.closeAll();
-                })
-            ),
-        { dispatch: false }
+    createControllerServiceSuccess$ = createEffect(() =>
+        this.actions$.pipe(
+            ofType(ControllerServicesActions.createControllerServiceSuccess),
+            map((action) => action.response),
+            concatLatestFrom(() => this.store.select(selectCurrentProcessGroupId)),
+            tap(([response, processGroupId]) => {
+                this.dialog.closeAll();
+
+                this.store.dispatch(
+                    ControllerServicesActions.selectControllerService({
+                        request: {
+                            id: response.controllerService.id,
+                            processGroupId
+                        }
+                    })
+                );
+            }),
+            switchMap(([, processGroupId]) =>
+                of(
+                    ControllerServicesActions.loadControllerServices({
+                        request: {
+                            processGroupId
+                        }
+                    })
+                )
+            )
+        )
     );
 
     navigateToEditService$ = createEffect(
@@ -312,7 +328,9 @@ export class ControllerServicesEffects {
                 ]),
                 switchMap(([request, parameterContextReference, processGroupId]) => {
                     if (parameterContextReference && parameterContextReference.permissions.canRead) {
-                        return from(this.flowService.getParameterContext(parameterContextReference.id)).pipe(
+                        return from(
+                            this.parameterContextService.getParameterContext(parameterContextReference.id, true)
+                        ).pipe(
                             map((parameterContext) => {
                                 return [request, parameterContext, processGroupId];
                             }),
@@ -503,7 +521,6 @@ export class ControllerServicesEffects {
                         });
 
                     editDialogReference.afterClosed().subscribe((response) => {
-                        this.store.dispatch(ErrorActions.clearBannerErrors());
                         this.store.dispatch(resetPropertyVerificationState());
 
                         if (response != 'ROUTED') {
@@ -558,7 +575,13 @@ export class ControllerServicesEffects {
         this.actions$.pipe(
             ofType(ControllerServicesActions.controllerServicesBannerApiError),
             map((action) => action.error),
-            switchMap((error) => of(ErrorActions.addBannerError({ error })))
+            switchMap((error) =>
+                of(
+                    ErrorActions.addBannerError({
+                        errorContext: { errors: [error], context: ErrorContextKey.CONTROLLER_SERVICES }
+                    })
+                )
+            )
         )
     );
 
@@ -715,6 +738,22 @@ export class ControllerServicesEffects {
                     catchError((errorResponse: HttpErrorResponse) =>
                         of(ErrorActions.snackBarError({ error: this.errorHelper.getErrorString(errorResponse) }))
                     )
+                )
+            )
+        )
+    );
+
+    deleteControllerServiceSuccess$ = createEffect(() =>
+        this.actions$.pipe(
+            ofType(ControllerServicesActions.deleteControllerServiceSuccess),
+            concatLatestFrom(() => this.store.select(selectCurrentProcessGroupId)),
+            switchMap(([, processGroupId]) =>
+                of(
+                    ControllerServicesActions.loadControllerServices({
+                        request: {
+                            processGroupId
+                        }
+                    })
                 )
             )
         )

@@ -685,7 +685,7 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
                 timingInfo.append("; Updating Provenance Event Repository took ");
                 formatNanos(updateProvenanceNanos, timingInfo);
 
-                LOG.debug(timingInfo.toString());
+                LOG.debug("{}", timingInfo);
             }
 
             // Update local state
@@ -984,13 +984,13 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
 
         final long commitNanos = System.nanoTime();
         final List<ProvenanceEventRecord> autoTermEvents = checkpoint.autoTerminatedEvents;
-        final Iterable<ProvenanceEventRecord> iterable = new Iterable<ProvenanceEventRecord>() {
+        final Iterable<ProvenanceEventRecord> iterable = new Iterable<>() {
             final Iterator<ProvenanceEventRecord> recordsToSubmitIterator = recordsToSubmit.iterator();
             final Iterator<ProvenanceEventRecord> autoTermIterator = autoTermEvents == null ? null : autoTermEvents.iterator();
 
             @Override
             public Iterator<ProvenanceEventRecord> iterator() {
-                return new Iterator<ProvenanceEventRecord>() {
+                return new Iterator<>() {
                     @Override
                     public boolean hasNext() {
                         return recordsToSubmitIterator.hasNext() || autoTermIterator != null && autoTermIterator.hasNext();
@@ -1007,8 +1007,9 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
                             // the representation of the FlowFile as it is committed, as this is the only way in which it really
                             // exists in our system -- all other representations are volatile representations that have not been
                             // exposed.
-                            final boolean isUpdateAttributes = rawEvent.getEventType() != ProvenanceEventType.SEND && rawEvent.getEventType() != ProvenanceEventType.UPLOAD;
-                            return enrich(rawEvent, flowFileRecordMap, checkpoint.records, isUpdateAttributes, commitNanos);
+                            final boolean isUpdateAttributesAndContent = rawEvent.getEventType() != ProvenanceEventType.SEND && rawEvent.getEventType() != ProvenanceEventType.UPLOAD
+                                    && rawEvent.getEventType() != ProvenanceEventType.CLONE;
+                            return enrich(rawEvent, flowFileRecordMap, checkpoint.records, isUpdateAttributesAndContent, commitNanos);
                         } else if (autoTermIterator != null && autoTermIterator.hasNext()) {
                             return enrich(autoTermIterator.next(), flowFileRecordMap, checkpoint.records, true, commitNanos);
                         }
@@ -1085,13 +1086,13 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
 
     private ProvenanceEventRecord enrich(
         final ProvenanceEventRecord rawEvent, final Map<String, FlowFileRecord> flowFileRecordMap, final Map<Long, StandardRepositoryRecord> records,
-        final boolean updateAttributes, final long commitNanos) {
+        final boolean updateAttributesAndContent, final long commitNanos) {
         final ProvenanceEventBuilder recordBuilder = context.createProvenanceEventBuilder().fromEvent(rawEvent);
         final FlowFileRecord eventFlowFile = flowFileRecordMap.get(rawEvent.getFlowFileUuid());
         if (eventFlowFile != null) {
             final StandardRepositoryRecord repoRecord = records.get(eventFlowFile.getId());
 
-            if (repoRecord.getCurrent() != null && repoRecord.getCurrentClaim() != null) {
+            if (updateAttributesAndContent && repoRecord.getCurrent() != null && repoRecord.getCurrentClaim() != null) {
                 final ContentClaim currentClaim = repoRecord.getCurrentClaim();
                 final long currentOffset = repoRecord.getCurrentClaimOffset();
                 final long size = eventFlowFile.getSize();
@@ -1100,7 +1101,7 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
                 recordBuilder.setCurrentContentClaim(resourceClaim.getContainer(), resourceClaim.getSection(), resourceClaim.getId(), currentOffset + currentClaim.getOffset(), size);
             }
 
-            if (repoRecord.getOriginal() != null && repoRecord.getOriginalClaim() != null) {
+            if (updateAttributesAndContent && repoRecord.getOriginal() != null && repoRecord.getOriginalClaim() != null) {
                 final ContentClaim originalClaim = repoRecord.getOriginalClaim();
                 final long originalOffset = repoRecord.getOriginal().getContentClaimOffset();
                 final long originalSize = repoRecord.getOriginal().getSize();
@@ -1114,7 +1115,7 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
                 recordBuilder.setSourceQueueIdentifier(originalQueue.getIdentifier());
             }
 
-            if (updateAttributes) {
+            if (updateAttributesAndContent) {
                 recordBuilder.setAttributes(repoRecord.getOriginalAttributes(), repoRecord.getUpdatedAttributes());
             }
 
@@ -1756,7 +1757,7 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
     private void formatNanos(final long nanos, final StringBuilder sb) {
         final long seconds = nanos > 1000000000L ? nanos / 1000000000L : 0L;
         long millis = nanos > 1000000L ? nanos / 1000000L : 0L;
-        ;
+
         final long nanosLeft = nanos % 1000000L;
 
         if (seconds > 0) {
@@ -1907,35 +1908,25 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
             return Collections.emptyList();
         }
 
-        return get(new ConnectionPoller() {
-            @Override
-            public List<FlowFileRecord> poll(final Connection connection, final Set<FlowFileRecord> expiredRecords) {
-                return connection.poll(new FlowFileFilter() {
-                    int polled = 0;
+        return get((connection, expiredRecords) -> connection.poll(new FlowFileFilter() {
+            int polled = 0;
 
-                    @Override
-                    public FlowFileFilterResult filter(final FlowFile flowFile) {
-                        if (++polled < maxResults) {
-                            return FlowFileFilterResult.ACCEPT_AND_CONTINUE;
-                        } else {
-                            return FlowFileFilterResult.ACCEPT_AND_TERMINATE;
-                        }
-                    }
-                }, expiredRecords);
+            @Override
+            public FlowFileFilterResult filter(final FlowFile flowFile) {
+                if (++polled < maxResults) {
+                    return FlowFileFilterResult.ACCEPT_AND_CONTINUE;
+                } else {
+                    return FlowFileFilterResult.ACCEPT_AND_TERMINATE;
+                }
             }
-        }, false);
+        }, expiredRecords), false);
     }
 
     @Override
     public List<FlowFile> get(final FlowFileFilter filter) {
         verifyTaskActive();
 
-        return get(new ConnectionPoller() {
-            @Override
-            public List<FlowFileRecord> poll(final Connection connection, final Set<FlowFileRecord> expiredRecords) {
-                return connection.poll(filter, expiredRecords);
-            }
-        }, true);
+        return get((connection, expiredRecords) -> connection.poll(filter, expiredRecords), true);
     }
 
 
@@ -2494,12 +2485,7 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
 
     public void expireFlowFiles() {
         final Set<FlowFileRecord> expired = new HashSet<>();
-        final FlowFileFilter filter = new FlowFileFilter() {
-            @Override
-            public FlowFileFilterResult filter(final FlowFile flowFile) {
-                return FlowFileFilterResult.REJECT_AND_CONTINUE;
-            }
-        };
+        final FlowFileFilter filter = flowFile -> FlowFileFilter.FlowFileFilterResult.REJECT_AND_CONTINUE;
 
         for (final Connection conn : context.getConnectable().getIncomingConnections()) {
             do {
@@ -2519,7 +2505,6 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
         final List<RepositoryRecord> expiredRecords = new ArrayList<>(flowFiles.size());
 
         final Connectable connectable = context.getConnectable();
-        final String processorType = connectable.getComponentType();
         final InternalProvenanceReporter expiredReporter = context.createProvenanceReporter(this::isFlowFileKnown, this);
 
         final Map<String, FlowFileRecord> recordIdMap = new HashMap<>();
@@ -2537,52 +2522,49 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
         }
 
         try {
-            final Iterable<ProvenanceEventRecord> iterable = new Iterable<ProvenanceEventRecord>() {
-                @Override
-                public Iterator<ProvenanceEventRecord> iterator() {
-                    final Iterator<ProvenanceEventRecord> expiredEventIterator = expiredReporter.getEvents().iterator();
-                    final Iterator<ProvenanceEventRecord> enrichingIterator = new Iterator<ProvenanceEventRecord>() {
-                        @Override
-                        public boolean hasNext() {
-                            return expiredEventIterator.hasNext();
+            final Iterable<ProvenanceEventRecord> iterable = () -> {
+                final Iterator<ProvenanceEventRecord> expiredEventIterator = expiredReporter.getEvents().iterator();
+                final Iterator<ProvenanceEventRecord> enrichingIterator = new Iterator<>() {
+                    @Override
+                    public boolean hasNext() {
+                        return expiredEventIterator.hasNext();
+                    }
+
+                    @Override
+                    public ProvenanceEventRecord next() {
+                        final ProvenanceEventRecord event = expiredEventIterator.next();
+                        final ProvenanceEventBuilder enriched = context.createProvenanceEventBuilder().fromEvent(event);
+                        final FlowFileRecord record = recordIdMap.get(event.getFlowFileUuid());
+                        if (record == null) {
+                            return null;
                         }
 
-                        @Override
-                        public ProvenanceEventRecord next() {
-                            final ProvenanceEventRecord event = expiredEventIterator.next();
-                            final ProvenanceEventBuilder enriched = context.createProvenanceEventBuilder().fromEvent(event);
-                            final FlowFileRecord record = recordIdMap.get(event.getFlowFileUuid());
-                            if (record == null) {
-                                return null;
-                            }
-
-                            final ContentClaim claim = record.getContentClaim();
-                            if (claim != null) {
-                                final ResourceClaim resourceClaim = claim.getResourceClaim();
-                                enriched.setCurrentContentClaim(resourceClaim.getContainer(), resourceClaim.getSection(), resourceClaim.getId(),
+                        final ContentClaim claim = record.getContentClaim();
+                        if (claim != null) {
+                            final ResourceClaim resourceClaim = claim.getResourceClaim();
+                            enriched.setCurrentContentClaim(resourceClaim.getContainer(), resourceClaim.getSection(), resourceClaim.getId(),
                                     record.getContentClaimOffset() + claim.getOffset(), record.getSize());
-                                enriched.setPreviousContentClaim(resourceClaim.getContainer(), resourceClaim.getSection(), resourceClaim.getId(),
+                            enriched.setPreviousContentClaim(resourceClaim.getContainer(), resourceClaim.getSection(), resourceClaim.getId(),
                                     record.getContentClaimOffset() + claim.getOffset(), record.getSize());
-                            }
-
-                            enriched.setAttributes(record.getAttributes(), Collections.<String, String> emptyMap());
-                            return enriched.build();
                         }
 
-                        @Override
-                        public void remove() {
-                            throw new UnsupportedOperationException();
-                        }
-                    };
+                        enriched.setAttributes(record.getAttributes(), Collections.<String, String>emptyMap());
+                        return enriched.build();
+                    }
 
-                    return enrichingIterator;
-                }
+                    @Override
+                    public void remove() {
+                        throw new UnsupportedOperationException();
+                    }
+                };
+
+                return enrichingIterator;
             };
 
             context.getProvenanceRepository().registerEvents(iterable);
             context.getFlowFileRepository().updateRepository(expiredRecords);
         } catch (final IOException e) {
-            LOG.error("Failed to update FlowFile Repository to record expired records due to {}", e.toString(), e);
+            LOG.error("Failed to update FlowFile Repository to record expired records", e);
         }
 
     }
@@ -3375,7 +3357,7 @@ public class StandardProcessSession implements ProcessSession, ProvenanceEventEn
             if (currentReadClaimStream != null) {
                 currentReadClaimStream.close();
             }
-        } catch (final Exception e) {
+        } catch (final Exception ignored) {
         }
         currentReadClaimStream = null;
         currentReadClaim = null;

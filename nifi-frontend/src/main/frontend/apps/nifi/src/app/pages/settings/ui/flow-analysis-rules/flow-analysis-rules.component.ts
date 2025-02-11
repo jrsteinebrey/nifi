@@ -43,11 +43,13 @@ import { NiFiState } from '../../../../state';
 import { FlowAnalysisRuleEntity, FlowAnalysisRulesState } from '../../state/flow-analysis-rules';
 import { getComponentStateAndOpenDialog } from '../../../../state/component-state/component-state.actions';
 import { navigateToComponentDocumentation } from '../../../../state/documentation/documentation.actions';
+import { ComponentType } from '@nifi/shared';
 
 @Component({
     selector: 'flow-analysis-rules',
     templateUrl: './flow-analysis-rules.component.html',
-    styleUrls: ['./flow-analysis-rules.component.scss']
+    styleUrls: ['./flow-analysis-rules.component.scss'],
+    standalone: false
 })
 export class FlowAnalysisRules implements OnInit, OnDestroy {
     flowAnalysisRuleState$ = this.store.select(selectFlowAnalysisRulesState);
@@ -118,7 +120,8 @@ export class FlowAnalysisRules implements OnInit, OnDestroy {
                         context: 'Flow Analysis Rule'
                     },
                     parameters: {
-                        select: entity.component.type,
+                        componentType: ComponentType.FlowAnalysisRule,
+                        type: entity.component.type,
                         group: entity.component.bundle.group,
                         artifact: entity.component.bundle.artifact,
                         version: entity.component.bundle.version

@@ -59,6 +59,7 @@ import org.apache.nifi.web.api.entity.FlowBreadcrumbEntity;
 import org.apache.nifi.web.api.entity.FlowRegistryClientEntity;
 import org.apache.nifi.web.api.entity.FunnelEntity;
 import org.apache.nifi.web.api.entity.LabelEntity;
+import org.apache.nifi.web.api.entity.NarSummaryEntity;
 import org.apache.nifi.web.api.entity.ParameterContextEntity;
 import org.apache.nifi.web.api.entity.ParameterContextReferenceEntity;
 import org.apache.nifi.web.api.entity.ParameterProviderEntity;
@@ -218,8 +219,9 @@ public final class EntityFactory {
         return entity;
     }
 
-    public ProcessGroupFlowEntity createProcessGroupFlowEntity(final ProcessGroupFlowDTO dto, final PermissionsDTO permissions) {
+    public ProcessGroupFlowEntity createProcessGroupFlowEntity(final ProcessGroupFlowDTO dto, final RevisionDTO revision, final PermissionsDTO permissions) {
         final ProcessGroupFlowEntity entity = new ProcessGroupFlowEntity();
+        entity.setRevision(revision);
         entity.setProcessGroupFlow(dto);
         entity.setPermissions(permissions);
         return entity;
@@ -833,5 +835,9 @@ public final class EntityFactory {
         final FlowRegistryBranchEntity entity = new FlowRegistryBranchEntity();
         entity.setBranch(dto);
         return entity;
+    }
+
+    public NarSummaryEntity createNarSummaryEntity(final NarSummaryDTO narSummaryDTO) {
+        return new NarSummaryEntity(narSummaryDTO);
     }
 }

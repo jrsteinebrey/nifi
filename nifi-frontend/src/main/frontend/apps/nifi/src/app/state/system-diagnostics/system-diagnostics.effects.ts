@@ -25,10 +25,11 @@ import * as SystemDiagnosticsActions from './system-diagnostics.actions';
 import { catchError, from, map, of, switchMap, tap } from 'rxjs';
 import { SystemDiagnosticsRequest } from './index';
 import { SystemDiagnosticsDialog } from '../../ui/common/system-diagnostics-dialog/system-diagnostics-dialog.component';
-import { LARGE_DIALOG } from '../../index';
+import { LARGE_DIALOG } from '@nifi/shared';
 import * as ErrorActions from '../error/error.actions';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ErrorHelper } from '../../service/error-helper.service';
+import { ErrorContextKey } from '../error';
 
 @Injectable()
 export class SystemDiagnosticsEffects {
@@ -125,7 +126,13 @@ export class SystemDiagnosticsEffects {
         this.actions$.pipe(
             ofType(SystemDiagnosticsActions.systemDiagnosticsBannerError),
             map((action) => action.error),
-            switchMap((error) => of(ErrorActions.addBannerError({ error })))
+            switchMap((error) =>
+                of(
+                    ErrorActions.addBannerError({
+                        errorContext: { errors: [error], context: ErrorContextKey.SYSTEM_DIAGNOSTICS }
+                    })
+                )
+            )
         )
     );
 

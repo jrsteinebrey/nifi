@@ -24,28 +24,24 @@ import {
     MatDialogTitle
 } from '@angular/material/dialog';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ErrorBanner } from '../../../../../../../ui/common/error-banner/error-banner.component';
 import { MatButton } from '@angular/material/button';
 import { NifiSpinnerDirective } from '../../../../../../../ui/common/spinner/nifi-spinner.directive';
 import { MatError, MatFormField, MatLabel } from '@angular/material/form-field';
 import { MatOption, MatSelect } from '@angular/material/select';
 import { Observable, of, take } from 'rxjs';
-import { BranchEntity, BucketEntity, RegistryClientEntity, SelectOption } from '../../../../../../../state/shared';
-import { NiFiCommon } from '../../../../../../../service/nifi-common.service';
+import { BranchEntity, BucketEntity, RegistryClientEntity } from '../../../../../../../state/shared';
 import { SaveVersionDialogRequest, SaveVersionRequest, VersionControlInformation } from '../../../../../state/flow';
-import { TextTip } from '../../../../../../../ui/common/tooltips/text-tip/text-tip.component';
-import { NifiTooltipDirective } from '../../../../../../../ui/common/tooltips/nifi-tooltip.directive';
+import { TextTip, NiFiCommon, NifiTooltipDirective, CloseOnEscapeDialog, SelectOption } from '@nifi/shared';
 import { NgForOf, NgIf } from '@angular/common';
 import { MatInput } from '@angular/material/input';
-import { CloseOnEscapeDialog } from '../../../../../../../ui/common/close-on-escape-dialog/close-on-escape-dialog.component';
+import { ErrorContextKey } from '../../../../../../../state/error';
+import { ContextErrorBanner } from '../../../../../../../ui/common/context-error-banner/context-error-banner.component';
 
 @Component({
     selector: 'save-version-dialog',
-    standalone: true,
     imports: [
         MatDialogTitle,
         ReactiveFormsModule,
-        ErrorBanner,
         MatDialogContent,
         MatDialogActions,
         MatButton,
@@ -59,14 +55,15 @@ import { CloseOnEscapeDialog } from '../../../../../../../ui/common/close-on-esc
         MatLabel,
         NgForOf,
         NgIf,
-        MatInput
+        MatInput,
+        ContextErrorBanner
     ],
     templateUrl: './save-version-dialog.component.html',
     styleUrl: './save-version-dialog.component.scss'
 })
 export class SaveVersionDialog extends CloseOnEscapeDialog implements OnInit {
     @Input() getBranches: (registryId: string) => Observable<BranchEntity[]> = () => of([]);
-    @Input() getBuckets: (registryId: string, branch?: string) => Observable<BucketEntity[]> = () => of([]);
+    @Input() getBuckets: (registryId: string, branch?: string | null) => Observable<BucketEntity[]> = () => of([]);
     @Input({ required: true }) saving!: Signal<boolean>;
 
     @Output() save: EventEmitter<SaveVersionRequest> = new EventEmitter<SaveVersionRequest>();
@@ -91,9 +88,12 @@ export class SaveVersionDialog extends CloseOnEscapeDialog implements OnInit {
         this.forceCommit = !!dialogRequest.forceCommit;
 
         if (dialogRequest.registryClients) {
-            const sortedRegistries = dialogRequest.registryClients.slice().sort((a, b) => {
-                return this.nifiCommon.compareString(a.component.name, b.component.name);
-            });
+            const sortedRegistries = dialogRequest.registryClients
+                .slice()
+                .filter((registry) => registry.permissions.canRead)
+                .sort((a, b) => {
+                    return this.nifiCommon.compareString(a.component.name, b.component.name);
+                });
 
             sortedRegistries.forEach((registryClient: RegistryClientEntity) => {
                 if (registryClient.permissions.canRead) {
@@ -106,9 +106,10 @@ export class SaveVersionDialog extends CloseOnEscapeDialog implements OnInit {
                 this.clientBranchingSupportMap.set(registryClient.id, registryClient.component.supportsBranching);
             });
 
+            const initialRegistry = this.registryClientOptions.length > 0 ? this.registryClientOptions[0].value : null;
             this.saveVersionForm = formBuilder.group({
-                registry: new FormControl(this.registryClientOptions[0].value, Validators.required),
-                branch: new FormControl('default', Validators.required),
+                registry: new FormControl(initialRegistry, Validators.required),
+                branch: new FormControl(null),
                 bucket: new FormControl(null, Validators.required),
                 flowName: new FormControl(null, Validators.required),
                 flowDescription: new FormControl(null),
@@ -136,57 +137,64 @@ export class SaveVersionDialog extends CloseOnEscapeDialog implements OnInit {
         }
     }
 
-    loadBranches(registryId: string): void {
-        if (registryId) {
-            this.branchOptions = [];
-
-            this.getBranches(registryId)
-                .pipe(take(1))
-                .subscribe((branches: BranchEntity[]) => {
-                    if (branches.length > 0) {
-                        branches.forEach((entity: BranchEntity) => {
-                            this.branchOptions.push({
-                                text: entity.branch.name,
-                                value: entity.branch.name
-                            });
-                        });
-
-                        const branchId = this.branchOptions[0].value;
-                        if (branchId) {
-                            this.saveVersionForm.get('branch')?.setValue(branchId);
-                            this.loadBuckets(registryId, branchId);
-                        }
-                    }
-                });
-        }
+    private clearBranches(): void {
+        this.branchOptions = [];
+        this.saveVersionForm.get('branch')?.setValue(null);
+        this.clearBuckets();
     }
 
-    loadBuckets(registryId: string, branch?: string): void {
-        if (registryId) {
-            this.bucketOptions = [];
+    loadBranches(registryId: string): void {
+        this.clearBranches();
 
-            this.getBuckets(registryId, branch)
-                .pipe(take(1))
-                .subscribe((buckets: BucketEntity[]) => {
-                    if (buckets.length > 0) {
-                        buckets.forEach((entity: BucketEntity) => {
-                            // only allow buckets to be selectable if the user can read and write to them
-                            if (entity.permissions.canRead && entity.permissions.canWrite) {
-                                this.bucketOptions.push({
-                                    text: entity.bucket.name,
-                                    value: entity.id,
-                                    description: entity.bucket.description
-                                });
-                            }
+        this.getBranches(registryId)
+            .pipe(take(1))
+            .subscribe((branches: BranchEntity[]) => {
+                if (branches.length > 0) {
+                    branches.forEach((entity: BranchEntity) => {
+                        this.branchOptions.push({
+                            text: entity.branch.name,
+                            value: entity.branch.name
                         });
+                    });
 
-                        const bucketId = this.bucketOptions[0].value;
-                        if (bucketId) {
-                            this.saveVersionForm.get('bucket')?.setValue(bucketId);
-                        }
+                    const branchId = this.branchOptions[0].value;
+                    if (branchId) {
+                        this.saveVersionForm.get('branch')?.setValue(branchId);
+                        this.loadBuckets(registryId, branchId);
                     }
-                });
-        }
+                }
+            });
+    }
+
+    private clearBuckets(): void {
+        this.bucketOptions = [];
+        this.saveVersionForm.get('bucket')?.setValue(null);
+    }
+
+    loadBuckets(registryId: string, branch?: string | null): void {
+        this.clearBuckets();
+
+        this.getBuckets(registryId, branch)
+            .pipe(take(1))
+            .subscribe((buckets: BucketEntity[]) => {
+                if (buckets.length > 0) {
+                    buckets.forEach((entity: BucketEntity) => {
+                        // only allow buckets to be selectable if the user can read and write to them
+                        if (entity.permissions.canRead && entity.permissions.canWrite) {
+                            this.bucketOptions.push({
+                                text: entity.bucket.name,
+                                value: entity.id,
+                                description: entity.bucket.description
+                            });
+                        }
+                    });
+
+                    const bucketId = this.bucketOptions[0].value;
+                    if (bucketId) {
+                        this.saveVersionForm.get('bucket')?.setValue(bucketId);
+                    }
+                }
+            });
     }
 
     registryChanged(registryId: string): void {
@@ -199,8 +207,10 @@ export class SaveVersionDialog extends CloseOnEscapeDialog implements OnInit {
     }
 
     branchChanged(branch: string): void {
-        const registryId = this.saveVersionForm.get('registry')?.value;
-        this.loadBuckets(registryId, branch);
+        const selectedRegistryId: string | null = this.saveVersionForm.get('registry')?.value;
+        if (selectedRegistryId) {
+            this.loadBuckets(selectedRegistryId, branch);
+        }
     }
 
     submitForm() {
@@ -240,4 +250,6 @@ export class SaveVersionDialog extends CloseOnEscapeDialog implements OnInit {
     override isDirty(): boolean {
         return this.saveVersionForm.dirty;
     }
+
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

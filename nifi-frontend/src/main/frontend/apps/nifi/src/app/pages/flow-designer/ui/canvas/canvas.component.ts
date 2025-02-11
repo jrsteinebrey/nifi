@@ -25,6 +25,7 @@ import {
     editComponent,
     editCurrentProcessGroup,
     loadProcessGroup,
+    paste,
     resetFlowState,
     selectComponents,
     setSkipTransform,
@@ -43,6 +44,8 @@ import {
     selectConnection,
     selectCurrentProcessGroupId,
     selectEditedCurrentProcessGroup,
+    selectFlowAnalysisOpen,
+    selectFlowLoadingStatus,
     selectFunnel,
     selectInputPort,
     selectLabel,
@@ -55,25 +58,27 @@ import {
     selectSingleEditedComponent,
     selectSingleSelectedComponent,
     selectSkipTransform,
-    selectViewStatusHistoryComponent
+    selectViewStatusHistoryComponent,
+    selectViewStatusHistoryCurrentProcessGroup
 } from '../../state/flow/flow.selectors';
-import { filter, map, switchMap, take } from 'rxjs';
+import { distinctUntilChanged, filter, map, NEVER, switchMap, take } from 'rxjs';
 import { restoreViewport } from '../../state/transform/transform.actions';
-import { ComponentType, isDefinedAndNotNull } from '../../../../state/shared';
 import { initialState } from '../../state/flow/flow.reducer';
 import { CanvasContextMenu } from '../../service/canvas-context-menu.service';
 import { getStatusHistoryAndOpenDialog } from '../../../../state/status-history/status-history.actions';
 import { concatLatestFrom } from '@ngrx/operators';
-import { selectUrl } from '../../../../state/router/router.selectors';
-import { Storage } from '../../../../service/storage.service';
+import { ComponentType, isDefinedAndNotNull, NiFiCommon, selectUrl, Storage } from '@nifi/shared';
 import { CanvasUtils } from '../../service/canvas-utils.service';
 import { CanvasActionsService } from '../../service/canvas-actions.service';
 import { MatDialog } from '@angular/material/dialog';
+import { CopyResponseEntity } from '../../../../state/copy';
+import { snackBarError } from '../../../../state/error/error.actions';
 
 @Component({
     selector: 'fd-canvas',
     templateUrl: './canvas.component.html',
-    styleUrls: ['./canvas.component.scss']
+    styleUrls: ['./canvas.component.scss'],
+    standalone: false
 })
 export class Canvas implements OnInit, OnDestroy {
     private svg: any;
@@ -82,6 +87,8 @@ export class Canvas implements OnInit, OnDestroy {
     private scale: number = INITIAL_SCALE;
     private canvasClicked = false;
 
+    flowAnalysisOpen = this.store.selectSignal(selectFlowAnalysisOpen);
+
     constructor(
         private store: Store<CanvasState>,
         private canvasView: CanvasView,
@@ -89,7 +96,8 @@ export class Canvas implements OnInit, OnDestroy {
         private canvasUtils: CanvasUtils,
         public canvasContextMenu: CanvasContextMenu,
         private canvasActionsService: CanvasActionsService,
-        private dialog: MatDialog
+        private dialog: MatDialog,
+        public nifiCommon: NiFiCommon
     ) {
         this.store
             .select(selectTransform)
@@ -127,9 +135,11 @@ export class Canvas implements OnInit, OnDestroy {
 
         // handle process group loading and viewport restoration
         this.store
-            .select(selectCurrentProcessGroupId)
+            .select(selectFlowLoadingStatus)
             .pipe(
-                filter((processGroupId) => processGroupId != initialState.id),
+                filter((status) => status === 'complete'),
+                switchMap(() => this.store.select(selectCurrentProcessGroupId)),
+                distinctUntilChanged(),
                 switchMap(() => this.store.select(selectProcessGroupRoute)),
                 filter((processGroupRoute) => processGroupRoute != null),
                 concatLatestFrom(() => this.store.select(selectSkipTransform)),
@@ -145,9 +155,11 @@ export class Canvas implements OnInit, OnDestroy {
 
         // handle single component selection
         this.store
-            .select(selectCurrentProcessGroupId)
+            .select(selectFlowLoadingStatus)
             .pipe(
-                filter((processGroupId) => processGroupId != initialState.id),
+                filter((status) => status === 'complete'),
+                switchMap(() => this.store.select(selectCurrentProcessGroupId)),
+                distinctUntilChanged(),
                 switchMap(() => this.store.select(selectSingleSelectedComponent)),
                 filter((selectedComponent) => selectedComponent != null),
                 concatLatestFrom(() => [
@@ -166,9 +178,11 @@ export class Canvas implements OnInit, OnDestroy {
 
         // handle bulk component selection
         this.store
-            .select(selectCurrentProcessGroupId)
+            .select(selectFlowLoadingStatus)
             .pipe(
-                filter((processGroupId) => processGroupId != initialState.id),
+                filter((status) => status === 'complete'),
+                switchMap(() => this.store.select(selectCurrentProcessGroupId)),
+                distinctUntilChanged(),
                 switchMap(() => this.store.select(selectBulkSelectedComponentIds)),
                 filter((ids) => ids.length > 0),
                 concatLatestFrom(() => [
@@ -220,7 +234,8 @@ export class Canvas implements OnInit, OnDestroy {
                             component$ = this.store.select(selectLabel(selectedComponent.id));
                             break;
                         default:
-                            throw 'Unrecognized Component Type';
+                            component$ = NEVER;
+                            break;
                     }
 
                     // combine the original selection with the component
@@ -262,6 +277,7 @@ export class Canvas implements OnInit, OnDestroy {
                 );
             });
 
+        // Handle status history for a selected component on the canvas
         this.store
             .select(selectCurrentProcessGroupId)
             .pipe(
@@ -282,6 +298,22 @@ export class Canvas implements OnInit, OnDestroy {
                         })
                     );
                 }
+            });
+
+        // Handle status history for the current process group
+        this.store
+            .select(selectViewStatusHistoryCurrentProcessGroup)
+            .pipe(isDefinedAndNotNull(), takeUntilDestroyed())
+            .subscribe((currentProcessGroupId) => {
+                this.store.dispatch(
+                    getStatusHistoryAndOpenDialog({
+                        request: {
+                            source: 'canvas',
+                            componentType: ComponentType.ProcessGroup,
+                            componentId: currentProcessGroupId
+                        }
+                    })
+                );
             });
     }
 
@@ -335,13 +367,13 @@ export class Canvas implements OnInit, OnDestroy {
             .attr('orient', 'auto')
             .attr('class', (d: string) => {
                 if (d === 'ghost') {
-                    return 'ghost surface-color';
+                    return 'ghost neutral-color';
                 } else if (d === 'unauthorized') {
-                    return 'unauthorized warn-color-darker';
+                    return 'unauthorized error-color';
                 } else if (d === 'full') {
-                    return 'full warn-color-darker';
+                    return 'full error-color';
                 } else {
-                    return 'surface-contrast';
+                    return 'neutral-contrast';
                 }
             })
             .append('path')
@@ -598,9 +630,11 @@ export class Canvas implements OnInit, OnDestroy {
     ngOnDestroy(): void {
         this.store.dispatch(resetFlowState());
         this.store.dispatch(stopProcessGroupPolling());
+
+        this.canvasView.destroy();
     }
 
-    private processKeyboardEvents(event: KeyboardEvent): boolean {
+    private processKeyboardEvents(event: KeyboardEvent | ClipboardEvent): boolean {
         const source = event.target as any;
         let searchFieldIsEventSource = false;
         if (source) {
@@ -667,17 +701,26 @@ export class Canvas implements OnInit, OnDestroy {
         }
     }
 
-    @HostListener('window:keydown.control.v', ['$event'])
-    handleKeyDownCtrlV(event: KeyboardEvent) {
-        if (this.executeAction('paste', event)) {
-            event.preventDefault();
+    @HostListener('window:paste', ['$event'])
+    handlePasteEvent(event: ClipboardEvent) {
+        if (!this.processKeyboardEvents(event) || !this.canvasUtils.isPastable()) {
+            // don't attempt to paste flow content
+            return;
         }
-    }
 
-    @HostListener('window:keydown.meta.v', ['$event'])
-    handleKeyDownMetaV(event: KeyboardEvent) {
-        if (this.executeAction('paste', event)) {
-            event.preventDefault();
+        const textToPaste = event.clipboardData?.getData('text/plain');
+        if (textToPaste) {
+            const copyResponse: CopyResponseEntity | null = this.toCopyResponseEntity(textToPaste);
+            if (copyResponse) {
+                this.store.dispatch(
+                    paste({
+                        request: copyResponse
+                    })
+                );
+                event.preventDefault();
+            } else {
+                this.store.dispatch(snackBarError({ error: 'Cannot paste: incompatible format' }));
+            }
         }
     }
 
@@ -692,6 +735,72 @@ export class Canvas implements OnInit, OnDestroy {
     handleKeyDownMetaA(event: KeyboardEvent) {
         if (this.executeAction('selectAll', event)) {
             event.preventDefault();
+        }
+    }
+
+    toCopyResponseEntity(json: string): CopyResponseEntity | null {
+        try {
+            const copyResponse: CopyResponseEntity = JSON.parse(json);
+            const supportedKeys: string[] = [
+                'processGroups',
+                'remoteProcessGroups',
+                'processors',
+                'inputPorts',
+                'outputPorts',
+                'connections',
+                'labels',
+                'funnels'
+            ];
+
+            // ensure at least one of the copyable component types has something to paste
+            const hasCopiedContent = Object.entries(copyResponse).some((entry) => {
+                return supportedKeys.includes(entry[0]) && Array.isArray(entry[1]) && entry[1].length > 0;
+            });
+
+            if (hasCopiedContent) {
+                return copyResponse;
+            }
+
+            // check to see if this is a FlowDefinition
+            const maybeFlowDefinition: any = JSON.parse(json);
+            const isFlowDefinition = this.nifiCommon.isDefinedAndNotNull(maybeFlowDefinition.flowContents);
+            if (isFlowDefinition) {
+                // make sure the flow has some components
+                const flowHasCopiedContent = Object.entries(maybeFlowDefinition.flowContents).some((entry) => {
+                    return supportedKeys.includes(entry[0]) && Array.isArray(entry[1]);
+                });
+                if (flowHasCopiedContent) {
+                    // construct a new CopyResponseEntity from the FlowDefinition
+                    const copiedFlow: CopyResponseEntity = {
+                        id: maybeFlowDefinition.flowContents.identifier,
+                        processGroups: [
+                            {
+                                ...maybeFlowDefinition.flowContents
+                            }
+                        ]
+                    };
+
+                    // include parameter contexts, providers, and external cs if defined
+                    if (this.nifiCommon.isDefinedAndNotNull(maybeFlowDefinition.parameterContexts)) {
+                        copiedFlow.parameterContexts = { ...maybeFlowDefinition.parameterContexts };
+                    }
+                    if (this.nifiCommon.isDefinedAndNotNull(maybeFlowDefinition.parameterProviders)) {
+                        copiedFlow.parameterProviders = { ...maybeFlowDefinition.parameterProviders };
+                    }
+                    if (this.nifiCommon.isDefinedAndNotNull(maybeFlowDefinition.externalControllerServices)) {
+                        copiedFlow.externalControllerServiceReferences = {
+                            ...maybeFlowDefinition.externalControllerServices
+                        };
+                    }
+                    return copiedFlow;
+                }
+            }
+
+            // attempting to paste something other than CopyResponseEntity or a flow definition
+            return null;
+        } catch (e) {
+            // attempting to paste something other than CopyResponseEntity or a flow definition
+            return null;
         }
     }
 }

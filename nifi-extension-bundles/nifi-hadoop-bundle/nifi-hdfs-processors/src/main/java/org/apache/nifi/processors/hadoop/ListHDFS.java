@@ -52,9 +52,7 @@ import org.apache.nifi.serialization.RecordSetWriterFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -162,9 +160,23 @@ public class ListHDFS extends AbstractHadoopProcessor {
     public static final String LATEST_TIMESTAMP_KEY = "latest.timestamp";
     public static final String LATEST_FILES_KEY = "latest.file.%d";
 
-    private static final List<PropertyDescriptor> LIST_HDFS_PROPERTIES = Arrays.asList(
-            DIRECTORY, RECURSE_SUBDIRS, RECORD_WRITER, FILE_FILTER, FILE_FILTER_MODE, MINIMUM_FILE_AGE, MAXIMUM_FILE_AGE);
-    private static final Set<Relationship> RELATIONSHIPS = Collections.singleton(REL_SUCCESS);
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = Stream.concat(
+            getCommonPropertyDescriptors().stream(),
+            Stream.of(
+                DIRECTORY,
+                RECURSE_SUBDIRS,
+                RECORD_WRITER,
+                FILE_FILTER,
+                FILE_FILTER_MODE,
+                MINIMUM_FILE_AGE,
+                MAXIMUM_FILE_AGE
+            )
+    ).toList();
+
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS
+    );
+
     private Pattern fileFilterRegexPattern;
     private volatile boolean resetState = false;
 
@@ -177,9 +189,7 @@ public class ListHDFS extends AbstractHadoopProcessor {
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        final List<PropertyDescriptor> props = new ArrayList<>(properties);
-        props.addAll(LIST_HDFS_PROPERTIES);
-        return props;
+       return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -313,18 +323,15 @@ public class ListHDFS extends AbstractHadoopProcessor {
         final FilterMode filterMode = FilterMode.forName(context.getProperty(FILE_FILTER_MODE).getValue());
         final boolean recursive = context.getProperty(RECURSE_SUBDIRS).asBoolean();
 
-        switch (filterMode) {
-            case FILTER_MODE_FILES_ONLY:
-                return path -> fileFilterRegexPattern.matcher(path.getName()).matches();
-            case FILTER_MODE_FULL_PATH:
-                return path -> fileFilterRegexPattern.matcher(path.toString()).matches()
-                        || fileFilterRegexPattern.matcher(Path.getPathWithoutSchemeAndAuthority(path).toString()).matches();
+        return switch (filterMode) {
+            case FILTER_MODE_FILES_ONLY -> path -> fileFilterRegexPattern.matcher(path.getName()).matches();
+            case FILTER_MODE_FULL_PATH -> path -> fileFilterRegexPattern.matcher(path.toString()).matches()
+                    || fileFilterRegexPattern.matcher(Path.getPathWithoutSchemeAndAuthority(path).toString()).matches();
             // FILTER_DIRECTORIES_AND_FILES
-            default:
-                return path -> Stream.of(Path.getPathWithoutSchemeAndAuthority(path).toString().split("/"))
-                        .skip(getPathSegmentsToSkip(recursive))
-                        .allMatch(v -> fileFilterRegexPattern.matcher(v).matches());
-        }
+            default -> path -> Stream.of(Path.getPathWithoutSchemeAndAuthority(path).toString().split("/"))
+                    .skip(getPathSegmentsToSkip(recursive))
+                    .allMatch(v -> fileFilterRegexPattern.matcher(v).matches());
+        };
     }
 
     private int getPathSegmentsToSkip(final boolean recursive) {

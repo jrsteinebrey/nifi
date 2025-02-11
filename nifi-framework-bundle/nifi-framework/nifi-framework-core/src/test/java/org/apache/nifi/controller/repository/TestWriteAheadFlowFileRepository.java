@@ -51,6 +51,8 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.wali.WriteAheadRepository;
 
 import java.io.File;
@@ -79,7 +81,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 
 public class TestWriteAheadFlowFileRepository {
-
+    private static final Logger logger = LoggerFactory.getLogger(TestWriteAheadFlowFileRepository.class);
     private static NiFiProperties niFiProperties;
 
     @BeforeEach
@@ -368,29 +370,26 @@ public class TestWriteAheadFlowFileRepository {
         final Thread[] threads = new Thread[numThreads];
         for (int j = 0; j < 2; j++) {
             for (int i = 0; i < numThreads; i++) {
-                final Thread t = new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        final List<SerializedRepositoryRecord> records = new ArrayList<>();
-                        final int numBatches = updateCountPerThread / batchSize;
-                        final MockFlowFile baseFlowFile = new MockFlowFile(0L);
+                final Thread t = new Thread(() -> {
+                    final List<SerializedRepositoryRecord> records = new ArrayList<>();
+                    final int numBatches = updateCountPerThread / batchSize;
+                    final MockFlowFile baseFlowFile = new MockFlowFile(0L);
 
-                        for (int i = 0; i < numBatches; i++) {
-                            records.clear();
-                            for (int k = 0; k < batchSize; k++) {
-                                final MockFlowFileRecord flowFile = new MockFlowFileRecord(baseFlowFile.getAttributes(), baseFlowFile.getSize());
-                                final String uuid = flowFile.getAttribute("uuid");
+                    for (int i1 = 0; i1 < numBatches; i1++) {
+                        records.clear();
+                        for (int k = 0; k < batchSize; k++) {
+                            final MockFlowFileRecord flowFile = new MockFlowFileRecord(baseFlowFile.getAttributes(), baseFlowFile.getSize());
+                            final String uuid = flowFile.getAttribute("uuid");
 
-                                final StandardRepositoryRecord record = new StandardRepositoryRecord(null, flowFile);
-                                record.setDestination(queue);
-                                final Map<String, String> updatedAttrs = Collections.singletonMap("uuid", uuid);
-                                record.setWorking(flowFile, updatedAttrs, false);
+                            final StandardRepositoryRecord record = new StandardRepositoryRecord(null, flowFile);
+                            record.setDestination(queue);
+                            final Map<String, String> updatedAttrs = Collections.singletonMap("uuid", uuid);
+                            record.setWorking(flowFile, updatedAttrs, false);
 
-                                records.add(new LiveSerializedRepositoryRecord(record));
-                            }
-
-                            assertThrows(IOException.class, () -> repo.update(records, false));
+                            records.add(new LiveSerializedRepositoryRecord(record));
                         }
+
+                        assertThrows(IOException.class, () -> repo.update(records, false));
                     }
                 });
 
@@ -408,9 +407,11 @@ public class TestWriteAheadFlowFileRepository {
 
             final long millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
             if (j == 0) {
-                System.out.println(millis + " ms to insert " + updateCountPerThread * numThreads + " updates using " + numPartitions + " partitions and " + numThreads + " threads, *as a warmup!*");
+                logger.info("{} ms to insert {} updates using {} partitions and {} threads, *as a warmup!*",
+                        millis, updateCountPerThread * numThreads, numPartitions, numThreads);
             } else {
-                System.out.println(millis + " ms to insert " + updateCountPerThread * numThreads + " updates using " + numPartitions + " partitions and " + numThreads + " threads");
+                logger.info("{} ms to insert {} updates using {} partitions and {} threads",
+                        millis, updateCountPerThread * numThreads, numPartitions, numThreads);
             }
         }
     }
@@ -537,7 +538,7 @@ public class TestWriteAheadFlowFileRepository {
         when(connection.getDestination()).thenReturn(Mockito.mock(Connectable.class));
 
         final FlowFileSwapManager swapMgr = new MockFlowFileSwapManager();
-        final FlowFileQueue queue = new StandardFlowFileQueue("1234", null, null, claimManager, null, swapMgr, null, 10000, "0 sec", 0L, "0 B");
+        final FlowFileQueue queue = new StandardFlowFileQueue("1234", null, null, null, swapMgr, null, 10000, "0 sec", 0L, "0 B");
 
         when(connection.getFlowFileQueue()).thenReturn(queue);
         queueProvider.addConnection(connection);

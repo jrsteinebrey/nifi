@@ -50,10 +50,10 @@ import {
     UploadProcessGroupRequest,
     VersionControlInformationEntity
 } from '../state/flow';
-import { ComponentType, PropertyDescriptorRetriever } from '../../../state/shared';
 import { Client } from '../../../service/client.service';
-import { NiFiCommon } from '../../../service/nifi-common.service';
+import { ComponentType, NiFiCommon } from '@nifi/shared';
 import { ClusterConnectionService } from '../../../service/cluster-connection.service';
+import { PropertyDescriptorRetriever } from '../../../state/shared';
 
 @Injectable({ providedIn: 'root' })
 export class FlowService implements PropertyDescriptorRetriever {
@@ -85,16 +85,6 @@ export class FlowService implements PropertyDescriptorRetriever {
 
     getControllerBulletins(): Observable<any> {
         return this.httpClient.get(`${FlowService.API}/flow/controller/bulletins`);
-    }
-
-    getParameterContexts(): Observable<any> {
-        return this.httpClient.get(`${FlowService.API}/flow/parameter-contexts`);
-    }
-
-    getParameterContext(id: string): Observable<any> {
-        return this.httpClient.get(`${FlowService.API}/parameter-contexts/${id}`, {
-            params: { includeInheritedParameters: true }
-        });
     }
 
     getProcessor(id: string): Observable<any> {

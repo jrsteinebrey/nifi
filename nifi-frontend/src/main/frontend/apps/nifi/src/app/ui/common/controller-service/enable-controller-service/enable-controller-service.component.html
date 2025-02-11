@@ -26,7 +26,7 @@
                             <div class="">
                                 <div>Service</div>
                                 <div
-                                    class="accent-color font-medium overflow-ellipsis overflow-hidden whitespace-nowrap"
+                                    class="tertiary-color font-medium overflow-ellipsis overflow-hidden whitespace-nowrap"
                                     [title]="controllerService.component.name">
                                     {{ controllerService.component.name }}
                                 </div>
@@ -53,7 +53,7 @@
                             <div>
                                 Referencing Components
                                 <i
-                                    class="fa fa-info-circle"
+                                    class="fa fa-info-circle primary-color"
                                     nifiTooltip
                                     [tooltipComponentType]="TextTip"
                                     tooltipInputData="Other components referencing this controller service."></i>
@@ -75,9 +75,8 @@
                     <button
                         [disabled]="enableControllerServiceForm.invalid"
                         type="button"
-                        color="primary"
                         (click)="submitForm()"
-                        mat-button>
+                        mat-flat-button>
                         Enable
                     </button>
                 </mat-dialog-actions>
@@ -88,7 +87,7 @@
                             <div class="flex flex-col">
                                 <div>Service</div>
                                 <div
-                                    class="accent-color font-medium overflow-ellipsis overflow-hidden whitespace-nowrap"
+                                    class="tertiary-color font-medium overflow-ellipsis overflow-hidden whitespace-nowrap"
                                     [title]="controllerService.component.name">
                                     {{ controllerService.component.name }}
                                 </div>
@@ -101,7 +100,7 @@
                                 </div>
                                 <div class="flex flex-col gap-y-1.5">
                                     <div class="flex justify-between items-center">
-                                        <div class="accent-color font-medium">Enabling this controller service</div>
+                                        <div class="tertiary-color font-medium">Enabling this controller service</div>
                                         <ng-container
                                             *ngTemplateOutlet="
                                                 getTemplateForStep(SetEnableStep.EnableService, enableRequest)
@@ -116,7 +115,7 @@
                                     }
                                     @if (enableRequest.scope === 'SERVICE_AND_REFERENCING_COMPONENTS') {
                                         <div class="flex justify-between items-center">
-                                            <div class="accent-color font-medium">
+                                            <div class="tertiary-color font-medium">
                                                 Enable referencing controller services
                                             </div>
                                             <ng-container
@@ -136,7 +135,7 @@
                                             </div>
                                         }
                                         <div class="flex justify-between items-center">
-                                            <div class="accent-color font-medium">
+                                            <div class="tertiary-color font-medium">
                                                 Starting referencing processors and reporting tasks
                                             </div>
                                             <ng-container
@@ -163,7 +162,7 @@
                             <div>
                                 Referencing Components
                                 <i
-                                    class="fa fa-info-circle"
+                                    class="fa fa-info-circle primary-color"
                                     nifiTooltip
                                     [tooltipComponentType]="TextTip"
                                     tooltipInputData="Other components referencing this controller service."></i>
@@ -171,6 +170,10 @@
                             <div class="relative h-full border" style="min-height: 320px">
                                 <div class="absolute inset-0 overflow-y-auto p-1">
                                     <controller-service-references
+                                        [disabledLinks]="
+                                            enableRequest.currentStep !== SetEnableStep.Completed &&
+                                            !enableRequest.error
+                                        "
                                         [serviceReferences]="controllerService.component.referencingComponents"
                                         [goToReferencingComponent]="
                                             goToReferencingComponent
@@ -195,9 +198,9 @@
     <div class="fa fa-spin fa-circle-o-notch primary-color"></div>
 </ng-template>
 <ng-template #stepComplete>
-    <div class="complete fa fa-check success-color"></div>
+    <div class="complete fa fa-check success-color-default"></div>
 </ng-template>
 <ng-template #stepError>
-    <div class="fa fa-times warn-color"></div>
+    <div class="fa fa-times error-color"></div>
 </ng-template>
 <ng-template #stepNotStarted><div class="w-3.5"></div></ng-template>

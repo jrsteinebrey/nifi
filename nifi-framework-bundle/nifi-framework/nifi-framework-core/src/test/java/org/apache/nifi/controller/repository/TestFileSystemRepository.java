@@ -16,6 +16,26 @@
  */
 package org.apache.nifi.controller.repository;
 
+import org.apache.nifi.controller.repository.claim.ContentClaim;
+import org.apache.nifi.controller.repository.claim.ResourceClaim;
+import org.apache.nifi.controller.repository.claim.StandardContentClaim;
+import org.apache.nifi.controller.repository.claim.StandardResourceClaim;
+import org.apache.nifi.controller.repository.claim.StandardResourceClaimManager;
+import org.apache.nifi.controller.repository.util.DiskUtils;
+import org.apache.nifi.events.EventReporter;
+import org.apache.nifi.processor.DataUnit;
+import org.apache.nifi.stream.io.StreamUtils;
+import org.apache.nifi.util.NiFiProperties;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -39,23 +59,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
-import org.apache.nifi.controller.repository.claim.ContentClaim;
-import org.apache.nifi.controller.repository.claim.ResourceClaim;
-import org.apache.nifi.controller.repository.claim.StandardContentClaim;
-import org.apache.nifi.controller.repository.claim.StandardResourceClaim;
-import org.apache.nifi.controller.repository.claim.StandardResourceClaimManager;
-import org.apache.nifi.controller.repository.util.DiskUtils;
-import org.apache.nifi.events.EventReporter;
-import org.apache.nifi.processor.DataUnit;
-import org.apache.nifi.stream.io.StreamUtils;
-import org.apache.nifi.util.NiFiProperties;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -69,6 +72,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class TestFileSystemRepository {
 
     public static final File helloWorldFile = new File("src/test/resources/hello.txt");
+    private static final Logger logger = LoggerFactory.getLogger(TestFileSystemRepository.class);
 
     private FileSystemRepository repository = null;
     private StandardResourceClaimManager claimManager = null;
@@ -110,18 +114,14 @@ public class TestFileSystemRepository {
             try (final OutputStream out = repository.write(claim)) {
                 out.write(content);
             }
-            //            final ContentClaim claim = cache.getContentClaim();
-            //            try (final OutputStream out = cache.write(claim)) {
-            //                out.write(content);
-            //            }
         }
         final long millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
 
         final long mb = bytesToWrite / (1024 * 1024);
         final long seconds = millis / 1000L;
         final double mbps = (double) mb / (double) seconds;
-        System.out.println("Took " + millis + " millis to write " + contentSize + " bytes " + iterations + " times (total of "
-                + NumberFormat.getNumberInstance(Locale.US).format(bytesToWrite) + " bytes) for a write rate of " + mbps + " MB/s");
+        logger.info("Took {} millis to write {} bytes {} times (total of {} bytes) for a write rate of {} MB/s",
+                millis, contentSize, iterations, NumberFormat.getNumberInstance(Locale.US).format(bytesToWrite), mbps);
     }
 
     @Test
@@ -183,7 +183,6 @@ public class TestFileSystemRepository {
         // Perform a few iterations to ensure that it works not just the first time, since there is a lot of logic on initialization.
         for (int i = 0; i < 3; i++) {
             final File archiveDir = containerPath.resolve(String.valueOf(i)).resolve("archive").toFile();
-            assertTrue(archiveDir.mkdirs());
             final File archivedFile = new File(archiveDir, "1234");
 
             try (final OutputStream fos = new FileOutputStream(archivedFile)) {
@@ -213,7 +212,6 @@ public class TestFileSystemRepository {
         // Perform a few iterations to ensure that it works not just the first time, since there is a lot of logic on initialization.
         for (int i = 0; i < 3; i++) {
             final File archiveDir = containerPath.resolve(String.valueOf(i)).resolve("archive").toFile();
-            assertTrue(archiveDir.mkdirs());
             final File archivedFile = new File(archiveDir, "1234");
 
             try (final OutputStream fos = new FileOutputStream(archivedFile)) {
@@ -403,7 +401,7 @@ public class TestFileSystemRepository {
         // should not be equal because claim1 may still be in use
         assertNotSame(claim1.getResourceClaim(), claim2.getResourceClaim());
 
-        try (final OutputStream out = repository.write(claim1)) {
+        try (final OutputStream ignored = repository.write(claim1)) {
         }
 
         final ContentClaim claim3 = repository.create(false);
@@ -413,7 +411,7 @@ public class TestFileSystemRepository {
     @Test
     public void testResourceClaimNotReusedAfterRestart() throws IOException, InterruptedException {
         final ContentClaim claim1 = repository.create(false);
-        try (final OutputStream out = repository.write(claim1)) {
+        try (final OutputStream ignored = repository.write(claim1)) {
         }
 
         repository.shutdown();
@@ -436,7 +434,7 @@ public class TestFileSystemRepository {
 
         final ContentClaim claim2 = repository.create(false);
         assertEquals(claim1.getResourceClaim(), claim2.getResourceClaim());
-        try (final OutputStream out = repository.write(claim2)) {
+        try (final OutputStream ignored = repository.write(claim2)) {
 
         }
 
@@ -599,7 +597,7 @@ public class TestFileSystemRepository {
     }
 
     @Test
-    public void testSizeWithNoContent() throws IOException {
+    public void testSizeWithNoContent() {
         final ContentClaim claim =
          new StandardContentClaim(new StandardResourceClaim(claimManager,
                  "container1", "section 1", "1", false), 0L);
@@ -608,7 +606,7 @@ public class TestFileSystemRepository {
     }
 
     @Test
-    public void testReadWithNoContent() throws IOException {
+    public void testReadWithNoContent() {
         final ContentClaim claim = new StandardContentClaim(new StandardResourceClaim(claimManager, "container1", "section 1", "1", false), 0L);
 
         assertThrows(ContentNotFoundException.class,
@@ -711,14 +709,14 @@ public class TestFileSystemRepository {
     public void testMarkDestructableDoesNotArchiveIfStreamOpenAndWrittenTo() throws IOException, InterruptedException {
         FileSystemRepository repository = null;
         try {
-            final List<Path> archivedPaths = Collections.synchronizedList(new ArrayList<Path>());
+            final List<Path> archivedPaths = Collections.synchronizedList(new ArrayList<>());
 
             // We are creating our own 'local' repository in this test so shut down the one created in the setup() method
             shutdown();
 
             repository = new FileSystemRepository(nifiProperties) {
                 @Override
-                protected boolean archive(Path curPath) throws IOException {
+                protected boolean archive(Path curPath) {
                     archivedPaths.add(curPath);
                     return true;
                 }
@@ -762,14 +760,14 @@ public class TestFileSystemRepository {
     public void testWriteCannotProvideNullOutput() throws IOException {
         FileSystemRepository repository = null;
         try {
-            final List<Path> archivedPathsWithOpenStream = Collections.synchronizedList(new ArrayList<Path>());
+            final List<Path> archivedPathsWithOpenStream = Collections.synchronizedList(new ArrayList<>());
 
             // We are creating our own 'local' repository in this test so shut down the one created in the setup() method
             shutdown();
 
             repository = new FileSystemRepository(nifiProperties) {
                 @Override
-                protected boolean archive(Path curPath) throws IOException {
+                protected boolean archive(Path curPath) {
                     if (getOpenStreamCount() > 0) {
                         archivedPathsWithOpenStream.add(curPath);
                     }
@@ -847,7 +845,7 @@ public class TestFileSystemRepository {
 
             repository = new FileSystemRepository(nifiProperties) {
                 @Override
-                protected boolean archive(Path curPath) throws IOException {
+                protected boolean archive(Path curPath) {
                     if (getOpenStreamCount() > 0) {
                         archivedPathsWithOpenStream.add(curPath);
                     }

@@ -27,15 +27,14 @@ import { MatSelectModule } from '@angular/material/select';
 import { Observable } from 'rxjs';
 import { Client } from '../../../../../../../service/client.service';
 import { NifiSpinnerDirective } from '../../../../../../../ui/common/spinner/nifi-spinner.directive';
-import { TextTip } from '../../../../../../../ui/common/tooltips/text-tip/text-tip.component';
 import { EditComponentDialogRequest } from '../../../../../state/flow';
-import { ErrorBanner } from '../../../../../../../ui/common/error-banner/error-banner.component';
 import { CanvasUtils } from '../../../../../service/canvas-utils.service';
-import { NifiTooltipDirective } from '../../../../../../../ui/common/tooltips/nifi-tooltip.directive';
-import { CloseOnEscapeDialog } from '../../../../../../../ui/common/close-on-escape-dialog/close-on-escape-dialog.component';
+import { CopyDirective, NifiTooltipDirective, TextTip } from '@nifi/shared';
+import { CloseOnEscapeDialog } from '@nifi/shared';
+import { ErrorContextKey } from '../../../../../../../state/error';
+import { ContextErrorBanner } from '../../../../../../../ui/common/context-error-banner/context-error-banner.component';
 
 @Component({
-    standalone: true,
     templateUrl: './edit-remote-process-group.component.html',
     imports: [
         ReactiveFormsModule,
@@ -48,8 +47,9 @@ import { CloseOnEscapeDialog } from '../../../../../../../ui/common/close-on-esc
         AsyncPipe,
         NifiSpinnerDirective,
         FormsModule,
-        ErrorBanner,
-        NifiTooltipDirective
+        NifiTooltipDirective,
+        ContextErrorBanner,
+        CopyDirective
     ],
     styleUrls: ['./edit-remote-process-group.component.scss']
 })
@@ -109,4 +109,6 @@ export class EditRemoteProcessGroup extends CloseOnEscapeDialog {
     override isDirty(): boolean {
         return this.editRemoteProcessGroupForm.dirty;
     }
+
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

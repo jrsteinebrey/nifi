@@ -24,7 +24,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { Store } from '@ngrx/store';
 import { NiFiState } from '../../../../state';
 import { selectFlowAnalysisRuleTypes } from '../../../../state/extension-types/extension-types.selectors';
-import { YesNoDialog } from '../../../../ui/common/yes-no-dialog/yes-no-dialog.component';
+import { LARGE_DIALOG, SMALL_DIALOG, XL_DIALOG, YesNoDialog } from '@nifi/shared';
 import { FlowAnalysisRuleService } from '../../service/flow-analysis-rule.service';
 import { ManagementControllerServiceService } from '../../service/management-controller-service.service';
 import { CreateFlowAnalysisRule } from '../../ui/flow-analysis-rules/create-flow-analysis-rule/create-flow-analysis-rule.component';
@@ -42,7 +42,6 @@ import * as ErrorActions from '../../../../state/error/error.actions';
 import { ErrorHelper } from '../../../../service/error-helper.service';
 import { selectStatus } from './flow-analysis-rules.selectors';
 import { HttpErrorResponse } from '@angular/common/http';
-import { LARGE_DIALOG, SMALL_DIALOG, XL_DIALOG } from '../../../../index';
 import { ChangeComponentVersionDialog } from '../../../../ui/common/change-component-version-dialog/change-component-version-dialog';
 import { ExtensionTypesService } from '../../../../service/extension-types.service';
 import {
@@ -55,6 +54,7 @@ import {
 } from '../../../../state/property-verification/property-verification.selectors';
 import { VerifyPropertiesRequestContext } from '../../../../state/property-verification';
 import { BackNavigation } from '../../../../state/navigation';
+import { ErrorContextKey } from '../../../../state/error';
 
 @Injectable()
 export class FlowAnalysisRulesEffects {
@@ -158,7 +158,13 @@ export class FlowAnalysisRulesEffects {
         this.actions$.pipe(
             ofType(FlowAnalysisRuleActions.flowAnalysisRuleBannerApiError),
             map((action) => action.error),
-            switchMap((error) => of(ErrorActions.addBannerError({ error })))
+            switchMap((error) =>
+                of(
+                    ErrorActions.addBannerError({
+                        errorContext: { errors: [error], context: ErrorContextKey.FLOW_ANALYSIS_RULES }
+                    })
+                )
+            )
         )
     );
 
@@ -364,7 +370,6 @@ export class FlowAnalysisRulesEffects {
                         });
 
                     editDialogReference.afterClosed().subscribe((response) => {
-                        this.store.dispatch(ErrorActions.clearBannerErrors());
                         this.store.dispatch(resetPropertyVerificationState());
 
                         if (response != 'ROUTED') {

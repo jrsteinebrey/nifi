@@ -230,23 +230,26 @@ public class FetchGoogleDrive extends AbstractProcessor implements GoogleDriveTr
             .description("A FlowFile will be routed here for each File for which fetch was attempted but failed.")
             .build();
 
-    private static final List<PropertyDescriptor> PROPERTIES = List.of(
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
         GoogleUtils.GCP_CREDENTIALS_PROVIDER_SERVICE,
         FILE_ID,
-        ProxyConfiguration.createProxyConfigPropertyDescriptor(false, ProxyAwareTransportFactory.PROXY_SPECS),
+        ProxyConfiguration.createProxyConfigPropertyDescriptor(ProxyAwareTransportFactory.PROXY_SPECS),
         GOOGLE_DOC_EXPORT_TYPE,
         GOOGLE_SPREADSHEET_EXPORT_TYPE,
         GOOGLE_PRESENTATION_EXPORT_TYPE,
         GOOGLE_DRAWING_EXPORT_TYPE
     );
 
-    public static final Set<Relationship> RELATIONSHIPS = Set.of(REL_SUCCESS, REL_FAILURE);
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS,
+            REL_FAILURE
+    );
 
     private volatile Drive driveService;
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return PROPERTIES;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override

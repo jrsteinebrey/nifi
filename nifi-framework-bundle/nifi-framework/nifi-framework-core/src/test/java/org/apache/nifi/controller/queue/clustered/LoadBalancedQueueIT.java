@@ -51,13 +51,11 @@ import org.apache.nifi.controller.repository.RepositoryRecord;
 import org.apache.nifi.controller.repository.RepositoryRecordType;
 import org.apache.nifi.controller.repository.claim.ContentClaim;
 import org.apache.nifi.controller.repository.claim.ResourceClaim;
-import org.apache.nifi.controller.repository.claim.ResourceClaimManager;
-import org.apache.nifi.controller.repository.claim.StandardResourceClaimManager;
 import org.apache.nifi.events.EventReporter;
 import org.apache.nifi.provenance.ProvenanceRepository;
-import org.apache.nifi.security.util.SslContextFactory;
-import org.apache.nifi.security.util.TemporaryKeyStoreBuilder;
-import org.apache.nifi.security.util.TlsConfiguration;
+import org.apache.nifi.security.cert.builder.StandardCertificateBuilder;
+import org.apache.nifi.security.ssl.EphemeralKeyStoreBuilder;
+import org.apache.nifi.security.ssl.StandardSslContextBuilder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -66,17 +64,19 @@ import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
 import javax.net.ssl.SSLContext;
+import javax.security.auth.x500.X500Principal;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.security.GeneralSecurityException;
-import java.security.KeyManagementException;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
-import java.security.UnrecoverableKeyException;
-import java.security.cert.CertificateException;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.KeyStore;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -118,7 +118,6 @@ public class LoadBalancedQueueIT {
     private ClusterCoordinator clusterCoordinator;
     private NodeIdentifier localNodeId;
     private ProcessScheduler processScheduler;
-    private ResourceClaimManager resourceClaimManager;
     private LoadBalancedFlowFileQueue serverQueue;
     private FlowController flowController;
 
@@ -152,17 +151,13 @@ public class LoadBalancedQueueIT {
             new NodeConnectionStatus(invocation.getArgument(0, NodeIdentifier.class), NodeConnectionState.CONNECTED));
 
         clusterEventListeners.clear();
-        doAnswer(new Answer() {
-            @Override
-            public Object answer(final InvocationOnMock invocation) {
-                clusterEventListeners.add(invocation.getArgument(0));
-                return null;
-            }
+        doAnswer(invocation -> {
+            clusterEventListeners.add(invocation.getArgument(0));
+            return null;
         }).when(clusterCoordinator).registerEventListener(any(ClusterTopologyEventListener.class));
 
         processScheduler = mock(ProcessScheduler.class);
         clientProvRepo = mock(ProvenanceRepository.class);
-        resourceClaimManager = new StandardResourceClaimManager();
         final Connection connection = mock(Connection.class);
         when(connection.getIdentifier()).thenReturn(queueId);
 
@@ -189,10 +184,21 @@ public class LoadBalancedQueueIT {
         clientRepoRecords = Collections.synchronizedList(new ArrayList<>());
         clientFlowFileRepo = createFlowFileRepository(clientRepoRecords);
 
-        final TlsConfiguration tlsConfiguration = new TemporaryKeyStoreBuilder().build();
-        sslContext = SslContextFactory.createSslContext(tlsConfiguration);
+        sslContext = getSslContext();
     }
 
+    private SSLContext getSslContext() throws GeneralSecurityException {
+        final KeyPair keyPair = KeyPairGenerator.getInstance("RSA").generateKeyPair();
+        final X509Certificate certificate = new StandardCertificateBuilder(keyPair, new X500Principal("CN=localhost"), Duration.ofHours(1)).build();
+        final KeyStore keyStore = new EphemeralKeyStoreBuilder()
+                .addPrivateKeyEntry(new KeyStore.PrivateKeyEntry(keyPair.getPrivate(), new Certificate[]{certificate}))
+                .build();
+        return new StandardSslContextBuilder()
+                .trustStore(keyStore)
+                .keyStore(keyStore)
+                .keyPassword(new char[]{})
+                .build();
+    }
 
     private ContentClaim createContentClaim(final byte[] bytes) {
         final ResourceClaim resourceClaim = mock(ResourceClaim.class);
@@ -237,7 +243,7 @@ public class LoadBalancedQueueIT {
         final Thread clientThread = new Thread(clientTask);
 
         final SocketLoadBalancedFlowFileQueue flowFileQueue = new SocketLoadBalancedFlowFileQueue(queueId, processScheduler, clientFlowFileRepo, clientProvRepo,
-                clientContentRepo, resourceClaimManager, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
+                clientContentRepo, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
 
         flowFileQueue.setFlowFilePartitioner(new RoundRobinPartitioner());
 
@@ -346,7 +352,7 @@ public class LoadBalancedQueueIT {
             clientThread.setDaemon(true);
 
             final SocketLoadBalancedFlowFileQueue flowFileQueue = new SocketLoadBalancedFlowFileQueue(queueId, processScheduler, clientFlowFileRepo, clientProvRepo,
-                    clientContentRepo, resourceClaimManager, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
+                    clientContentRepo, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
             flowFileQueue.setFlowFilePartitioner(new RoundRobinPartitioner());
 
             try {
@@ -445,7 +451,7 @@ public class LoadBalancedQueueIT {
             clientThread.start();
 
             final SocketLoadBalancedFlowFileQueue flowFileQueue = new SocketLoadBalancedFlowFileQueue(queueId, processScheduler, clientFlowFileRepo, clientProvRepo,
-                    clientContentRepo, resourceClaimManager, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
+                    clientContentRepo, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
             flowFileQueue.setFlowFilePartitioner(new RoundRobinPartitioner());
 
             try {
@@ -473,7 +479,7 @@ public class LoadBalancedQueueIT {
 
                 assertEquals(1, serverRepoRecords.size());
 
-                final RepositoryRecord serverRecord = serverRepoRecords.iterator().next();
+                final RepositoryRecord serverRecord = serverRepoRecords.getFirst();
                 final FlowFileRecord serverFlowFile = serverRecord.getCurrent();
                 assertEquals("test", serverFlowFile.getAttribute("integration"));
                 assertEquals("false", serverFlowFile.getAttribute("unit-test"));
@@ -483,12 +489,12 @@ public class LoadBalancedQueueIT {
                 final byte[] serverFlowFileContent = serverClaimContents.get(serverContentClaim);
                 assertArrayEquals("hello".getBytes(), serverFlowFileContent);
 
-                while (clientRepoRecords.size() == 0) {
+                while (clientRepoRecords.isEmpty()) {
                     Thread.sleep(10L);
                 }
 
                 assertEquals(1, clientRepoRecords.size());
-                final RepositoryRecord clientRecord = clientRepoRecords.iterator().next();
+                final RepositoryRecord clientRecord = clientRepoRecords.getFirst();
                 assertEquals(RepositoryRecordType.DELETE, clientRecord.getType());
             } finally {
                 flowFileQueue.stopLoadBalancing();
@@ -534,7 +540,7 @@ public class LoadBalancedQueueIT {
             clientThread.start();
 
             final SocketLoadBalancedFlowFileQueue flowFileQueue = new SocketLoadBalancedFlowFileQueue(queueId, processScheduler, clientFlowFileRepo, clientProvRepo,
-                    clientContentRepo, resourceClaimManager, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
+                    clientContentRepo, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
             flowFileQueue.setFlowFilePartitioner(new RoundRobinPartitioner());
 
             try {
@@ -554,12 +560,12 @@ public class LoadBalancedQueueIT {
 
                 flowFileQueue.startLoadBalancing();
 
-                while (clientRepoRecords.size() == 0) {
+                while (clientRepoRecords.isEmpty()) {
                     Thread.sleep(10L);
                 }
 
                 assertEquals(1, clientRepoRecords.size());
-                final RepositoryRecord clientRecord = clientRepoRecords.iterator().next();
+                final RepositoryRecord clientRecord = clientRepoRecords.getFirst();
                 assertEquals(RepositoryRecordType.CONTENTMISSING, clientRecord.getType());
             } finally {
                 flowFileQueue.stopLoadBalancing();
@@ -606,7 +612,7 @@ public class LoadBalancedQueueIT {
             clientThread.start();
 
             final SocketLoadBalancedFlowFileQueue flowFileQueue = new SocketLoadBalancedFlowFileQueue(queueId, processScheduler, clientFlowFileRepo, clientProvRepo,
-                    clientContentRepo, resourceClaimManager, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
+                    clientContentRepo, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
             flowFileQueue.setFlowFilePartitioner(new RoundRobinPartitioner());
             flowFileQueue.setLoadBalanceCompression(LoadBalanceCompression.COMPRESS_ATTRIBUTES_ONLY);
 
@@ -635,7 +641,7 @@ public class LoadBalancedQueueIT {
 
                 assertEquals(1, serverRepoRecords.size());
 
-                final RepositoryRecord serverRecord = serverRepoRecords.iterator().next();
+                final RepositoryRecord serverRecord = serverRepoRecords.getFirst();
                 final FlowFileRecord serverFlowFile = serverRecord.getCurrent();
                 assertEquals("test", serverFlowFile.getAttribute("integration"));
                 assertEquals("false", serverFlowFile.getAttribute("unit-test"));
@@ -645,12 +651,12 @@ public class LoadBalancedQueueIT {
                 final byte[] serverFlowFileContent = serverClaimContents.get(serverContentClaim);
                 assertArrayEquals("hello".getBytes(), serverFlowFileContent);
 
-                while (clientRepoRecords.size() == 0) {
+                while (clientRepoRecords.isEmpty()) {
                     Thread.sleep(10L);
                 }
 
                 assertEquals(1, clientRepoRecords.size());
-                final RepositoryRecord clientRecord = clientRepoRecords.iterator().next();
+                final RepositoryRecord clientRecord = clientRepoRecords.getFirst();
                 assertEquals(RepositoryRecordType.DELETE, clientRecord.getType());
             } finally {
                 flowFileQueue.stopLoadBalancing();
@@ -697,7 +703,7 @@ public class LoadBalancedQueueIT {
             clientThread.start();
 
             final SocketLoadBalancedFlowFileQueue flowFileQueue = new SocketLoadBalancedFlowFileQueue(queueId, processScheduler, clientFlowFileRepo, clientProvRepo,
-                    clientContentRepo, resourceClaimManager, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
+                    clientContentRepo, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
             flowFileQueue.setFlowFilePartitioner(new RoundRobinPartitioner());
             flowFileQueue.setLoadBalanceCompression(LoadBalanceCompression.COMPRESS_ATTRIBUTES_AND_CONTENT);
 
@@ -726,7 +732,7 @@ public class LoadBalancedQueueIT {
 
                 assertEquals(1, serverRepoRecords.size());
 
-                final RepositoryRecord serverRecord = serverRepoRecords.iterator().next();
+                final RepositoryRecord serverRecord = serverRepoRecords.getFirst();
                 final FlowFileRecord serverFlowFile = serverRecord.getCurrent();
                 assertEquals("test", serverFlowFile.getAttribute("integration"));
                 assertEquals("false", serverFlowFile.getAttribute("unit-test"));
@@ -736,12 +742,12 @@ public class LoadBalancedQueueIT {
                 final byte[] serverFlowFileContent = serverClaimContents.get(serverContentClaim);
                 assertArrayEquals("hello".getBytes(), serverFlowFileContent);
 
-                while (clientRepoRecords.size() == 0) {
+                while (clientRepoRecords.isEmpty()) {
                     Thread.sleep(10L);
                 }
 
                 assertEquals(1, clientRepoRecords.size());
-                final RepositoryRecord clientRecord = clientRepoRecords.iterator().next();
+                final RepositoryRecord clientRecord = clientRepoRecords.getFirst();
                 assertEquals(RepositoryRecordType.DELETE, clientRecord.getType());
             } finally {
                 flowFileQueue.stopLoadBalancing();
@@ -754,7 +760,7 @@ public class LoadBalancedQueueIT {
 
     @Test
     @Timeout(20)
-    public void testWithSSLContext() throws IOException, InterruptedException, UnrecoverableKeyException, CertificateException, NoSuchAlgorithmException, KeyStoreException, KeyManagementException {
+    public void testWithSSLContext() throws IOException, InterruptedException {
         localNodeId = new NodeIdentifier("unit-test-local", "localhost", 7090, "localhost", 7090, "localhost", 7090, null, null, null, false, null);
         nodeIdentifiers.add(localNodeId);
 
@@ -786,7 +792,7 @@ public class LoadBalancedQueueIT {
             clientThread.start();
 
             final SocketLoadBalancedFlowFileQueue flowFileQueue = new SocketLoadBalancedFlowFileQueue(queueId, processScheduler, clientFlowFileRepo, clientProvRepo,
-                    clientContentRepo, resourceClaimManager, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
+                    clientContentRepo, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
             flowFileQueue.setFlowFilePartitioner(new RoundRobinPartitioner());
 
             try {
@@ -814,7 +820,7 @@ public class LoadBalancedQueueIT {
 
                 assertEquals(1, serverRepoRecords.size());
 
-                final RepositoryRecord serverRecord = serverRepoRecords.iterator().next();
+                final RepositoryRecord serverRecord = serverRepoRecords.getFirst();
                 final FlowFileRecord serverFlowFile = serverRecord.getCurrent();
                 assertEquals("test", serverFlowFile.getAttribute("integration"));
                 assertEquals("false", serverFlowFile.getAttribute("unit-test"));
@@ -824,12 +830,12 @@ public class LoadBalancedQueueIT {
                 final byte[] serverFlowFileContent = serverClaimContents.get(serverContentClaim);
                 assertArrayEquals("hello".getBytes(), serverFlowFileContent);
 
-                while (clientRepoRecords.size() == 0) {
+                while (clientRepoRecords.isEmpty()) {
                     Thread.sleep(10L);
                 }
 
                 assertEquals(1, clientRepoRecords.size());
-                final RepositoryRecord clientRecord = clientRepoRecords.iterator().next();
+                final RepositoryRecord clientRecord = clientRepoRecords.getFirst();
                 assertEquals(RepositoryRecordType.DELETE, clientRecord.getType());
             } finally {
                 flowFileQueue.stopLoadBalancing();
@@ -843,7 +849,7 @@ public class LoadBalancedQueueIT {
 
     @Test
     @Timeout(60)
-    public void testReusingClient() throws IOException, InterruptedException, UnrecoverableKeyException, CertificateException, NoSuchAlgorithmException, KeyStoreException, KeyManagementException {
+    public void testReusingClient() throws IOException, InterruptedException {
         localNodeId = new NodeIdentifier("unit-test-local", "localhost", 7090, "localhost", 7090, "localhost", 7090, null, null, null, false, null);
         nodeIdentifiers.add(localNodeId);
 
@@ -874,7 +880,7 @@ public class LoadBalancedQueueIT {
             clientThread.start();
 
             final SocketLoadBalancedFlowFileQueue flowFileQueue = new SocketLoadBalancedFlowFileQueue(queueId, processScheduler, clientFlowFileRepo, clientProvRepo,
-                    clientContentRepo, resourceClaimManager, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
+                    clientContentRepo, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
             flowFileQueue.setFlowFilePartitioner(new RoundRobinPartitioner());
 
             try {
@@ -901,7 +907,7 @@ public class LoadBalancedQueueIT {
 
                     assertEquals(i, serverRepoRecords.size());
 
-                    final RepositoryRecord serverRecord = serverRepoRecords.iterator().next();
+                    final RepositoryRecord serverRecord = serverRepoRecords.getFirst();
                     final FlowFileRecord serverFlowFile = serverRecord.getCurrent();
                     assertEquals("test", serverFlowFile.getAttribute("integration"));
                     assertEquals("false", serverFlowFile.getAttribute("unit-test"));
@@ -916,7 +922,7 @@ public class LoadBalancedQueueIT {
                     }
 
                     assertEquals(i, clientRepoRecords.size());
-                    final RepositoryRecord clientRecord = clientRepoRecords.iterator().next();
+                    final RepositoryRecord clientRecord = clientRepoRecords.getFirst();
                     assertEquals(RepositoryRecordType.DELETE, clientRecord.getType());
                 }
             } finally {
@@ -931,7 +937,7 @@ public class LoadBalancedQueueIT {
 
     @Test
     @Timeout(20)
-    public void testLargePayload() throws IOException, InterruptedException, UnrecoverableKeyException, CertificateException, NoSuchAlgorithmException, KeyStoreException, KeyManagementException {
+    public void testLargePayload() throws IOException, InterruptedException {
         localNodeId = new NodeIdentifier("unit-test-local", "localhost", 7090, "localhost", 7090, "localhost", 7090, null, null, null, false, null);
         nodeIdentifiers.add(localNodeId);
 
@@ -962,7 +968,7 @@ public class LoadBalancedQueueIT {
             clientThread.start();
 
             final SocketLoadBalancedFlowFileQueue flowFileQueue = new SocketLoadBalancedFlowFileQueue(queueId, processScheduler, clientFlowFileRepo, clientProvRepo,
-                    clientContentRepo, resourceClaimManager, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
+                    clientContentRepo, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
             flowFileQueue.setFlowFilePartitioner(new RoundRobinPartitioner());
 
             final byte[] payload = new byte[1024 * 1024];
@@ -993,7 +999,7 @@ public class LoadBalancedQueueIT {
 
                 assertEquals(1, serverRepoRecords.size());
 
-                final RepositoryRecord serverRecord = serverRepoRecords.iterator().next();
+                final RepositoryRecord serverRecord = serverRepoRecords.getFirst();
                 final FlowFileRecord serverFlowFile = serverRecord.getCurrent();
                 assertEquals("test", serverFlowFile.getAttribute("integration"));
                 assertEquals("false", serverFlowFile.getAttribute("unit-test"));
@@ -1003,12 +1009,12 @@ public class LoadBalancedQueueIT {
                 final byte[] serverFlowFileContent = serverClaimContents.get(serverContentClaim);
                 assertArrayEquals(payload, serverFlowFileContent);
 
-                while (clientRepoRecords.size() == 0) {
+                while (clientRepoRecords.isEmpty()) {
                     Thread.sleep(10L);
                 }
 
                 assertEquals(1, clientRepoRecords.size());
-                final RepositoryRecord clientRecord = clientRepoRecords.iterator().next();
+                final RepositoryRecord clientRecord = clientRepoRecords.getFirst();
                 assertEquals(RepositoryRecordType.DELETE, clientRecord.getType());
             } finally {
                 flowFileQueue.stopLoadBalancing();
@@ -1079,7 +1085,7 @@ public class LoadBalancedQueueIT {
             clientThread.start();
 
             final SocketLoadBalancedFlowFileQueue flowFileQueue = new SocketLoadBalancedFlowFileQueue(queueId, processScheduler, clientFlowFileRepo, clientProvRepo,
-                    clientContentRepo, resourceClaimManager, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
+                    clientContentRepo, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
             flowFileQueue.setFlowFilePartitioner(new FlowFilePartitioner() {
                 @Override
                 public QueuePartition getPartition(final FlowFileRecord flowFile, final QueuePartition[] partitions, final QueuePartition localPartition) {
@@ -1125,7 +1131,7 @@ public class LoadBalancedQueueIT {
 
                 assertEquals(1, serverRepoRecords.size());
 
-                final RepositoryRecord serverRecord = serverRepoRecords.iterator().next();
+                final RepositoryRecord serverRecord = serverRepoRecords.getFirst();
                 final FlowFileRecord serverFlowFile = serverRecord.getCurrent();
                 assertEquals("test", serverFlowFile.getAttribute("integration"));
                 assertEquals("false", serverFlowFile.getAttribute("unit-test"));
@@ -1135,12 +1141,12 @@ public class LoadBalancedQueueIT {
                 final byte[] serverFlowFileContent = serverClaimContents.get(serverContentClaim);
                 assertArrayEquals("hello".getBytes(), serverFlowFileContent);
 
-                while (clientRepoRecords.size() == 0) {
+                while (clientRepoRecords.isEmpty()) {
                     Thread.sleep(10L);
                 }
 
                 assertEquals(1, clientRepoRecords.size());
-                final RepositoryRecord clientRecord = clientRepoRecords.iterator().next();
+                final RepositoryRecord clientRecord = clientRepoRecords.getFirst();
                 assertEquals(RepositoryRecordType.DELETE, clientRecord.getType());
             } finally {
                 flowFileQueue.stopLoadBalancing();
@@ -1185,7 +1191,7 @@ public class LoadBalancedQueueIT {
             clientThread.start();
 
             final SocketLoadBalancedFlowFileQueue flowFileQueue = new SocketLoadBalancedFlowFileQueue(queueId, processScheduler, clientFlowFileRepo, clientProvRepo,
-                    clientContentRepo, resourceClaimManager, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
+                    clientContentRepo, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
             flowFileQueue.setFlowFilePartitioner(new RoundRobinPartitioner());
 
             try {
@@ -1254,7 +1260,7 @@ public class LoadBalancedQueueIT {
             clientThread.start();
 
             final SocketLoadBalancedFlowFileQueue flowFileQueue = new SocketLoadBalancedFlowFileQueue(queueId, processScheduler, clientFlowFileRepo, clientProvRepo,
-                    clientContentRepo, resourceClaimManager, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
+                    clientContentRepo, clusterCoordinator, clientRegistry, flowFileSwapManager, swapThreshold, eventReporter);
             flowFileQueue.setFlowFilePartitioner(new RoundRobinPartitioner());
 
             try {
@@ -1311,12 +1317,7 @@ public class LoadBalancedQueueIT {
     private ContentRepository createContentRepository(final ConcurrentMap<ContentClaim, byte[]> claimContents) throws IOException {
         final ContentRepository contentRepo = mock(ContentRepository.class);
 
-        Mockito.doAnswer(new Answer<ContentClaim>() {
-            @Override
-            public ContentClaim answer(final InvocationOnMock invocation) {
-                return createContentClaim(null);
-            }
-        }).when(contentRepo).create(Mockito.anyBoolean());
+        Mockito.doAnswer((Answer<ContentClaim>) invocation -> createContentClaim(null)).when(contentRepo).create(Mockito.anyBoolean());
 
 
         Mockito.doAnswer(new Answer<OutputStream>() {
@@ -1337,21 +1338,18 @@ public class LoadBalancedQueueIT {
         }).when(contentRepo).write(any(ContentClaim.class));
 
 
-        Mockito.doAnswer(new Answer<InputStream>() {
-            @Override
-            public InputStream answer(final InvocationOnMock invocation) {
-                final ContentClaim contentClaim = invocation.getArgument(0);
-                if (contentClaim == null) {
-                    return new ByteArrayInputStream(new byte[0]);
-                }
-
-                final byte[] bytes = claimContents.get(contentClaim);
-                if (bytes == null) {
-                    throw new ContentNotFoundException(contentClaim);
-                }
-
-                return new ByteArrayInputStream(bytes);
+        Mockito.doAnswer((Answer<InputStream>) invocation -> {
+            final ContentClaim contentClaim = invocation.getArgument(0);
+            if (contentClaim == null) {
+                return new ByteArrayInputStream(new byte[0]);
             }
+
+            final byte[] bytes = claimContents.get(contentClaim);
+            if (bytes == null) {
+                throw new ContentNotFoundException(contentClaim);
+            }
+
+            return new ByteArrayInputStream(bytes);
         }).when(contentRepo).read(Mockito.nullable(ContentClaim.class));
 
         return contentRepo;

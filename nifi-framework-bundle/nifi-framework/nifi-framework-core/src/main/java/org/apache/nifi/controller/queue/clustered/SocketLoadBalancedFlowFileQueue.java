@@ -60,7 +60,6 @@ import org.apache.nifi.controller.repository.StandardRepositoryRecord;
 import org.apache.nifi.controller.repository.SwapSummary;
 import org.apache.nifi.controller.repository.claim.ContentClaim;
 import org.apache.nifi.controller.repository.claim.ResourceClaim;
-import org.apache.nifi.controller.repository.claim.ResourceClaimManager;
 import org.apache.nifi.controller.swap.StandardSwapSummary;
 import org.apache.nifi.events.EventReporter;
 import org.apache.nifi.flowfile.FlowFilePrioritizer;
@@ -125,11 +124,11 @@ public class SocketLoadBalancedFlowFileQueue extends AbstractFlowFileQueue imple
 
 
     public SocketLoadBalancedFlowFileQueue(final String identifier, final ProcessScheduler scheduler, final FlowFileRepository flowFileRepo,
-                                           final ProvenanceEventRepository provRepo, final ContentRepository contentRepo, final ResourceClaimManager resourceClaimManager,
+                                           final ProvenanceEventRepository provRepo, final ContentRepository contentRepo,
                                            final ClusterCoordinator clusterCoordinator, final AsyncLoadBalanceClientRegistry clientRegistry, final FlowFileSwapManager swapManager,
                                            final int swapThreshold, final EventReporter eventReporter) {
 
-        super(identifier, scheduler, flowFileRepo, provRepo, resourceClaimManager);
+        super(identifier, scheduler, flowFileRepo, provRepo);
         this.eventReporter = eventReporter;
         this.swapManager = swapManager;
         this.flowFileRepo = flowFileRepo;
@@ -214,23 +213,13 @@ public class SocketLoadBalancedFlowFileQueue extends AbstractFlowFileQueue imple
     }
 
     private FlowFilePartitioner getPartitionerForLoadBalancingStrategy(LoadBalanceStrategy strategy, String partitioningAttribute) {
-        FlowFilePartitioner partitioner;
-        switch (strategy) {
-            case DO_NOT_LOAD_BALANCE:
-                partitioner = new LocalPartitionPartitioner();
-                break;
-            case PARTITION_BY_ATTRIBUTE:
-                partitioner = new CorrelationAttributePartitioner(partitioningAttribute);
-                break;
-            case ROUND_ROBIN:
-                partitioner = new RoundRobinPartitioner();
-                break;
-            case SINGLE_NODE:
-                partitioner = new FirstNodePartitioner();
-                break;
-            default:
-                throw new IllegalArgumentException();
-        }
+        FlowFilePartitioner partitioner = switch (strategy) {
+            case DO_NOT_LOAD_BALANCE -> new LocalPartitionPartitioner();
+            case PARTITION_BY_ATTRIBUTE -> new CorrelationAttributePartitioner(partitioningAttribute);
+            case ROUND_ROBIN -> new RoundRobinPartitioner();
+            case SINGLE_NODE -> new FirstNodePartitioner();
+            default -> throw new IllegalArgumentException();
+        };
         return partitioner;
     }
 

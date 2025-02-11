@@ -16,13 +16,10 @@
  */
 package org.apache.nifi.web.api;
 
-import java.util.List;
-
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.ws.rs.Consumes;
@@ -39,10 +36,15 @@ import org.apache.nifi.authorization.user.NiFiUserUtils;
 import org.apache.nifi.web.NiFiServiceFacade;
 import org.apache.nifi.web.api.dto.ResourceDTO;
 import org.apache.nifi.web.api.entity.ResourcesEntity;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+
+import java.util.List;
 
 /**
  * RESTful endpoint for retrieving system diagnostics.
  */
+@Controller
 @Path("/resources")
 @Tag(name = "Resources")
 public class ResourceResource extends ApplicationResource {
@@ -67,15 +69,13 @@ public class ResourceResource extends ApplicationResource {
     @Produces(MediaType.APPLICATION_JSON)
     @Operation(
             summary = "Gets the available resources that support access/authorization policies",
-            responses = @ApiResponse(content = @Content(schema = @Schema(implementation = ResourcesEntity.class))),
-            security = {
-                    @SecurityRequirement(name = "Read - /resources")
-            }
-    )
-    @ApiResponses(
-            value = {
+            responses = {
+                    @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = ResourcesEntity.class))),
                     @ApiResponse(responseCode = "401", description = "Client could not be authenticated."),
                     @ApiResponse(responseCode = "403", description = "Client is not authorized to make this request."),
+            },
+            security = {
+                    @SecurityRequirement(name = "Read - /resources")
             }
     )
     public Response getResources() {
@@ -96,12 +96,12 @@ public class ResourceResource extends ApplicationResource {
         return generateOkResponse(entity).build();
     }
 
-    // setters
-
+    @Autowired
     public void setServiceFacade(NiFiServiceFacade serviceFacade) {
         this.serviceFacade = serviceFacade;
     }
 
+    @Autowired
     public void setAuthorizer(Authorizer authorizer) {
         this.authorizer = authorizer;
     }

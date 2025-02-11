@@ -45,17 +45,19 @@ import org.apache.nifi.controller.AbstractControllerService;
 import org.apache.nifi.controller.ConfigurationContext;
 import org.apache.nifi.expression.ExpressionLanguageScope;
 import org.apache.nifi.logging.ComponentLog;
+import org.apache.nifi.oauth2.OAuth2AccessTokenProvider;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.proxy.ProxyConfiguration;
 import org.apache.nifi.proxy.ProxyConfigurationService;
 import org.apache.nifi.reporting.InitializationException;
-import org.apache.nifi.ssl.SSLContextService;
+import org.apache.nifi.ssl.SSLContextProvider;
 import org.apache.nifi.util.StopWatch;
 import org.apache.nifi.util.StringUtils;
 import org.elasticsearch.client.Node;
 import org.elasticsearch.client.NodeSelector;
 import org.elasticsearch.client.Request;
+import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.Response;
 import org.elasticsearch.client.ResponseException;
 import org.elasticsearch.client.RestClient;
@@ -102,10 +104,35 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
 
     private ObjectMapper mapper;
 
-    private static final List<PropertyDescriptor> properties = List.of(HTTP_HOSTS, PATH_PREFIX, AUTHORIZATION_SCHEME, USERNAME, PASSWORD, API_KEY_ID, API_KEY,
-            PROP_SSL_CONTEXT_SERVICE, PROXY_CONFIGURATION_SERVICE, CONNECT_TIMEOUT, SOCKET_TIMEOUT, CHARSET,
-            SUPPRESS_NULLS, COMPRESSION, SEND_META_HEADER, STRICT_DEPRECATION, NODE_SELECTOR, SNIFF_CLUSTER_NODES,
-            SNIFFER_INTERVAL, SNIFFER_REQUEST_TIMEOUT, SNIFF_ON_FAILURE, SNIFFER_FAILURE_DELAY);
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+            HTTP_HOSTS,
+            PATH_PREFIX,
+            AUTHORIZATION_SCHEME,
+            USERNAME,
+            PASSWORD,
+            API_KEY_ID,
+            API_KEY,
+            JWT_SHARED_SECRET,
+            OAUTH2_ACCESS_TOKEN_PROVIDER,
+            RUN_AS_USER,
+            PROP_SSL_CONTEXT_SERVICE,
+            PROXY_CONFIGURATION_SERVICE,
+            CONNECT_TIMEOUT,
+            SOCKET_TIMEOUT,
+            CHARSET,
+            SUPPRESS_NULLS,
+            COMPRESSION,
+            SEND_META_HEADER,
+            STRICT_DEPRECATION,
+            NODE_SELECTOR,
+            SNIFF_CLUSTER_NODES,
+            SNIFFER_INTERVAL,
+            SNIFFER_REQUEST_TIMEOUT,
+            SNIFF_ON_FAILURE,
+            SNIFFER_FAILURE_DELAY
+    );
+
+    private OAuth2AccessTokenProvider oAuth2AccessTokenProvider;
 
     private RestClient client;
 
@@ -117,7 +144,7 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return properties;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -137,32 +164,14 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
 
         final AuthorizationScheme authorizationScheme = validationContext.getProperty(AUTHORIZATION_SCHEME).asAllowableValue(AuthorizationScheme.class);
 
-        final boolean usernameSet = validationContext.getProperty(USERNAME).isSet();
-        final boolean passwordSet = validationContext.getProperty(PASSWORD).isSet();
+        final SSLContextProvider sslContextProvider = validationContext.getProperty(PROP_SSL_CONTEXT_SERVICE).asControllerService(SSLContextProvider.class);
 
-        final boolean apiKeyIdSet = validationContext.getProperty(API_KEY_ID).isSet();
-        final boolean apiKeySet = validationContext.getProperty(API_KEY).isSet();
-
-        final SSLContextService sslService = validationContext.getProperty(PROP_SSL_CONTEXT_SERVICE).asControllerService(SSLContextService.class);
-
-        if (authorizationScheme == AuthorizationScheme.PKI && (sslService == null || !sslService.isKeyStoreConfigured())) {
+        if (authorizationScheme == AuthorizationScheme.PKI && (sslContextProvider == null)) {
             results.add(new ValidationResult.Builder().subject(PROP_SSL_CONTEXT_SERVICE.getName()).valid(false)
                     .explanation(String.format("if '%s' is '%s' then '%s' must be set and specify a Keystore for mutual TLS encryption.",
                             AUTHORIZATION_SCHEME.getDisplayName(), authorizationScheme.getDisplayName(), PROP_SSL_CONTEXT_SERVICE.getDisplayName())
                     ).build()
             );
-        }
-
-        if (usernameSet && !passwordSet) {
-            addAuthorizationPropertiesValidationIssue(results, USERNAME, PASSWORD);
-        } else if (passwordSet && !usernameSet) {
-            addAuthorizationPropertiesValidationIssue(results, PASSWORD, USERNAME);
-        }
-
-        if (apiKeyIdSet && !apiKeySet) {
-            addAuthorizationPropertiesValidationIssue(results, API_KEY_ID, API_KEY);
-        } else if (apiKeySet && !apiKeyIdSet) {
-            addAuthorizationPropertiesValidationIssue(results, API_KEY, API_KEY_ID);
         }
 
         final boolean sniffClusterNodes = validationContext.getProperty(SNIFF_CLUSTER_NODES).asBoolean();
@@ -175,23 +184,17 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
         return results;
     }
 
-    private void addAuthorizationPropertiesValidationIssue(final List<ValidationResult> results, final PropertyDescriptor presentProperty, final PropertyDescriptor missingProperty) {
-        results.add(new ValidationResult.Builder().subject(missingProperty.getName()).valid(false)
-                .explanation(String.format("if '%s' is then '%s' must be set.", presentProperty.getDisplayName(), missingProperty.getDisplayName()))
-                .build()
-        );
-    }
-
     @OnEnabled
     public void onEnabled(final ConfigurationContext context) throws InitializationException {
         try {
             this.client = setupClient(context);
             this.sniffer = setupSniffer(context, this.client);
-            responseCharset = Charset.forName(context.getProperty(CHARSET).getValue());
+            this.responseCharset = Charset.forName(context.getProperty(CHARSET).getValue());
+
+            this.oAuth2AccessTokenProvider = context.getProperty(OAUTH2_ACCESS_TOKEN_PROVIDER).asControllerService(OAuth2AccessTokenProvider.class);
 
             // re-create the ObjectMapper in case the SUPPRESS_NULLS property has changed - the JsonInclude settings aren't dynamic
             createObjectMapper(context);
-
         } catch (final Exception ex) {
             getLogger().error("Could not initialize ElasticSearch client.", ex);
             throw new InitializationException(ex);
@@ -244,10 +247,11 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
             clientSetupResult.outcome(ConfigVerificationResult.Outcome.SUCCESSFUL);
 
             // try to fetch the Elasticsearch root endpoint (system summary)
-            verifyRootConnection(verifyClient, connectionResult, warningsResult);
+            final OAuth2AccessTokenProvider tokenProvider = context.getProperty(OAUTH2_ACCESS_TOKEN_PROVIDER).asControllerService(OAuth2AccessTokenProvider.class);
+            verifyRootConnection(verifyClient, tokenProvider, connectionResult, warningsResult);
 
             // try sniffing for cluster nodes
-            verifySniffer(context, verifyClient, snifferResult);
+            verifySniffer(context, verifyClient, tokenProvider, snifferResult);
         } catch (final MalformedURLException mue) {
             clientSetupResult.outcome(ConfigVerificationResult.Outcome.FAILED)
                     .explanation("Incorrect/invalid " + ElasticSearchClientService.HTTP_HOSTS.getDisplayName());
@@ -283,7 +287,7 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
         return results;
     }
 
-    private void verifySniffer(final ConfigurationContext context, final RestClient verifyClient, final ConfigVerificationResult.Builder snifferResult) {
+    private void verifySniffer(final ConfigurationContext context, final RestClient verifyClient, final OAuth2AccessTokenProvider tokenProvider, final ConfigVerificationResult.Builder snifferResult) {
         try (final Sniffer verifySniffer = setupSniffer(context, verifyClient)) {
             if (verifySniffer != null) {
                 final List<Node> originalNodes = verifyClient.getNodes();
@@ -297,7 +301,7 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
                 nodes.forEach(n -> {
                     try {
                         verifyClient.setNodes(Collections.singletonList(n));
-                        final List<String> warnings = getElasticsearchRoot(verifyClient);
+                        final List<String> warnings = getElasticsearchRoot(verifyClient, tokenProvider);
                         successfulInstances.getAndIncrement();
                         if (!warnings.isEmpty()) {
                             warningInstances.getAndIncrement();
@@ -331,17 +335,20 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
         }
     }
 
-    private List<String> getElasticsearchRoot(final RestClient verifyClient) throws IOException {
-        final Response response = verifyClient.performRequest(new Request("GET", "/"));
+    private List<String> getElasticsearchRoot(final RestClient verifyClient, final OAuth2AccessTokenProvider tokenProvider) throws IOException {
+        final Request request = addJWTAuthorizationHeader(new Request("GET", "/"), tokenProvider);
+        final Response response = verifyClient.performRequest(request);
         final List<String> warnings = parseResponseWarningHeaders(response);
+        // ensure the response can be parsed without exception
         parseResponse(response);
 
         return warnings;
     }
 
-    private void verifyRootConnection(final RestClient verifyClient, final ConfigVerificationResult.Builder connectionResult, final ConfigVerificationResult.Builder warningsResult) {
+    private void verifyRootConnection(final RestClient verifyClient, final OAuth2AccessTokenProvider tokenProvider,
+                                      final ConfigVerificationResult.Builder connectionResult, final ConfigVerificationResult.Builder warningsResult) {
         try {
-            final List<String> warnings = getElasticsearchRoot(verifyClient);
+            final List<String> warnings = getElasticsearchRoot(verifyClient, tokenProvider);
 
             connectionResult.outcome(ConfigVerificationResult.Outcome.SUCCESSFUL);
             if (warnings.isEmpty()) {
@@ -419,8 +426,12 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
         final String username = context.getProperty(USERNAME).evaluateAttributeExpressions().getValue();
         final String password = context.getProperty(PASSWORD).evaluateAttributeExpressions().getValue();
 
+        final String runAsUser = context.getProperty(RUN_AS_USER).evaluateAttributeExpressions().getValue();
+
         final String apiKeyId = context.getProperty(API_KEY_ID).getValue();
         final String apiKey = context.getProperty(API_KEY).getValue();
+
+        final String jwtSharedSecret = context.getProperty(JWT_SHARED_SECRET).getValue();
 
         final SSLContext sslContext = getSSLContext(context);
         final ProxyConfigurationService proxyConfigurationService = context.getProperty(PROXY_CONFIGURATION_SERVICE).asControllerService(ProxyConfigurationService.class);
@@ -438,6 +449,12 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
             final List<Header> defaultHeaders = getDefaultHeadersFromDynamicProperties(context);
             if (AuthorizationScheme.API_KEY == authorizationScheme && apiKeyId != null && apiKey != null) {
                 defaultHeaders.add(createApiKeyAuthorizationHeader(apiKeyId, apiKey));
+            }
+            if (AuthorizationScheme.JWT == authorizationScheme && jwtSharedSecret != null) {
+                defaultHeaders.add(createSharedSecretHeader(jwtSharedSecret));
+            }
+            if (runAsUser != null) {
+                defaultHeaders.add(createRunAsUserHeader(runAsUser));
             }
             if (!defaultHeaders.isEmpty()) {
                 builder.setDefaultHeaders(defaultHeaders.toArray(new Header[0]));
@@ -462,12 +479,10 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
     }
 
     private SSLContext getSSLContext(final ConfigurationContext context) throws InitializationException {
-        final SSLContextService sslService =
-                context.getProperty(PROP_SSL_CONTEXT_SERVICE).asControllerService(SSLContextService.class);
+        final SSLContextProvider sslContextProvider = context.getProperty(PROP_SSL_CONTEXT_SERVICE).asControllerService(SSLContextProvider.class);
 
         try {
-            return (sslService != null && (sslService.isKeyStoreConfigured() || sslService.isTrustStoreConfigured()))
-                    ? sslService.createContext() : null;
+            return sslContextProvider == null ? null : sslContextProvider.createContext();
         } catch (final Exception e) {
             getLogger().error("Error building up SSL Context from the supplied configuration.", e);
             throw new InitializationException(e);
@@ -504,6 +519,23 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
         final String apiKeyCredentials = String.format("%s:%s", apiKeyId, apiKey);
         final String apiKeyAuth = Base64.getEncoder().encodeToString((apiKeyCredentials).getBytes(StandardCharsets.UTF_8));
         return new BasicHeader("Authorization", "ApiKey " + apiKeyAuth);
+    }
+
+    private BasicHeader createSharedSecretHeader(final String jwtSharedSecret) {
+        return new BasicHeader("ES-Client-Authentication", "sharedsecret " + jwtSharedSecret);
+    }
+
+    private BasicHeader createRunAsUserHeader(final String runAsUser) {
+        return new BasicHeader("es-security-runas-user", runAsUser);
+    }
+
+    private Request addJWTAuthorizationHeader(final Request request, final OAuth2AccessTokenProvider tokenProvider) {
+        if (tokenProvider != null) {
+            final RequestOptions.Builder requestOptionsBuilder = RequestOptions.DEFAULT.toBuilder();
+            requestOptionsBuilder.addHeader("Authorization", "Bearer " + tokenProvider.getAccessDetails().getAccessToken());
+            request.setOptions(requestOptionsBuilder.build());
+        }
+        return request;
     }
 
     private Sniffer setupSniffer(final ConfigurationContext context, final RestClient restClient) {
@@ -579,7 +611,7 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
         final List<String> warnings = Arrays.stream(response.getHeaders())
                 .filter(h -> "Warning".equalsIgnoreCase(h.getName()))
                 .map(Header::getValue)
-                .collect(Collectors.toList());
+                .toList();
 
         warnings.forEach(w -> getLogger().warn("Elasticsearch Warning: {}", w));
 
@@ -627,13 +659,11 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
         final String header = buildBulkHeader(request);
         builder.append(header).append("\n");
         switch (request.getOperation()) {
-            case Index:
-            case Create:
+            case Index, Create:
                 final String indexDocument = mapper.writeValueAsString(request.getFields());
                 builder.append(indexDocument).append("\n");
                 break;
-            case Update:
-            case Upsert:
+            case Update, Upsert:
                 final Map<String, Object> updateBody = new HashMap<>(2, 1);
                 if (request.getScript() != null && !request.getScript().isEmpty()) {
                     updateBody.put("script", request.getScript());
@@ -668,7 +698,7 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
             }
 
             if (getLogger().isDebugEnabled()) {
-                getLogger().debug(payload.toString());
+                getLogger().debug("{}", payload);
             }
             final HttpEntity entity = new NStringEntity(payload.toString(), ContentType.APPLICATION_JSON);
             final StopWatch watch = new StopWatch();
@@ -945,7 +975,8 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
         final Map<String, Object> parsed = parseResponse(response);
         final List<String> warnings = parseResponseWarningHeaders(response);
 
-        final int took = (Integer) parsed.get("took");
+        // took should be an int, but could be a long (bg in Elasticsearch 8.15.0)
+        final long took = Long.parseLong(String.valueOf(parsed.get("took")));
         final boolean timedOut = (Boolean) parsed.get("timed_out");
         final String pitId = parsed.get("pit_id") != null ? (String) parsed.get("pit_id") : null;
         final String scrollId = parsed.get("_scroll_id") != null ? (String) parsed.get("_scroll_id") : null;
@@ -999,7 +1030,7 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
     }
 
     private Response performRequest(final String method, final String endpoint, final Map<String, String> parameters, final HttpEntity entity) throws IOException {
-        final Request request = new Request(method, endpoint);
+        final Request request = addJWTAuthorizationHeader(new Request(method, endpoint), oAuth2AccessTokenProvider);
         if (parameters != null && !parameters.isEmpty()) {
             request.addParameters(parameters);
         }
@@ -1030,7 +1061,7 @@ public class ElasticSearchClientServiceImpl extends AbstractControllerService im
                         .append("\n");
             }
 
-            getLogger().debug(builder.toString());
+            getLogger().debug("{}", builder);
         }
 
         return client.performRequest(request);

@@ -19,10 +19,10 @@ import { Component, OnDestroy, OnInit } from '@angular/core';
 import { Store } from '@ngrx/store';
 import { distinctUntilChanged, filter } from 'rxjs';
 import {
-    selectConnectionIdFromRoute,
-    selectSelectedConnection,
     selectCompletedListingRequest,
+    selectConnectionIdFromRoute,
     selectLoadedTimestamp,
+    selectSelectedConnection,
     selectStatus
 } from '../../state/queue-listing/queue-listing.selectors';
 import { FlowFileSummary } from '../../state/queue-listing';
@@ -40,14 +40,14 @@ import { NiFiState } from '../../../../state';
 import { selectAbout } from '../../../../state/about/about.selectors';
 import { About } from '../../../../state/about';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { clearBannerErrors } from '../../../../state/error/error.actions';
 import { selectClusterSummary } from '../../../../state/cluster-summary/cluster-summary.selectors';
 import { loadClusterSummary } from '../../../../state/cluster-summary/cluster-summary.actions';
 
 @Component({
     selector: 'queue-listing',
     templateUrl: './queue-listing.component.html',
-    styleUrls: ['./queue-listing.component.scss']
+    styleUrls: ['./queue-listing.component.scss'],
+    standalone: false
 })
 export class QueueListing implements OnInit, OnDestroy {
     status$ = this.store.select(selectStatus);
@@ -116,6 +116,7 @@ export class QueueListing implements OnInit, OnDestroy {
             viewFlowFileContent({
                 request: {
                     uri: flowfileSummary.uri,
+                    mimeType: flowfileSummary.mimeType,
                     clusterNodeId: flowfileSummary.clusterNodeId
                 }
             })
@@ -124,6 +125,5 @@ export class QueueListing implements OnInit, OnDestroy {
 
     ngOnDestroy(): void {
         this.store.dispatch(resetQueueListingState());
-        this.store.dispatch(clearBannerErrors());
     }
 }

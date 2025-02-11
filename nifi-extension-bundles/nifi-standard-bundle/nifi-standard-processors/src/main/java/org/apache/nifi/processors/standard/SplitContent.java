@@ -16,20 +16,6 @@
  */
 package org.apache.nifi.processors.standard;
 
-import java.io.BufferedInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicReference;
 import org.apache.commons.codec.DecoderException;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.nifi.annotation.behavior.InputRequirement;
@@ -56,12 +42,22 @@ import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.AbstractProcessor;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
-import org.apache.nifi.processor.ProcessorInitializationContext;
 import org.apache.nifi.processor.Relationship;
-import org.apache.nifi.processor.io.InputStreamCallback;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.util.NaiveSearchRingBuffer;
 import org.apache.nifi.util.Tuple;
+
+import java.io.BufferedInputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 @SideEffectFree
 @SupportsBatching
@@ -119,6 +115,13 @@ public class SplitContent extends AbstractProcessor {
             .defaultValue(TRAILING_POSITION.getValue())
             .build();
 
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+            FORMAT,
+            BYTE_SEQUENCE,
+            KEEP_SEQUENCE,
+            BYTE_SEQUENCE_LOCATION
+    );
+
     public static final Relationship REL_SPLITS = new Relationship.Builder()
             .name("splits")
             .description("All Splits will be routed to the splits relationship")
@@ -128,34 +131,21 @@ public class SplitContent extends AbstractProcessor {
             .description("The original file")
             .build();
 
-    private Set<Relationship> relationships;
-    private List<PropertyDescriptor> properties;
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SPLITS,
+            REL_ORIGINAL
+    );
 
     private final AtomicReference<byte[]> byteSequence = new AtomicReference<>();
 
     @Override
-    protected void init(final ProcessorInitializationContext context) {
-        final Set<Relationship> relationships = new HashSet<>();
-        relationships.add(REL_SPLITS);
-        relationships.add(REL_ORIGINAL);
-        this.relationships = Collections.unmodifiableSet(relationships);
-
-        final List<PropertyDescriptor> properties = new ArrayList<>();
-        properties.add(FORMAT);
-        properties.add(BYTE_SEQUENCE);
-        properties.add(KEEP_SEQUENCE);
-        properties.add(BYTE_SEQUENCE_LOCATION);
-        this.properties = Collections.unmodifiableList(properties);
-    }
-
-    @Override
     public Set<Relationship> getRelationships() {
-        return relationships;
+        return RELATIONSHIPS;
     }
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return properties;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -216,39 +206,36 @@ public class SplitContent extends AbstractProcessor {
         final List<Tuple<Long, Long>> splits = new ArrayList<>();
 
         final NaiveSearchRingBuffer buffer = new NaiveSearchRingBuffer(byteSequence);
-        session.read(flowFile, new InputStreamCallback() {
-            @Override
-            public void process(final InputStream rawIn) throws IOException {
-                long bytesRead = 0L;
-                long startOffset = 0L;
+        session.read(flowFile, rawIn -> {
+            long bytesRead = 0L;
+            long startOffset = 0L;
 
-                try (final InputStream in = new BufferedInputStream(rawIn)) {
-                    while (true) {
-                        final int nextByte = in.read();
-                        if (nextByte == -1) {
-                            return;
+            try (final InputStream in = new BufferedInputStream(rawIn)) {
+                while (true) {
+                    final int nextByte = in.read();
+                    if (nextByte == -1) {
+                        return;
+                    }
+
+                    bytesRead++;
+                    boolean matched = buffer.addAndCompare((byte) (nextByte & 0xFF));
+                    if (matched) {
+                        long splitLength;
+
+                        if (keepTrailingSequence) {
+                            splitLength = bytesRead - startOffset;
+                        } else {
+                            splitLength = bytesRead - startOffset - byteSequence.length;
                         }
 
-                        bytesRead++;
-                        boolean matched = buffer.addAndCompare((byte) (nextByte & 0xFF));
-                        if (matched) {
-                            long splitLength;
-
-                            if (keepTrailingSequence) {
-                                splitLength = bytesRead - startOffset;
-                            } else {
-                                splitLength = bytesRead - startOffset - byteSequence.length;
-                            }
-
-                            if (keepLeadingSequence && startOffset > 0) {
-                                splitLength += byteSequence.length;
-                            }
-
-                            final long splitStart = (keepLeadingSequence && startOffset > 0) ? startOffset - byteSequence.length : startOffset;
-                            splits.add(new Tuple<>(splitStart, splitLength));
-                            startOffset = bytesRead;
-                            buffer.clear();
+                        if (keepLeadingSequence && startOffset > 0) {
+                            splitLength += byteSequence.length;
                         }
+
+                        final long splitStart = (keepLeadingSequence && startOffset > 0) ? startOffset - byteSequence.length : startOffset;
+                        splits.add(new Tuple<>(splitStart, splitLength));
+                        startOffset = bytesRead;
+                        buffer.clear();
                     }
                 }
             }

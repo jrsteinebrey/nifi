@@ -31,9 +31,9 @@ import {
 import { selectCurrentUser } from '../../../state/current-user/current-user.selectors';
 import { CurrentUser } from '../../../state/current-user';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { selectCurrentRoute } from '../../../state/router/router.selectors';
+import { selectCurrentRoute } from '@nifi/shared';
 import { resetSystemDiagnostics } from '../../../state/system-diagnostics/system-diagnostics.actions';
-import { clearBannerErrors } from '../../../state/error/error.actions';
+import { ErrorContextKey } from '../../../state/error';
 
 interface TabLink {
     label: string;
@@ -44,7 +44,8 @@ interface TabLink {
 @Component({
     selector: 'cluster',
     templateUrl: './cluster.component.html',
-    styleUrls: ['./cluster.component.scss']
+    styleUrls: ['./cluster.component.scss'],
+    standalone: false
 })
 export class Cluster implements OnInit, OnDestroy {
     private _currentUser!: CurrentUser;
@@ -83,7 +84,6 @@ export class Cluster implements OnInit, OnDestroy {
     ngOnDestroy(): void {
         this.store.dispatch(resetClusterState());
         this.store.dispatch(resetSystemDiagnostics());
-        this.store.dispatch(clearBannerErrors());
     }
 
     refresh() {
@@ -118,4 +118,6 @@ export class Cluster implements OnInit, OnDestroy {
         const path = route.routeConfig.path;
         return this._tabLinks.find((tabLink) => tabLink.link === path);
     }
+
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

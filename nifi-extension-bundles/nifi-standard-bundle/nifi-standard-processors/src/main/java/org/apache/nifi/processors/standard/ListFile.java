@@ -42,9 +42,9 @@ import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessorInitializationContext;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.util.StandardValidators;
+import org.apache.nifi.processor.util.file.transfer.FileInfo;
 import org.apache.nifi.processor.util.list.AbstractListProcessor;
 import org.apache.nifi.processor.util.list.ListedEntityTracker;
-import org.apache.nifi.processor.util.file.transfer.FileInfo;
 import org.apache.nifi.scheduling.SchedulingStrategy;
 import org.apache.nifi.serialization.record.RecordSchema;
 import org.apache.nifi.util.Tuple;
@@ -67,12 +67,10 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
@@ -269,9 +267,34 @@ public class ListFile extends AbstractListProcessor<FileInfo> {
         .defaultValue("3 mins")
         .build();
 
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+            DIRECTORY,
+            LISTING_STRATEGY,
+            RECURSE,
+            RECORD_WRITER,
+            DIRECTORY_LOCATION,
+            FILE_FILTER,
+            PATH_FILTER,
+            INCLUDE_FILE_ATTRIBUTES,
+            MIN_AGE,
+            MAX_AGE,
+            MIN_SIZE,
+            MAX_SIZE,
+            IGNORE_HIDDEN_FILES,
+            TARGET_SYSTEM_TIMESTAMP_PRECISION,
+            ListedEntityTracker.TRACKING_STATE_CACHE,
+            ListedEntityTracker.TRACKING_TIME_WINDOW,
+            ListedEntityTracker.INITIAL_LISTING_TARGET,
+            ListedEntityTracker.NODE_IDENTIFIER,
+            TRACK_PERFORMANCE,
+            MAX_TRACKED_FILES,
+            MAX_DISK_OPERATION_TIME,
+            MAX_LISTING_TIME
+    );
 
-    private List<PropertyDescriptor> properties;
-    private Set<Relationship> relationships;
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS
+    );
 
     private volatile ScheduledExecutorService monitoringThreadPool;
     private volatile Future<?> monitoringFuture;
@@ -292,35 +315,6 @@ public class ListFile extends AbstractListProcessor<FileInfo> {
 
     @Override
     protected void init(final ProcessorInitializationContext context) {
-        final List<PropertyDescriptor> properties = new ArrayList<>();
-        properties.add(DIRECTORY);
-        properties.add(LISTING_STRATEGY);
-        properties.add(RECURSE);
-        properties.add(RECORD_WRITER);
-        properties.add(DIRECTORY_LOCATION);
-        properties.add(FILE_FILTER);
-        properties.add(PATH_FILTER);
-        properties.add(INCLUDE_FILE_ATTRIBUTES);
-        properties.add(MIN_AGE);
-        properties.add(MAX_AGE);
-        properties.add(MIN_SIZE);
-        properties.add(MAX_SIZE);
-        properties.add(IGNORE_HIDDEN_FILES);
-        properties.add(TARGET_SYSTEM_TIMESTAMP_PRECISION);
-        properties.add(ListedEntityTracker.TRACKING_STATE_CACHE);
-        properties.add(ListedEntityTracker.TRACKING_TIME_WINDOW);
-        properties.add(ListedEntityTracker.INITIAL_LISTING_TARGET);
-        properties.add(ListedEntityTracker.NODE_IDENTIFIER);
-        properties.add(TRACK_PERFORMANCE);
-        properties.add(MAX_TRACKED_FILES);
-        properties.add(MAX_DISK_OPERATION_TIME);
-        properties.add(MAX_LISTING_TIME);
-        this.properties = Collections.unmodifiableList(properties);
-
-        final Set<Relationship> relationships = new HashSet<>();
-        relationships.add(REL_SUCCESS);
-        this.relationships = Collections.unmodifiableSet(relationships);
-
         monitoringThreadPool = Executors.newScheduledThreadPool(1, r -> {
             final Thread t = Executors.defaultThreadFactory().newThread(r);
             t.setName("Monitor ListFile Performance [UUID=" + context.getIdentifier() + "]");
@@ -332,12 +326,12 @@ public class ListFile extends AbstractListProcessor<FileInfo> {
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return properties;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
     public Set<Relationship> getRelationships() {
-        return relationships;
+        return RELATIONSHIPS;
     }
 
     @OnScheduled
@@ -406,7 +400,7 @@ public class ListFile extends AbstractListProcessor<FileInfo> {
                 }
             }
 
-            logger.debug(sb.toString());
+            logger.debug("{}", sb);
         }
 
         performanceLoggingTimestamp = System.currentTimeMillis();
@@ -448,7 +442,7 @@ public class ListFile extends AbstractListProcessor<FileInfo> {
                             BasicFileAttributes attrs = view.readAttributes();
                             attributes.put(FILE_CREATION_TIME_ATTRIBUTE, formatDateTime(attrs.creationTime().toMillis()));
                             attributes.put(FILE_LAST_ACCESS_TIME_ATTRIBUTE, formatDateTime(attrs.lastAccessTime().toMillis()));
-                        } catch (Exception ignore) {
+                        } catch (Exception ignored) {
                         } // allow other attributes if these fail
                     }
                 });
@@ -458,7 +452,7 @@ public class ListFile extends AbstractListProcessor<FileInfo> {
                         try {
                             FileOwnerAttributeView view = Files.getFileAttributeView(filePath, FileOwnerAttributeView.class);
                             attributes.put(FILE_OWNER_ATTRIBUTE, view.getOwner().getName());
-                        } catch (Exception ignore) {
+                        } catch (Exception ignored) {
                         } // allow other attributes if these fail
                     }
                 });
@@ -469,7 +463,7 @@ public class ListFile extends AbstractListProcessor<FileInfo> {
                             PosixFileAttributeView view = Files.getFileAttributeView(filePath, PosixFileAttributeView.class);
                             attributes.put(FILE_PERMISSIONS_ATTRIBUTE, PosixFilePermissions.toString(view.readAttributes().permissions()));
                             attributes.put(FILE_GROUP_ATTRIBUTE, view.readAttributes().group().getName());
-                        } catch (Exception ignore) {
+                        } catch (Exception ignored) {
                         } // allow other attributes if these fail
                     }
                 });
@@ -514,7 +508,12 @@ public class ListFile extends AbstractListProcessor<FileInfo> {
 
     private List<FileInfo> performListing(final ProcessContext context, final Long minTimestamp, final ListingMode listingMode, final boolean applyFilters)
             throws IOException {
-        final Path basePath = new File(getPath(context)).toPath();
+        final String evaluatedPath = getPath(context);
+        if (evaluatedPath == null || evaluatedPath.isBlank()) {
+            throw new IOException("Blank Directory is not valid: review configured expression for Directory property");
+        }
+
+        final Path basePath = new File(evaluatedPath).toPath();
         final Boolean recurse = context.getProperty(RECURSE).asBoolean();
         final Map<Path, BasicFileAttributes> lastModifiedMap = new HashMap<>();
 
@@ -531,7 +530,7 @@ public class ListFile extends AbstractListProcessor<FileInfo> {
 
         int maxDepth = recurse ? Integer.MAX_VALUE : 1;
 
-        final BiPredicate<Path, BasicFileAttributes> matcher = new BiPredicate<Path, BasicFileAttributes>() {
+        final BiPredicate<Path, BasicFileAttributes> matcher = new BiPredicate<>() {
             private long lastTimestamp = System.currentTimeMillis();
 
             @Override
@@ -582,7 +581,7 @@ public class ListFile extends AbstractListProcessor<FileInfo> {
             final long start = System.currentTimeMillis();
             final List<FileInfo> result = new LinkedList<>();
 
-            Files.walkFileTree(basePath, Collections.singleton(FileVisitOption.FOLLOW_LINKS), maxDepth, new FileVisitor<Path>() {
+            Files.walkFileTree(basePath, Set.of(FileVisitOption.FOLLOW_LINKS), maxDepth, new FileVisitor<>() {
                 @Override
                 public FileVisitResult preVisitDirectory(final Path dir, final BasicFileAttributes attributes) {
                     if (Files.isReadable(dir)) {
@@ -626,7 +625,7 @@ public class ListFile extends AbstractListProcessor<FileInfo> {
                 @Override
                 public FileVisitResult postVisitDirectory(final Path dir, final IOException e) {
                     if (e != null) {
-                        getLogger().error("Error during visiting directory {}: {}", dir.toString(), e.getMessage(), e);
+                        getLogger().error("Error during visiting directory {}", dir, e);
                     }
 
                     return FileVisitResult.CONTINUE;
@@ -844,7 +843,7 @@ public class ListFile extends AbstractListProcessor<FileInfo> {
             this.logger = logger;
             this.maxDiskOperationMillis = maxDiskOperationMillis;
 
-            directoryToTimingInfo = new LinkedHashMap<Tuple<String, String>, TimingInfo>() {
+            directoryToTimingInfo = new LinkedHashMap<>() {
                 @Override
                 protected boolean removeEldestEntry(final Map.Entry<Tuple<String, String>, TimingInfo> eldest) {
                     return size() > maxEntries;
@@ -1061,7 +1060,7 @@ public class ListFile extends AbstractListProcessor<FileInfo> {
             if (duration > maxDiskOperationMillis) {
                 final String fullPath = getFullPath();
                 logger.warn("This Processor completed action {} on {} in {} milliseconds, which exceeds the configured threshold of {} milliseconds",
-                    new Object[] {operation, fullPath, duration, maxDiskOperationMillis});
+                        operation, fullPath, duration, maxDiskOperationMillis);
             }
 
             if (logger.isTraceEnabled()) {
@@ -1335,7 +1334,7 @@ public class ListFile extends AbstractListProcessor<FileInfo> {
                 }
 
                 logger.warn("This Processor has currently spent {} milliseconds performing the {} action on {}, which exceeds the configured threshold of {} milliseconds",
-                    new Object[] {activeTime, activeOperation.getOperation(), fullPath, maxDiskOperationMillis});
+                        activeTime, activeOperation.getOperation(), fullPath, maxDiskOperationMillis);
             }
         }
 
@@ -1350,7 +1349,7 @@ public class ListFile extends AbstractListProcessor<FileInfo> {
             if (activeMillis > maxListingMillis) {
                 final String fullPath = activeDirectory.isEmpty() ? "the base directory" : activeDirectory;
                 logger.warn("This processor has currently spent {} milliseconds performing the listing of {}, which exceeds the configured threshold of {} milliseconds",
-                    new Object[] {activeMillis, fullPath, maxListingMillis});
+                        activeMillis, fullPath, maxListingMillis);
             }
         }
     }

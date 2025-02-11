@@ -42,12 +42,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.mockito.Mockito;
-import org.mockito.invocation.InvocationOnMock;
-import org.mockito.stubbing.Answer;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -57,7 +54,9 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -123,7 +122,7 @@ public class TestNodeClusterCoordinator {
         final NodeIdentifier requestedNodeId = createNodeId(6);
         final ProtocolMessage protocolResponse = requestConnection(requestedNodeId, coordinator);
         assertNotNull(protocolResponse);
-        assertTrue(protocolResponse instanceof ConnectionResponseMessage);
+        assertInstanceOf(ConnectionResponseMessage.class, protocolResponse);
 
         final ConnectionResponse response = ((ConnectionResponseMessage) protocolResponse).getConnectionResponse();
         assertNotNull(response);
@@ -168,7 +167,7 @@ public class TestNodeClusterCoordinator {
 
         final ProtocolMessage protocolResponse = coordinator.handle(requestMsg, Collections.emptySet());
         assertNotNull(protocolResponse);
-        assertTrue(protocolResponse instanceof ConnectionResponseMessage);
+        assertInstanceOf(ConnectionResponseMessage.class, protocolResponse);
 
         final ConnectionResponse response = ((ConnectionResponseMessage) protocolResponse).getConnectionResponse();
         assertNotNull(response);
@@ -181,13 +180,10 @@ public class TestNodeClusterCoordinator {
         final ClusterCoordinationProtocolSenderListener senderListener = Mockito.mock(ClusterCoordinationProtocolSenderListener.class);
         final AtomicReference<ReconnectionRequestMessage> requestRef = new AtomicReference<>();
 
-        when(senderListener.requestReconnection(any(ReconnectionRequestMessage.class))).thenAnswer(new Answer<Object>() {
-            @Override
-            public Object answer(InvocationOnMock invocation) throws Throwable {
-                final ReconnectionRequestMessage msg = invocation.getArgument(0);
-                requestRef.set(msg);
-                return null;
-            }
+        when(senderListener.requestReconnection(any(ReconnectionRequestMessage.class))).thenAnswer(invocation -> {
+            final ReconnectionRequestMessage msg = invocation.getArgument(0);
+            requestRef.set(msg);
+            return null;
         });
 
         final EventReporter eventReporter = Mockito.mock(EventReporter.class);
@@ -219,8 +215,8 @@ public class TestNodeClusterCoordinator {
 
         final StandardDataFlow df = msg.getDataFlow();
         assertNotNull(df);
-        assertTrue(Arrays.equals(dataFlow.getFlow(), df.getFlow()));
-        assertTrue(Arrays.equals(dataFlow.getSnippets(), df.getSnippets()));
+        assertArrayEquals(dataFlow.getFlow(), df.getFlow());
+        assertArrayEquals(dataFlow.getSnippets(), df.getSnippets());
     }
 
     @Test
@@ -434,7 +430,7 @@ public class TestNodeClusterCoordinator {
 
         final ProtocolMessage response = coordinator.handle(crm, Collections.emptySet());
         assertNotNull(response);
-        assertTrue(response instanceof ConnectionResponseMessage);
+        assertInstanceOf(ConnectionResponseMessage.class, response);
         final ConnectionResponseMessage responseMessage = (ConnectionResponseMessage) response;
         final NodeIdentifier resolvedNodeId = responseMessage.getConnectionResponse().getNodeIdentifier();
         assertEquals(id1, resolvedNodeId);
@@ -445,7 +441,7 @@ public class TestNodeClusterCoordinator {
 
         final ProtocolMessage conflictingResponse = coordinator.handle(crm2, Collections.emptySet());
         assertNotNull(conflictingResponse);
-        assertTrue(conflictingResponse instanceof ConnectionResponseMessage);
+        assertInstanceOf(ConnectionResponseMessage.class, conflictingResponse);
         final ConnectionResponseMessage conflictingResponseMessage = (ConnectionResponseMessage) conflictingResponse;
         final NodeIdentifier conflictingNodeId = conflictingResponseMessage.getConnectionResponse().getNodeIdentifier();
         assertEquals(id1.getId(), conflictingNodeId.getId());
@@ -468,7 +464,7 @@ public class TestNodeClusterCoordinator {
 
         final ProtocolMessage response = coordinator.handle(crm, Collections.emptySet());
         assertNotNull(response);
-        assertTrue(response instanceof ConnectionResponseMessage);
+        assertInstanceOf(ConnectionResponseMessage.class, response);
         final ConnectionResponseMessage responseMessage = (ConnectionResponseMessage) response;
         final NodeIdentifier resolvedNodeId = responseMessage.getConnectionResponse().getNodeIdentifier();
         assertEquals(id1, resolvedNodeId);
@@ -481,7 +477,7 @@ public class TestNodeClusterCoordinator {
 
         final ProtocolMessage conflictingResponse = coordinator.handle(crm2, Collections.emptySet());
         assertNotNull(conflictingResponse);
-        assertTrue(conflictingResponse instanceof ConnectionResponseMessage);
+        assertInstanceOf(ConnectionResponseMessage.class, conflictingResponse);
         final ConnectionResponseMessage conflictingResponseMessage = (ConnectionResponseMessage) conflictingResponse;
         final NodeIdentifier conflictingNodeId = conflictingResponseMessage.getConnectionResponse().getNodeIdentifier();
         assertEquals(id1.getId(), conflictingNodeId.getId());

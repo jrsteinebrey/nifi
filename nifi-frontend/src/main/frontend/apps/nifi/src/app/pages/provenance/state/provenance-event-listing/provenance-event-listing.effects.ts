@@ -41,10 +41,11 @@ import { CancelDialog } from '../../../../ui/common/cancel-dialog/cancel-dialog.
 import * as ErrorActions from '../../../../state/error/error.actions';
 import { ErrorHelper } from '../../../../service/error-helper.service';
 import { HttpErrorResponse } from '@angular/common/http';
-import { isDefinedAndNotNull } from '../../../../state/shared';
+import { isDefinedAndNotNull, NiFiCommon, LARGE_DIALOG, MEDIUM_DIALOG } from '@nifi/shared';
 import { selectClusterSummary } from '../../../../state/cluster-summary/cluster-summary.selectors';
 import { ClusterService } from '../../../../service/cluster.service';
-import { LARGE_DIALOG, MEDIUM_DIALOG } from '../../../../index';
+import { Attribute } from '../../../../state/shared';
+import { ErrorContextKey } from '../../../../state/error';
 
 @Injectable()
 export class ProvenanceEventListingEffects {
@@ -54,6 +55,7 @@ export class ProvenanceEventListingEffects {
         private provenanceService: ProvenanceService,
         private errorHelper: ErrorHelper,
         private clusterService: ClusterService,
+        private nifiCommon: NiFiCommon,
         private dialog: MatDialog,
         private router: Router
     ) {}
@@ -97,7 +99,7 @@ export class ProvenanceEventListingEffects {
                     disableClose: true
                 });
 
-                dialogReference.componentInstance.cancel.pipe(take(1)).subscribe(() => {
+                dialogReference.componentInstance.close.pipe(take(1)).subscribe(() => {
                     this.store.dispatch(ProvenanceEventListingActions.stopPollingProvenanceQuery());
                 });
 
@@ -143,8 +145,15 @@ export class ProvenanceEventListingEffects {
             map((action) => action.response),
             switchMap((response) => {
                 const query: Provenance = response.provenance;
-                if (query.finished) {
-                    this.dialog.closeAll();
+                if (query.finished || !this.nifiCommon.isEmpty(query.results.errors)) {
+                    response.provenance.results.errors?.forEach((error) => {
+                        this.store.dispatch(
+                            ErrorActions.addBannerError({
+                                errorContext: { errors: [error], context: ErrorContextKey.REPORTING_TASKS }
+                            })
+                        );
+                    });
+
                     return of(ProvenanceEventListingActions.deleteProvenanceQuery());
                 } else {
                     return of(ProvenanceEventListingActions.startPollingProvenanceQuery());
@@ -203,8 +212,21 @@ export class ProvenanceEventListingEffects {
         this.actions$.pipe(
             ofType(ProvenanceEventListingActions.pollProvenanceQuerySuccess),
             map((action) => action.response),
-            filter((response) => response.provenance.finished),
-            switchMap(() => of(ProvenanceEventListingActions.stopPollingProvenanceQuery()))
+            filter(
+                (response) =>
+                    response.provenance.finished || !this.nifiCommon.isEmpty(response.provenance.results.errors)
+            ),
+            switchMap((response) => {
+                response.provenance.results.errors?.forEach((error) => {
+                    this.store.dispatch(
+                        ErrorActions.addBannerError({
+                            errorContext: { errors: [error], context: ErrorContextKey.REPORTING_TASKS }
+                        })
+                    );
+                });
+
+                return of(ProvenanceEventListingActions.stopPollingProvenanceQuery());
+            })
         )
     );
 
@@ -345,12 +367,30 @@ export class ProvenanceEventListingEffects {
                                 dialogReference.componentInstance.viewContent
                                     .pipe(takeUntil(dialogReference.afterClosed()))
                                     .subscribe((direction: string) => {
+                                        let mimeType: string | undefined;
+
+                                        if (response.provenanceEvent.attributes) {
+                                            const mimeTypeAttribute: Attribute | undefined =
+                                                response.provenanceEvent.attributes.find(
+                                                    (attribute: Attribute) => attribute.name === 'mime.type'
+                                                );
+
+                                            if (mimeTypeAttribute) {
+                                                if (direction === 'input') {
+                                                    mimeType = mimeTypeAttribute.previousValue;
+                                                } else if (direction === 'output') {
+                                                    mimeType = mimeTypeAttribute.value;
+                                                }
+                                            }
+                                        }
+
                                         this.provenanceService.viewContent(
                                             about.uri,
                                             about.contentViewerUrl,
                                             request.eventId,
                                             direction,
-                                            request.clusterNodeId
+                                            request.clusterNodeId,
+                                            mimeType
                                         );
                                     });
                             }
@@ -430,7 +470,13 @@ export class ProvenanceEventListingEffects {
             tap(() => {
                 this.store.dispatch(ProvenanceEventListingActions.stopPollingProvenanceQuery());
             }),
-            switchMap(({ error }) => of(ErrorActions.addBannerError({ error })))
+            switchMap(({ error }) =>
+                of(
+                    ErrorActions.addBannerError({
+                        errorContext: { errors: [error], context: ErrorContextKey.REPORTING_TASKS }
+                    })
+                )
+            )
         )
     );
 

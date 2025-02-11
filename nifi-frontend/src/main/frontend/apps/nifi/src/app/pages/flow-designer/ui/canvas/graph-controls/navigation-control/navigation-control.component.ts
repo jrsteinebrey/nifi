@@ -22,14 +22,13 @@ import { zoomActual, zoomFit, zoomIn, zoomOut } from '../../../../state/transfor
 import { leaveProcessGroup, setNavigationCollapsed } from '../../../../state/flow/flow.actions';
 import { CanvasUtils } from '../../../../service/canvas-utils.service';
 import { initialState } from '../../../../state/flow/flow.reducer';
-import { Storage } from '../../../../../../service/storage.service';
+import { Storage } from '@nifi/shared';
 
 import { Birdseye } from './birdseye/birdseye.component';
 import { MatButtonModule } from '@angular/material/button';
 
 @Component({
     selector: 'navigation-control',
-    standalone: true,
     templateUrl: './navigation-control.component.html',
     imports: [Birdseye, MatButtonModule],
     styleUrls: ['./navigation-control.component.scss']

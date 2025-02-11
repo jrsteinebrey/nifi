@@ -32,13 +32,14 @@ import * as ParameterProviderActions from '../../state/parameter-providers/param
 import { initialParameterProvidersState } from '../../state/parameter-providers/parameter-providers.reducer';
 import { switchMap, take } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { isDefinedAndNotNull } from '../../../../state/shared';
+import { ComponentType, isDefinedAndNotNull } from '@nifi/shared';
 import { navigateToComponentDocumentation } from '../../../../state/documentation/documentation.actions';
 
 @Component({
     selector: 'parameter-providers',
     templateUrl: './parameter-providers.component.html',
-    styleUrls: ['./parameter-providers.component.scss']
+    styleUrls: ['./parameter-providers.component.scss'],
+    standalone: false
 })
 export class ParameterProviders implements OnInit, OnDestroy {
     currentUser$ = this.store.select(selectCurrentUser);
@@ -155,7 +156,8 @@ export class ParameterProviders implements OnInit, OnDestroy {
                         context: 'Parameter Provider'
                     },
                     parameters: {
-                        select: parameterProvider.component.type,
+                        componentType: ComponentType.ParameterProvider,
+                        type: parameterProvider.component.type,
                         group: parameterProvider.component.bundle.group,
                         artifact: parameterProvider.component.bundle.artifact,
                         version: parameterProvider.component.bundle.version

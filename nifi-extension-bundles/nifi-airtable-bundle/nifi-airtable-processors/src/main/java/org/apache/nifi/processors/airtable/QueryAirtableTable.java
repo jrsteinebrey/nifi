@@ -27,7 +27,6 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,6 +53,7 @@ import org.apache.nifi.components.state.Scope;
 import org.apache.nifi.components.state.StateMap;
 import org.apache.nifi.expression.ExpressionLanguageScope;
 import org.apache.nifi.flowfile.FlowFile;
+import org.apache.nifi.migration.PropertyConfiguration;
 import org.apache.nifi.processor.AbstractProcessor;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
@@ -108,10 +108,11 @@ public class QueryAirtableTable extends AbstractProcessor {
             .required(true)
             .build();
 
-    static final PropertyDescriptor API_KEY = new PropertyDescriptor.Builder()
-            .name("api-key")
-            .displayName("API Key")
-            .description("The REST API key to use in queries. Should be generated on Airtable's account page.")
+    // API Keys are deprecated, Airtable now provides Personal Access Tokens instead.
+    static final PropertyDescriptor PAT = new PropertyDescriptor.Builder()
+            .name("pat")
+            .displayName("Personal Access Token")
+            .description("The Personal Access Token (PAT) to use in queries. Should be generated on Airtable's account page.")
             .required(true)
             .sensitive(true)
             .expressionLanguageSupported(ExpressionLanguageScope.NONE)
@@ -193,9 +194,9 @@ public class QueryAirtableTable extends AbstractProcessor {
             .description("For FlowFiles created as a result of a successful query.")
             .build();
 
-    private static final List<PropertyDescriptor> PROPERTIES = Collections.unmodifiableList(Arrays.asList(
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
             API_URL,
-            API_KEY,
+            PAT,
             BASE_ID,
             TABLE_ID,
             FIELDS,
@@ -204,9 +205,11 @@ public class QueryAirtableTable extends AbstractProcessor {
             WEB_CLIENT_SERVICE_PROVIDER,
             QUERY_PAGE_SIZE,
             MAX_RECORDS_PER_FLOWFILE
-    ));
+    );
 
-    private static final Set<Relationship> RELATIONSHIPS = Collections.singleton(REL_SUCCESS);
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS
+    );
 
     private static final String LAST_QUERY_TIME_WINDOW_END = "last_query_time_window_end";
 
@@ -214,7 +217,7 @@ public class QueryAirtableTable extends AbstractProcessor {
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return PROPERTIES;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -225,11 +228,11 @@ public class QueryAirtableTable extends AbstractProcessor {
     @OnScheduled
     public void onScheduled(final ProcessContext context) {
         final String apiUrl = context.getProperty(API_URL).evaluateAttributeExpressions().getValue();
-        final String apiKey = context.getProperty(API_KEY).getValue();
+        final String pat = context.getProperty(PAT).getValue();
         final String baseId = context.getProperty(BASE_ID).evaluateAttributeExpressions().getValue();
         final String tableId = context.getProperty(TABLE_ID).evaluateAttributeExpressions().getValue();
         final WebClientServiceProvider webClientServiceProvider = context.getProperty(WEB_CLIENT_SERVICE_PROVIDER).asControllerService(WebClientServiceProvider.class);
-        airtableRestService = new AirtableRestService(webClientServiceProvider, apiUrl, apiKey, baseId, tableId);
+        airtableRestService = new AirtableRestService(webClientServiceProvider, apiUrl, pat, baseId, tableId);
     }
 
     @Override
@@ -280,6 +283,11 @@ public class QueryAirtableTable extends AbstractProcessor {
             addFragmentAttributesToFlowFiles(session, flowFiles);
         }
         transferFlowFiles(session, flowFiles, retrieveTableResult.getTotalRecordCount());
+    }
+
+    @Override
+    public void migrateProperties(final PropertyConfiguration config) {
+        config.renameProperty("api-key", PAT.getName());
     }
 
     private AirtableGetRecordsParameters buildGetRecordsParameters(final ProcessContext context,

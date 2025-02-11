@@ -16,19 +16,6 @@
  */
 package org.apache.nifi.processors.standard;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.lang.reflect.InvocationTargetException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Random;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.annotation.lifecycle.OnScheduled;
@@ -48,8 +35,15 @@ import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.exception.ProcessException;
-import org.apache.nifi.processor.io.OutputStreamCallback;
 import org.apache.nifi.processor.util.StandardValidators;
+
+import java.lang.reflect.InvocationTargetException;
+import java.util.Collection;
+import java.util.List;
+import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Tags({"test", "debug", "processor", "utility", "flow", "FlowFile"})
 @CapabilityDescription("The DebugFlow processor aids testing and debugging the FlowFile framework by allowing various "
@@ -69,7 +63,7 @@ public class DebugFlow extends AbstractProcessor {
             .description("FlowFiles that failed to process.")
             .build();
 
-    private final AtomicReference<List<PropertyDescriptor>> propertyDescriptors = new AtomicReference<>();
+    private final AtomicReference<List<PropertyDescriptor>> properties = new AtomicReference<>();
 
     static final PropertyDescriptor FF_SUCCESS_ITERATIONS = new PropertyDescriptor.Builder()
             .name("FlowFile Success Iterations")
@@ -264,10 +258,7 @@ public class DebugFlow extends AbstractProcessor {
     public Set<Relationship> getRelationships() {
         synchronized (relationships) {
             if (relationships.get() == null) {
-                HashSet<Relationship> relSet = new HashSet<>();
-                relSet.add(REL_SUCCESS);
-                relSet.add(REL_FAILURE);
-                relationships.compareAndSet(null, Collections.unmodifiableSet(relSet));
+                relationships.compareAndSet(null, Set.of(REL_SUCCESS, REL_FAILURE));
             }
             return relationships.get();
         }
@@ -275,35 +266,36 @@ public class DebugFlow extends AbstractProcessor {
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        synchronized (propertyDescriptors) {
-            if (propertyDescriptors.get() == null) {
-                ArrayList<PropertyDescriptor> propList = new ArrayList<>();
-                propList.add(FF_SUCCESS_ITERATIONS);
-                propList.add(FF_FAILURE_ITERATIONS);
-                propList.add(FF_ROLLBACK_ITERATIONS);
-                propList.add(FF_ROLLBACK_YIELD_ITERATIONS);
-                propList.add(FF_ROLLBACK_PENALTY_ITERATIONS);
-                propList.add(FF_EXCEPTION_ITERATIONS);
-                propList.add(FF_EXCEPTION_CLASS);
-                propList.add(NO_FF_SKIP_ITERATIONS);
-                propList.add(NO_FF_EXCEPTION_ITERATIONS);
-                propList.add(NO_FF_YIELD_ITERATIONS);
-                propList.add(NO_FF_EXCEPTION_CLASS);
-                propList.add(WRITE_ITERATIONS);
-                propList.add(CONTENT_SIZE);
-                propList.add(ON_SCHEDULED_SLEEP_TIME);
-                propList.add(ON_SCHEDULED_FAIL);
-                propList.add(ON_UNSCHEDULED_SLEEP_TIME);
-                propList.add(ON_UNSCHEDULED_FAIL);
-                propList.add(ON_STOPPED_SLEEP_TIME);
-                propList.add(ON_STOPPED_FAIL);
-                propList.add(ON_TRIGGER_SLEEP_TIME);
-                propList.add(CUSTOM_VALIDATE_SLEEP_TIME);
-                propList.add(IGNORE_INTERRUPTS);
+        synchronized (properties) {
+            if (properties.get() == null) {
+                List<PropertyDescriptor> properties = List.of(
+                        FF_SUCCESS_ITERATIONS,
+                        FF_FAILURE_ITERATIONS,
+                        FF_ROLLBACK_ITERATIONS,
+                        FF_ROLLBACK_YIELD_ITERATIONS,
+                        FF_ROLLBACK_PENALTY_ITERATIONS,
+                        FF_EXCEPTION_ITERATIONS,
+                        FF_EXCEPTION_CLASS,
+                        NO_FF_SKIP_ITERATIONS,
+                        NO_FF_EXCEPTION_ITERATIONS,
+                        NO_FF_YIELD_ITERATIONS,
+                        NO_FF_EXCEPTION_CLASS,
+                        WRITE_ITERATIONS,
+                        CONTENT_SIZE,
+                        ON_SCHEDULED_SLEEP_TIME,
+                        ON_SCHEDULED_FAIL,
+                        ON_UNSCHEDULED_SLEEP_TIME,
+                        ON_UNSCHEDULED_FAIL,
+                        ON_STOPPED_SLEEP_TIME,
+                        ON_STOPPED_FAIL,
+                        ON_TRIGGER_SLEEP_TIME,
+                        CUSTOM_VALIDATE_SLEEP_TIME,
+                        IGNORE_INTERRUPTS
+                );
 
-                propertyDescriptors.compareAndSet(null, Collections.unmodifiableList(propList));
+                this.properties.compareAndSet(null, properties);
             }
-            return propertyDescriptors.get();
+            return properties.get();
         }
     }
 
@@ -352,7 +344,7 @@ public class DebugFlow extends AbstractProcessor {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
 
-            return Collections.singleton(new ValidationResult.Builder()
+            return Set.of(new ValidationResult.Builder()
                 .valid(false)
                 .subject("Validation")
                 .explanation("Processor Interrupted while performing validation").build());
@@ -422,7 +414,7 @@ public class DebugFlow extends AbstractProcessor {
                             } catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
                                 if (logger.isErrorEnabled()) {
                                     logger.error("{} unexpected exception throwing DebugFlow exception: {}",
-                                        new Object[] {this, e});
+                                            this, e);
                                 }
                             }
                         } else {
@@ -453,12 +445,7 @@ public class DebugFlow extends AbstractProcessor {
                             final byte[] data = new byte[context.getProperty(CONTENT_SIZE).asDataSize(DataUnit.B).intValue()];
                             random.nextBytes(data);
 
-                            ff = session.write(ff, new OutputStreamCallback() {
-                                @Override
-                                public void process(final OutputStream out) throws IOException {
-                                    out.write(data);
-                                }
-                            });
+                            ff = session.write(ff, out -> out.write(data));
                         }
                     }
 
@@ -466,8 +453,8 @@ public class DebugFlow extends AbstractProcessor {
                         if (flowFileCurrSuccess < flowFileMaxSuccess) {
                             flowFileCurrSuccess += 1;
                             logger.info("DebugFlow transferring to success file={} UUID={}",
-                                new Object[] {ff.getAttribute(CoreAttributes.FILENAME.key()),
-                                    ff.getAttribute(CoreAttributes.UUID.key())});
+                                    ff.getAttribute(CoreAttributes.FILENAME.key()),
+                                    ff.getAttribute(CoreAttributes.UUID.key()));
                             session.transfer(ff, REL_SUCCESS);
                             break;
                         } else {
@@ -480,8 +467,8 @@ public class DebugFlow extends AbstractProcessor {
                         if (flowFileCurrFailure < flowFileMaxFailure) {
                             flowFileCurrFailure += 1;
                             logger.info("DebugFlow transferring to failure file={} UUID={}",
-                                new Object[] {ff.getAttribute(CoreAttributes.FILENAME.key()),
-                                    ff.getAttribute(CoreAttributes.UUID.key())});
+                                    ff.getAttribute(CoreAttributes.FILENAME.key()),
+                                    ff.getAttribute(CoreAttributes.UUID.key()));
                             session.transfer(ff, REL_FAILURE);
                             break;
                         } else {
@@ -494,8 +481,8 @@ public class DebugFlow extends AbstractProcessor {
                         if (flowFileCurrRollback < flowFileMaxRollback) {
                             flowFileCurrRollback += 1;
                             logger.info("DebugFlow rolling back (no penalty) file={} UUID={}",
-                                new Object[] {ff.getAttribute(CoreAttributes.FILENAME.key()),
-                                    ff.getAttribute(CoreAttributes.UUID.key())});
+                                    ff.getAttribute(CoreAttributes.FILENAME.key()),
+                                    ff.getAttribute(CoreAttributes.UUID.key()));
                             session.rollback();
                             break;
                         } else {
@@ -508,8 +495,8 @@ public class DebugFlow extends AbstractProcessor {
                         if (flowFileCurrYield < flowFileMaxYield) {
                             flowFileCurrYield += 1;
                             logger.info("DebugFlow yielding file={} UUID={}",
-                                new Object[] {ff.getAttribute(CoreAttributes.FILENAME.key()),
-                                    ff.getAttribute(CoreAttributes.UUID.key())});
+                                    ff.getAttribute(CoreAttributes.FILENAME.key()),
+                                    ff.getAttribute(CoreAttributes.UUID.key()));
                             session.rollback();
                             context.yield();
                             return;
@@ -523,8 +510,8 @@ public class DebugFlow extends AbstractProcessor {
                         if (flowFileCurrPenalty < flowFileMaxPenalty) {
                             flowFileCurrPenalty += 1;
                             logger.info("DebugFlow rolling back (with penalty) file={} UUID={}",
-                                new Object[] {ff.getAttribute(CoreAttributes.FILENAME.key()),
-                                    ff.getAttribute(CoreAttributes.UUID.key())});
+                                    ff.getAttribute(CoreAttributes.FILENAME.key()),
+                                    ff.getAttribute(CoreAttributes.UUID.key()));
                             session.rollback(true);
                             break;
                         } else {
@@ -538,8 +525,8 @@ public class DebugFlow extends AbstractProcessor {
                             flowFileCurrException += 1;
                             String message = "forced by " + this.getClass().getName();
                             logger.info("DebugFlow throwing NPE file={} UUID={}",
-                                new Object[] {ff.getAttribute(CoreAttributes.FILENAME.key()),
-                                    ff.getAttribute(CoreAttributes.UUID.key())});
+                                    ff.getAttribute(CoreAttributes.FILENAME.key()),
+                                    ff.getAttribute(CoreAttributes.UUID.key()));
                             RuntimeException rte;
                             try {
                                 rte = flowFileExceptionClass.getConstructor(String.class).newInstance(message);
@@ -547,7 +534,7 @@ public class DebugFlow extends AbstractProcessor {
                             } catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
                                 if (logger.isErrorEnabled()) {
                                     logger.error("{} unexpected exception throwing DebugFlow exception: {}",
-                                        new Object[] {this, e});
+                                            this, e);
                                 }
                             }
                         } else {

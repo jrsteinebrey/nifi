@@ -74,8 +74,7 @@ public class MiNiFi {
         }
 
         Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
-            logger.error("An Unknown Error Occurred in Thread {}: {}", t, e.toString());
-            logger.error("", e);
+            logger.error("An Unknown Error Occurred in Thread {}", t, e);
         });
 
         // register the shutdown hook
@@ -227,6 +226,7 @@ public class MiNiFi {
             new MiNiFi(properties);
         } catch (final Throwable t) {
             logger.error("Failure to launch MiNiFi", t);
+            System.exit(1);
         }
     }
 

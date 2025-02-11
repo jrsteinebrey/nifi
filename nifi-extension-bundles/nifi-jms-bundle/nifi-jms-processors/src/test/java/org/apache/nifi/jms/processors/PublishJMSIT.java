@@ -53,7 +53,6 @@ import javax.net.SocketFactory;
 import java.io.IOException;
 import java.lang.reflect.Proxy;
 import java.net.URI;
-import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,6 +71,7 @@ import static org.apache.nifi.jms.processors.ioconcept.reader.record.ProvenanceE
 import static org.apache.nifi.jms.processors.ioconcept.reader.StateTrackingFlowFileReader.ATTR_READ_FAILED_INDEX_SUFFIX;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -231,7 +231,7 @@ public class PublishJMSIT {
 
         JmsTemplate jmst = new JmsTemplate(cf);
         Message message = jmst.receive(destinationName);
-        assertTrue(message instanceof TextMessage);
+        assertInstanceOf(TextMessage.class, message);
         TextMessage textMessage = (TextMessage) message;
 
         byte[] messageBytes = MessageBodyToBytesConverter.toBytes(textMessage);
@@ -292,23 +292,23 @@ public class PublishJMSIT {
 
         byte[] messageBytes = MessageBodyToBytesConverter.toBytes(message);
         assertEquals("Hey dude!", new String(messageBytes));
-        assertEquals(true, message.getObjectProperty("foo") instanceof String);
+        assertInstanceOf(String.class, message.getObjectProperty("foo"));
         assertEquals("foo", message.getStringProperty("foo"));
-        assertEquals(true, message.getObjectProperty("myboolean") instanceof Boolean);
-        assertEquals(true, message.getBooleanProperty("myboolean"));
-        assertEquals(true, message.getObjectProperty("mybyte") instanceof Byte);
+        assertInstanceOf(Boolean.class, message.getObjectProperty("myboolean"));
+        assertTrue(message.getBooleanProperty("myboolean"));
+        assertInstanceOf(Byte.class, message.getObjectProperty("mybyte"));
         assertEquals(127, message.getByteProperty("mybyte"));
-        assertEquals(true, message.getObjectProperty("myshort") instanceof Short);
+        assertInstanceOf(Short.class, message.getObjectProperty("myshort"));
         assertEquals(16384, message.getShortProperty("myshort"));
-        assertEquals(true, message.getObjectProperty("myinteger") instanceof Integer);
+        assertInstanceOf(Integer.class, message.getObjectProperty("myinteger"));
         assertEquals(1544000, message.getIntProperty("myinteger"));
-        assertEquals(true, message.getObjectProperty("mylong") instanceof Long);
+        assertInstanceOf(Long.class, message.getObjectProperty("mylong"));
         assertEquals(9876543210L, message.getLongProperty("mylong"));
-        assertEquals(true, message.getObjectProperty("myfloat") instanceof Float);
+        assertInstanceOf(Float.class, message.getObjectProperty("myfloat"));
         assertEquals(3.14F, message.getFloatProperty("myfloat"), 0.001F);
-        assertEquals(true, message.getObjectProperty("mydouble") instanceof Double);
+        assertInstanceOf(Double.class, message.getObjectProperty("mydouble"));
         assertEquals(3.14159265359D, message.getDoubleProperty("mydouble"), 0.00000000001D);
-        assertEquals(true, message.getObjectProperty("badtype") instanceof String);
+        assertInstanceOf(String.class, message.getObjectProperty("badtype"));
         assertEquals("3.14", message.getStringProperty("badtype"));
         assertFalse(message.propertyExists("badint"));
 
@@ -349,7 +349,7 @@ public class PublishJMSIT {
 
         JmsTemplate jmst = new JmsTemplate(cf);
         Message message = jmst.receive(destinationName);
-        assertTrue(message instanceof TextMessage);
+        assertInstanceOf(TextMessage.class, message);
         TextMessage textMessage = (TextMessage) message;
 
         byte[] messageBytes = MessageBodyToBytesConverter.toBytes(textMessage);
@@ -392,10 +392,10 @@ public class PublishJMSIT {
 
             ActiveMQConnectionFactory cf = new ActiveMQConnectionFactory("validateNIFI7034://127.0.0.1:" + port);
             final String destinationName = "nifi7034";
-            final AtomicReference<TcpTransport> tcpTransport = new AtomicReference<TcpTransport>();
+            final AtomicReference<TcpTransport> tcpTransport = new AtomicReference<>();
             TcpTransportFactory.registerTransportFactory("validateNIFI7034", new TcpTransportFactory() {
                 @Override
-                protected TcpTransport createTcpTransport(WireFormat wf, SocketFactory socketFactory, URI location, URI localLocation) throws UnknownHostException, IOException {
+                protected TcpTransport createTcpTransport(WireFormat wf, SocketFactory socketFactory, URI location, URI localLocation) throws IOException {
                     TcpTransport transport = super.createTcpTransport(wf, socketFactory, location, localLocation);
                     tcpTransport.set(transport);
                     return transport;
@@ -474,9 +474,9 @@ public class PublishJMSIT {
             runner.enqueue("hi".getBytes(), flowFileAttributes);
             runner.enqueue("hi".getBytes(), flowFileAttributes);
             runner.run(2);
-            assertTrue(threads == connectionFactoryProxy.openedConnections(), "It is expected at least " + threads + " Connection to be opened.");
-            assertTrue(threads == connectionFactoryProxy.openedSessions(), "It is expected " + threads + " Session to be opened and there are " + connectionFactoryProxy.openedSessions());
-            assertTrue(threads == connectionFactoryProxy.openedProducers(), "It is expected " + threads + " MessageProducer to be opened and there are " + connectionFactoryProxy.openedProducers());
+            assertEquals(threads, connectionFactoryProxy.openedConnections(), "It is expected at least " + threads + " Connection to be opened.");
+            assertEquals(threads, connectionFactoryProxy.openedSessions(), "It is expected " + threads + " Session to be opened and there are " + connectionFactoryProxy.openedSessions());
+            assertEquals(threads, connectionFactoryProxy.openedProducers(), "It is expected " + threads + " MessageProducer to be opened and there are " + connectionFactoryProxy.openedProducers());
             assertTrue(connectionFactoryProxy.isAllResourcesClosed(), "Some resources were not closed.");
         } finally {
             if (broker != null) {

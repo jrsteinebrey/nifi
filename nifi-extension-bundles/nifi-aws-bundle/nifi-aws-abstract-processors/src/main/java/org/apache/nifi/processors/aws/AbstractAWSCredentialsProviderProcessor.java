@@ -45,8 +45,8 @@ import org.apache.nifi.processor.VerifiableProcessor;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderService;
 import org.apache.nifi.proxy.ProxyConfiguration;
-import org.apache.nifi.proxy.ProxyConfigurationService;
-import org.apache.nifi.ssl.SSLContextService;
+import org.apache.nifi.proxy.ProxySpec;
+import org.apache.nifi.ssl.SSLContextProvider;
 
 import javax.net.ssl.SSLContext;
 import java.net.Proxy;
@@ -98,7 +98,7 @@ public abstract class AbstractAWSCredentialsProviderProcessor<ClientType extends
             .name("SSL Context Service")
             .description("Specifies an optional SSL Context Service that, if provided, will be used to create connections")
             .required(false)
-            .identifiesControllerService(SSLContextService.class)
+            .identifiesControllerService(SSLContextProvider.class)
             .build();
 
     public static final PropertyDescriptor ENDPOINT_OVERRIDE = new PropertyDescriptor.Builder()
@@ -119,13 +119,7 @@ public abstract class AbstractAWSCredentialsProviderProcessor<ClientType extends
         .identifiesControllerService(AWSCredentialsProviderService.class)
         .build();
 
-    public static final PropertyDescriptor PROXY_CONFIGURATION_SERVICE = new PropertyDescriptor.Builder()
-        .name("proxy-configuration-service")
-        .displayName("Proxy Configuration Service")
-        .description("Specifies the Proxy Configuration Controller Service to proxy network requests.")
-        .identifiesControllerService(ProxyConfigurationService.class)
-        .required(false)
-        .build();
+    public static final PropertyDescriptor PROXY_CONFIGURATION_SERVICE = ProxyConfiguration.createProxyConfigPropertyDescriptor(ProxySpec.HTTP, ProxySpec.HTTP_AUTH);
 
 
     // Relationships
@@ -138,7 +132,10 @@ public abstract class AbstractAWSCredentialsProviderProcessor<ClientType extends
             .description("If the Processor is unable to process a given FlowFile, it will be routed to this Relationship.")
             .build();
 
-    public static final Set<Relationship> relationships = Set.of(REL_SUCCESS, REL_FAILURE);
+    public static final Set<Relationship> COMMON_RELATIONSHIPS = Set.of(
+            REL_SUCCESS,
+            REL_FAILURE
+    );
 
 
     // Member variables
@@ -149,7 +146,7 @@ public abstract class AbstractAWSCredentialsProviderProcessor<ClientType extends
 
     @Override
     public Set<Relationship> getRelationships() {
-        return relationships;
+        return COMMON_RELATIONSHIPS;
     }
 
     @OnScheduled
@@ -210,23 +207,16 @@ public abstract class AbstractAWSCredentialsProviderProcessor<ClientType extends
         config.setSocketTimeout(commsTimeout);
 
         if (this.getSupportedPropertyDescriptors().contains(SSL_CONTEXT_SERVICE)) {
-            final SSLContextService sslContextService = context.getProperty(SSL_CONTEXT_SERVICE).asControllerService(SSLContextService.class);
-            if (sslContextService != null) {
-                final SSLContext sslContext = sslContextService.createContext();
+            final SSLContextProvider sslContextProvider = context.getProperty(SSL_CONTEXT_SERVICE).asControllerService(SSLContextProvider.class);
+            if (sslContextProvider != null) {
+                final SSLContext sslContext = sslContextProvider.createContext();
                 // NIFI-3788: Changed hostnameVerifier from null to DHV (BrowserCompatibleHostnameVerifier is deprecated)
                 SdkTLSSocketFactory sdkTLSSocketFactory = new SdkTLSSocketFactory(sslContext, new DefaultHostnameVerifier());
                 config.getApacheHttpClientConfig().setSslSocketFactory(sdkTLSSocketFactory);
             }
         }
 
-        final ProxyConfiguration proxyConfig = ProxyConfiguration.getConfiguration(context, () -> {
-            if (context.getProperty(PROXY_CONFIGURATION_SERVICE).isSet()) {
-                final ProxyConfigurationService configurationService = context.getProperty(PROXY_CONFIGURATION_SERVICE).asControllerService(ProxyConfigurationService.class);
-                return configurationService.getConfiguration();
-            }
-
-            return ProxyConfiguration.DIRECT_CONFIGURATION;
-        });
+        final ProxyConfiguration proxyConfig = ProxyConfiguration.getConfiguration(context);
 
         if (Proxy.Type.HTTP.equals(proxyConfig.getProxyType())) {
             config.setProxyHost(proxyConfig.getProxyServerHost());
@@ -265,7 +255,7 @@ public abstract class AbstractAWSCredentialsProviderProcessor<ClientType extends
             return null;
         }
 
-        final String endpointOverride = overrideValue.getValue();
+        final String endpointOverride = overrideValue.evaluateAttributeExpressions().getValue();
         return new AwsClientBuilder.EndpointConfiguration(endpointOverride, region.getName());
     }
 

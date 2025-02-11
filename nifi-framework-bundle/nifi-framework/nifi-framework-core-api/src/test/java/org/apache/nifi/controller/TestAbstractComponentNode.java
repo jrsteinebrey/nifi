@@ -116,7 +116,7 @@ public class TestAbstractComponentNode {
             .description("")
             .sensitive(false)
             .build();
-        final Parameter param = new Parameter(paramDescriptor, "123");
+        final Parameter param = new Parameter.Builder().descriptor(paramDescriptor).value("123").build();
         Mockito.doReturn(Optional.of(param)).when(context).getParameter("abc");
         node.setParameterContext(context);
 
@@ -150,7 +150,7 @@ public class TestAbstractComponentNode {
             .description("")
             .sensitive(true)
             .build();
-        final Parameter param = new Parameter(paramDescriptor, "123");
+        final Parameter param = new Parameter.Builder().descriptor(paramDescriptor).value("123").build();
         Mockito.doReturn(Optional.of(param)).when(context).getParameter("abc");
         node.setParameterContext(context);
 
@@ -307,6 +307,37 @@ public class TestAbstractComponentNode {
     }
 
     @Test
+    public void testSetPropertiesPropertyModified() {
+        final String propertyValueModified = PROPERTY_VALUE + "-modified";
+        final List<PropertyModification> propertyModifications = new ArrayList<>();
+        final AbstractComponentNode node = new LocalComponentNode() {
+            @Override
+            protected void onPropertyModified(final PropertyDescriptor descriptor, final String oldValue, final String newValue) {
+                propertyModifications.add(new PropertyModification(descriptor, oldValue, newValue));
+                super.onPropertyModified(descriptor, oldValue, newValue);
+            }
+        };
+
+        final Map<String, String> properties = new HashMap<>();
+        properties.put(PROPERTY_NAME, PROPERTY_VALUE);
+        node.setProperties(properties);
+
+        assertEquals(1, propertyModifications.size());
+        PropertyModification mod = propertyModifications.get(0);
+        assertNull(mod.getPreviousValue());
+        assertEquals(PROPERTY_VALUE, mod.getUpdatedValue());
+        propertyModifications.clear();
+
+        properties.put(PROPERTY_NAME, propertyValueModified);
+        node.setProperties(properties);
+
+        assertEquals(1, propertyModifications.size());
+        mod = propertyModifications.get(0);
+        assertEquals(PROPERTY_VALUE, mod.getPreviousValue());
+        assertEquals(propertyValueModified, mod.getUpdatedValue());
+    }
+
+    @Test
     public void testSetPropertiesSensitiveDynamicPropertyNames() {
         final AbstractComponentNode node = new LocalComponentNode();
 
@@ -343,11 +374,12 @@ public class TestAbstractComponentNode {
         assertTrue(sensitivePropertyDescriptor.isDynamic());
         assertTrue(sensitivePropertyDescriptor.isSensitive());
 
+        // Set Properties without updating Sensitive Dynamic Property Names
         node.setProperties(properties, false, Collections.emptySet());
 
         final PropertyDescriptor updatedPropertyDescriptor = node.getPropertyDescriptor(PROPERTY_NAME);
         assertTrue(updatedPropertyDescriptor.isDynamic());
-        assertFalse(updatedPropertyDescriptor.isSensitive());
+        assertTrue(updatedPropertyDescriptor.isSensitive());
 
         final Map<PropertyDescriptor, PropertyConfiguration> configuredProperties = node.getProperties();
         final PropertyDescriptor configuredPropertyDescriptor = configuredProperties.keySet()
@@ -357,6 +389,14 @@ public class TestAbstractComponentNode {
                 .orElseThrow(() -> new IllegalStateException("Property Name not found"));
         assertTrue(configuredPropertyDescriptor.isDynamic());
         assertFalse(configuredPropertyDescriptor.isSensitive());
+
+        // Set Properties with value removed to update Sensitive Dynamic Property Names
+        final Map<String, String> removedProperties = Collections.singletonMap(PROPERTY_NAME, null);
+        node.setProperties(removedProperties, false, Collections.emptySet());
+
+        final PropertyDescriptor removedPropertyDescriptor = node.getPropertyDescriptor(PROPERTY_NAME);
+        assertTrue(removedPropertyDescriptor.isDynamic());
+        assertFalse(removedPropertyDescriptor.isSensitive());
     }
 
     private ValidationContext getServiceValidationContext(final ControllerServiceState serviceState, final ControllerServiceProvider serviceProvider) {
@@ -506,7 +546,7 @@ public class TestAbstractComponentNode {
         protected Collection<ValidationResult> computeValidationErrors(ValidationContext context) {
             try {
                 Thread.sleep(pauseMillis);
-            } catch (final InterruptedException ie) {
+            } catch (final InterruptedException ignored) {
             }
 
             return null;

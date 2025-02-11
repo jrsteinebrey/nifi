@@ -19,22 +19,18 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
-import { NiFiCommon } from '../../../../service/nifi-common.service';
 import { MatSortModule, Sort } from '@angular/material/sort';
 import { NgClass } from '@angular/common';
 import { BulletinsTipInput, ControllerServiceEntity, ValidationErrorsTipInput } from '../../../../state/shared';
-import { NifiTooltipDirective } from '../../tooltips/nifi-tooltip.directive';
-import { TextTip } from '../../tooltips/text-tip/text-tip.component';
+import { NifiTooltipDirective, TextTip, NiFiCommon } from '@nifi/shared';
 import { BulletinsTip } from '../../tooltips/bulletins-tip/bulletins-tip.component';
 import { ValidationErrorsTip } from '../../tooltips/validation-errors-tip/validation-errors-tip.component';
-import { RouterLink } from '@angular/router';
 import { FlowConfiguration } from '../../../../state/flow-configuration';
 import { CurrentUser } from '../../../../state/current-user';
 import { MatMenu, MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
 
 @Component({
     selector: 'controller-service-table',
-    standalone: true,
     templateUrl: './controller-service-table.component.html',
     imports: [
         MatButtonModule,
@@ -43,7 +39,6 @@ import { MatMenu, MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
         MatSortModule,
         NgClass,
         NifiTooltipDirective,
-        RouterLink,
         MatMenu,
         MatMenuItem,
         MatMenuTrigger
@@ -145,18 +140,18 @@ export class ControllerServiceTable {
 
     getStateIcon(entity: ControllerServiceEntity): string {
         if (entity.status.validationStatus === 'VALIDATING') {
-            return 'validating surface-color fa fa-spin fa-circle-o-notch';
+            return 'validating neutral-color fa fa-spin fa-circle-o-notch';
         } else if (entity.status.validationStatus === 'INVALID') {
             return 'invalid fa fa-warning caution-color';
         } else {
             if (entity.status.runStatus === 'DISABLED') {
-                return 'disabled icon icon-enable-false surface-color';
+                return 'disabled icon icon-enable-false neutral-color';
             } else if (entity.status.runStatus === 'DISABLING') {
-                return 'disabled icon icon-enable-false surface-color';
+                return 'disabled icon icon-enable-false neutral-color';
             } else if (entity.status.runStatus === 'ENABLED') {
-                return 'enabled fa fa-flash success-color';
+                return 'enabled fa fa-flash success-color-variant';
             } else if (entity.status.runStatus === 'ENABLING') {
-                return 'enabled fa fa-flash success-color';
+                return 'enabled fa fa-flash success-color-variant';
             }
         }
         return '';

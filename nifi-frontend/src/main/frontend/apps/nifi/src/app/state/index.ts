@@ -35,8 +35,6 @@ import { componentStateFeatureKey, ComponentStateState } from './component-state
 import { componentStateReducer } from './component-state/component-state.reducer';
 import { errorFeatureKey, ErrorState } from './error';
 import { errorReducer } from './error/error.reducer';
-import { documentationFeatureKey, DocumentationState } from './documentation';
-import { documentationReducer } from './documentation/documentation.reducer';
 import { clusterSummaryFeatureKey, ClusterSummaryState } from './cluster-summary';
 import { clusterSummaryReducer } from './cluster-summary/cluster-summary.reducer';
 import { loginConfigurationFeatureKey, LoginConfigurationState } from './login-configuration';
@@ -47,6 +45,10 @@ import { navigationFeatureKey, NavigationState } from './navigation';
 import { navigationReducer } from './navigation/navigation.reducer';
 import { bannerTextFeatureKey, BannerTextState } from './banner-text';
 import { bannerTextReducer } from './banner-text/banner-text.reducer';
+import { documentVisibilityFeatureKey, DocumentVisibilityState } from './document-visibility';
+import { documentVisibilityReducer } from './document-visibility/document-visibility.reducer';
+import { copyFeatureKey, CopyState } from './copy';
+import { copyReducer } from './copy/copy.reducer';
 
 export interface NiFiState {
     [DEFAULT_ROUTER_FEATURENAME]: RouterReducerState;
@@ -62,9 +64,10 @@ export interface NiFiState {
     [controllerServiceStateFeatureKey]: ControllerServiceState;
     [systemDiagnosticsFeatureKey]: SystemDiagnosticsState;
     [componentStateFeatureKey]: ComponentStateState;
-    [documentationFeatureKey]: DocumentationState;
+    [documentVisibilityFeatureKey]: DocumentVisibilityState;
     [clusterSummaryFeatureKey]: ClusterSummaryState;
     [propertyVerificationFeatureKey]: PropertyVerificationState;
+    [copyFeatureKey]: CopyState;
 }
 
 export const rootReducers: ActionReducerMap<NiFiState> = {
@@ -81,7 +84,8 @@ export const rootReducers: ActionReducerMap<NiFiState> = {
     [controllerServiceStateFeatureKey]: controllerServiceStateReducer,
     [systemDiagnosticsFeatureKey]: systemDiagnosticsReducer,
     [componentStateFeatureKey]: componentStateReducer,
-    [documentationFeatureKey]: documentationReducer,
+    [documentVisibilityFeatureKey]: documentVisibilityReducer,
     [clusterSummaryFeatureKey]: clusterSummaryReducer,
-    [propertyVerificationFeatureKey]: propertyVerificationReducer
+    [propertyVerificationFeatureKey]: propertyVerificationReducer,
+    [copyFeatureKey]: copyReducer
 };

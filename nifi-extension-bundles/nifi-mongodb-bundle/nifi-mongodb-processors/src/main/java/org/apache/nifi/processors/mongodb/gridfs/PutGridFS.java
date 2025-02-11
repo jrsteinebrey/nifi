@@ -43,12 +43,11 @@ import org.bson.Document;
 import org.bson.types.ObjectId;
 
 import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @InputRequirement(InputRequirement.Requirement.INPUT_REQUIRED)
 @Tags({"mongo", "gridfs", "put", "file", "store"})
@@ -118,24 +117,23 @@ public class PutGridFS extends AbstractGridFSProcessor {
 
     static final String ID_ATTRIBUTE = "gridfs.id";
 
-    static final List<PropertyDescriptor> DESCRIPTORS;
-    static final Set<Relationship> RELATIONSHIP_SET;
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = Stream.concat(
+            getCommonPropertyDescriptors().stream(),
+            Stream.of(
+                FILE_NAME,
+                PROPERTIES_PREFIX,
+                ENFORCE_UNIQUENESS,
+                HASH_ATTRIBUTE,
+                CHUNK_SIZE
+            )
+    ).toList();
 
-    static {
-        List _temp = new ArrayList<>();
-        _temp.addAll(PARENT_PROPERTIES);
-        _temp.add(FILE_NAME);
-        _temp.add(PROPERTIES_PREFIX);
-        _temp.add(ENFORCE_UNIQUENESS);
-        _temp.add(HASH_ATTRIBUTE);
-        _temp.add(CHUNK_SIZE);
-        DESCRIPTORS = Collections.unmodifiableList(_temp);
-
-        Set _rels = new HashSet();
-        _rels.addAll(PARENT_RELATIONSHIPS);
-        _rels.add(REL_DUPLICATE);
-        RELATIONSHIP_SET = Collections.unmodifiableSet(_rels);
-    }
+    private static final Set<Relationship> RELATIONSHIPS = Stream.concat(
+            getCommonRelationships().stream(),
+            Stream.of(
+                REL_DUPLICATE
+            )
+    ).collect(Collectors.toUnmodifiableSet());
 
     private String uniqueness;
     private String hashAttribute;
@@ -149,12 +147,12 @@ public class PutGridFS extends AbstractGridFSProcessor {
 
     @Override
     public Set<Relationship> getRelationships() {
-        return RELATIONSHIP_SET;
+        return RELATIONSHIPS;
     }
 
     @Override
     public final List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return DESCRIPTORS;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override

@@ -32,7 +32,6 @@ import org.apache.nifi.gcp.credentials.service.GCPCredentialsService;
 import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.parameter.AbstractParameterProvider;
 import org.apache.nifi.parameter.Parameter;
-import org.apache.nifi.parameter.ParameterDescriptor;
 import org.apache.nifi.parameter.ParameterGroup;
 import org.apache.nifi.parameter.VerifiableParameterProvider;
 import org.apache.nifi.processor.util.StandardValidators;
@@ -42,8 +41,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -92,15 +89,15 @@ public class GcpSecretManagerParameterProvider extends AbstractParameterProvider
 
     private static final String GROUP_NAME_LABEL = "group-name";
     private static final String SECRETS_PATH = "secrets/";
-    private static final List<PropertyDescriptor> PROPERTIES = Collections.unmodifiableList(Arrays.asList(
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
             GROUP_NAME_PATTERN,
             PROJECT_ID,
             GCP_CREDENTIALS_PROVIDER_SERVICE
-    ));
+    );
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return PROPERTIES;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -184,8 +181,11 @@ public class GcpSecretManagerParameterProvider extends AbstractParameterProvider
     }
 
     private Parameter createParameter(final String parameterName, final String parameterValue) {
-        final ParameterDescriptor parameterDescriptor = new ParameterDescriptor.Builder().name(parameterName).build();
-        return new Parameter(parameterDescriptor, parameterValue, null, true);
+        return new Parameter.Builder()
+            .name(parameterName)
+            .value(parameterValue)
+            .provided(true)
+            .build();
     }
 
     SecretManagerServiceClient configureClient(final ConfigurationContext context) throws IOException {

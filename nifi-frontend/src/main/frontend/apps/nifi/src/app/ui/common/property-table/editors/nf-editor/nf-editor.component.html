@@ -22,56 +22,37 @@
     resizable
     (resized)="resized($event)">
     <form class="h-full" [formGroup]="nfEditorForm" cdkTrapFocus [cdkTrapFocusAutoCapture]="!readonly">
-        <div class="flex flex-col gap-y-3 h-full">
+        <div class="flex flex-col gap-y-3 relative h-full">
             <div class="flex justify-end">
-                <div
-                    class="property-hint flex gap-x-4 italic text-gray-500"
-                    nifiTooltip
-                    [tooltipComponentType]="PropertyHintTip"
-                    [tooltipInputData]="getPropertyHintTipData()"
-                    (mousedown)="preventDrag($event)">
-                    <div class="flex items-baseline gap-x-1">
-                        <div>EL</div>
-                        <ng-container *ngTemplateOutlet="supportsEl ? supported : notSupported"></ng-container>
-                    </div>
-                    <div class="flex items-baseline gap-x-1">
-                        <div>PARAM</div>
-                        <ng-container *ngTemplateOutlet="supportsParameters ? supported : notSupported"></ng-container>
-                    </div>
-                </div>
-                <ng-template #supported>
-                    <div class="fa fa-check"></div>
-                </ng-template>
-                <ng-template #notSupported>
-                    <div class="fa fa-ban"></div>
-                </ng-template>
+                <property-hint
+                    [supportsEl]="supportsEl"
+                    [showParameters]="true"
+                    [supportsParameters]="supportsParameters"
+                    [hasParameterContext]="parameters !== null"></property-hint>
             </div>
             <div class="flex flex-col gap-y-0.5 flex-1">
-                <div class="nf-editor flex-1" [class.blank]="blank">
+                <div
+                    class="nf-editor h-full w-full absolute overflow-auto"
+                    [class.blank]="blank"
+                    [class.sensitive]="showSensitiveHelperText">
                     <ngx-codemirror
                         [options]="getOptions()"
                         formControlName="value"
                         (mousedown)="preventDrag($event)"
                         (codeMirrorLoaded)="codeMirrorLoaded($event)"></ngx-codemirror>
+                    @if (!readonly) {
+                        <mat-checkbox
+                            formControlName="setEmptyString"
+                            (mousedown)="preventDrag($event)"
+                            (change)="setEmptyStringChanged()"
+                            >Set empty string
+                        </mat-checkbox>
+                    }
                 </div>
-                @if (!readonly) {
-                    <mat-checkbox
-                        color="primary"
-                        formControlName="setEmptyString"
-                        (mousedown)="preventDrag($event)"
-                        (change)="setEmptyStringChanged()"
-                        >Set empty string
-                    </mat-checkbox>
-                }
             </div>
             <div class="flex justify-end items-center gap-x-2">
                 @if (readonly) {
-                    <button
-                        mat-button
-                        type="button"
-                        color="primary"
-                        (mousedown)="preventDrag($event)"
-                        (click)="cancelClicked()">
+                    <button mat-flat-button type="button" (mousedown)="preventDrag($event)" (click)="cancelClicked()">
                         Close
                     </button>
                 } @else {
@@ -82,9 +63,8 @@
                         [disabled]="!nfEditorForm.dirty || nfEditorForm.invalid"
                         (mousedown)="preventDrag($event)"
                         type="button"
-                        color="primary"
                         (click)="okClicked()"
-                        mat-button>
+                        mat-flat-button>
                         Ok
                     </button>
                 }

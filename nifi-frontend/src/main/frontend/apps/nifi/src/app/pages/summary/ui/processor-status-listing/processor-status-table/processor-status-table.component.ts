@@ -22,8 +22,7 @@ import { SummaryTableFilterColumn } from '../../common/summary-table-filter/summ
 import { RouterLink } from '@angular/router';
 import { SummaryTableFilterModule } from '../../common/summary-table-filter/summary-table-filter.module';
 import { NgClass } from '@angular/common';
-import { ComponentType } from '../../../../../state/shared';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
+import { ComponentType, NiFiCommon } from '@nifi/shared';
 import { MatPaginatorModule } from '@angular/material/paginator';
 import { ProcessorStatusSnapshot, ProcessorStatusSnapshotEntity } from '../../../state';
 import { ComponentStatusTable } from '../../common/component-status-table/component-status-table.component';
@@ -36,7 +35,6 @@ export type SupportedColumns = 'name' | 'type' | 'processGroup' | 'runStatus' | 
     selector: 'processor-status-table',
     templateUrl: './processor-status-table.component.html',
     styleUrls: ['./processor-status-table.component.scss'],
-    standalone: true,
     imports: [
         RouterLink,
         SummaryTableFilterModule,
@@ -115,15 +113,15 @@ export class ProcessorStatusTable extends ComponentStatusTable<ProcessorStatusSn
     getRunStatusIcon(processor: ProcessorStatusSnapshotEntity): string {
         switch (processor.processorStatusSnapshot.runStatus.toLowerCase()) {
             case 'running':
-                return 'running fa fa-play success-color-lighter';
+                return 'running fa fa-play success-color-default';
             case 'stopped':
-                return 'stopped fa fa-stop warn-color-lighter';
+                return 'stopped fa fa-stop error-color-variant';
             case 'enabled':
-                return 'enabled fa fa-flash success-color';
+                return 'enabled fa fa-flash success-color-variant';
             case 'disabled':
-                return 'disabled icon icon-enable-false surface-color';
+                return 'disabled icon icon-enable-false neutral-color';
             case 'validating':
-                return 'validating fa fa-spin fa-circle-notch surface-color';
+                return 'validating fa fa-spin fa-circle-notch neutral-color';
             case 'invalid':
                 return 'invalid fa fa-warning caution-color';
             default:

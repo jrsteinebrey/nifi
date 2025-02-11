@@ -17,7 +17,6 @@
 
 import { Component, EventEmitter, Inject, Input, Output } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
-import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatInputModule } from '@angular/material/input';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatButtonModule } from '@angular/material/button';
@@ -32,10 +31,8 @@ import {
     ControllerServiceReferencingComponent,
     InlineServiceCreationRequest,
     InlineServiceCreationResponse,
-    Property,
-    SelectOption
+    Property
 } from '../../../../../state/shared';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
 import { PropertyTable } from '../../../../../ui/common/property-table/property-table.component';
 import { NifiSpinnerDirective } from '../../../../../ui/common/spinner/nifi-spinner.directive';
 import {
@@ -43,10 +40,7 @@ import {
     ReportingTaskEntity,
     UpdateReportingTaskRequest
 } from '../../../state/reporting-tasks';
-import { ControllerServiceApi } from '../../../../../ui/common/controller-service/controller-service-api/controller-service-api.component';
-import { NifiTooltipDirective } from '../../../../../ui/common/tooltips/nifi-tooltip.directive';
-import { TextTip } from '../../../../../ui/common/tooltips/text-tip/text-tip.component';
-import { ErrorBanner } from '../../../../../ui/common/error-banner/error-banner.component';
+import { NifiTooltipDirective, NiFiCommon, TextTip, CopyDirective } from '@nifi/shared';
 import { ClusterConnectionService } from '../../../../../service/cluster-connection.service';
 import {
     ConfigVerificationResult,
@@ -55,10 +49,12 @@ import {
 } from '../../../../../state/property-verification';
 import { PropertyVerification } from '../../../../../ui/common/property-verification/property-verification.component';
 import { TabbedDialog } from '../../../../../ui/common/tabbed-dialog/tabbed-dialog.component';
+import { SelectOption } from '@nifi/shared';
+import { ErrorContextKey } from '../../../../../state/error';
+import { ContextErrorBanner } from '../../../../../ui/common/context-error-banner/context-error-banner.component';
 
 @Component({
     selector: 'edit-reporting-task',
-    standalone: true,
     templateUrl: './edit-reporting-task.component.html',
     imports: [
         ReactiveFormsModule,
@@ -70,13 +66,12 @@ import { TabbedDialog } from '../../../../../ui/common/tabbed-dialog/tabbed-dial
         MatOptionModule,
         MatSelectModule,
         PropertyTable,
-        ControllerServiceApi,
         AsyncPipe,
         NifiSpinnerDirective,
-        MatTooltipModule,
         NifiTooltipDirective,
-        ErrorBanner,
-        PropertyVerification
+        PropertyVerification,
+        ContextErrorBanner,
+        CopyDirective
     ],
     styleUrls: ['./edit-reporting-task.component.scss']
 })
@@ -250,4 +245,6 @@ export class EditReportingTask extends TabbedDialog {
             properties: this.getModifiedProperties()
         });
     }
+
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

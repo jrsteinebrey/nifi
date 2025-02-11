@@ -30,6 +30,7 @@ import org.apache.nifi.remote.protocol.http.HttpHeaders;
 import org.apache.nifi.util.NiFiProperties;
 import org.apache.nifi.web.NiFiServiceFacade;
 import org.apache.nifi.web.api.entity.TransactionResultEntity;
+import org.apache.nifi.web.servlet.shared.ProxyHeader;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -46,11 +47,9 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 
-import static org.apache.nifi.web.util.WebUtils.PROXY_HOST_HTTP_HEADER;
-import static org.apache.nifi.web.util.WebUtils.PROXY_PORT_HTTP_HEADER;
-import static org.apache.nifi.web.util.WebUtils.PROXY_SCHEME_HTTP_HEADER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -64,6 +63,7 @@ public class TestDataTransferResource {
     @BeforeAll
     public static void setup() throws Exception {
         final URL resource = TestDataTransferResource.class.getResource("/site-to-site/nifi.properties");
+        assertNotNull(resource);
         final String propertiesFile = resource.toURI().getPath();
         System.setProperty(NiFiProperties.PROPERTIES_FILE_PATH, propertiesFile);
     }
@@ -74,6 +74,8 @@ public class TestDataTransferResource {
         doReturn(new StringBuffer("http://nifi.example.com:8080")
                 .append("/nifi-api/data-transfer/output-ports/port-id/transactions/tx-id/flow-files"))
                 .when(req).getRequestURL();
+        final ServletContext servletContext = mock(ServletContext.class);
+        when(req.getServletContext()).thenReturn(servletContext);
         return req;
     }
 
@@ -176,6 +178,8 @@ public class TestDataTransferResource {
                 .getDeclaredField("httpServletRequest");
         httpServletRequestField.setAccessible(true);
         httpServletRequestField.set(resource, request);
+        final ServletContext servletContext = mock(ServletContext.class);
+        when(request.getServletContext()).thenReturn(servletContext);
 
         final InputStream inputStream = null;
 
@@ -204,13 +208,15 @@ public class TestDataTransferResource {
         uriInfoField.set(resource, uriInfo);
 
         final HttpServletRequest request = mock(HttpServletRequest.class);
-        when(request.getHeader(PROXY_SCHEME_HTTP_HEADER)).thenReturn("https");
-        when(request.getHeader(PROXY_HOST_HTTP_HEADER)).thenReturn("nifi2.example.com");
-        when(request.getHeader(PROXY_PORT_HTTP_HEADER)).thenReturn("443");
+        when(request.getHeader(ProxyHeader.PROXY_SCHEME.getHeader())).thenReturn("https");
+        when(request.getHeader(ProxyHeader.PROXY_HOST.getHeader())).thenReturn("nifi2.example.com");
+        when(request.getHeader(ProxyHeader.PROXY_PORT.getHeader())).thenReturn("443");
         final Field httpServletRequestField = resource.getClass().getSuperclass().getSuperclass()
                 .getDeclaredField("httpServletRequest");
         httpServletRequestField.setAccessible(true);
         httpServletRequestField.set(resource, request);
+        final ServletContext servletContext = mock(ServletContext.class);
+        when(request.getServletContext()).thenReturn(servletContext);
 
         final InputStream inputStream = null;
 
@@ -346,7 +352,7 @@ public class TestDataTransferResource {
         final Object entity = response.getEntity();
 
         assertEquals(202, response.getStatus());
-        assertTrue(entity instanceof StreamingOutput);
+        assertInstanceOf(StreamingOutput.class, entity);
     }
 
     @Test

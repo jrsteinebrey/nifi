@@ -29,6 +29,7 @@ import org.apache.nifi.annotation.behavior.SystemResourceConsideration;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.SeeAlso;
 import org.apache.nifi.annotation.documentation.Tags;
+import org.apache.nifi.annotation.lifecycle.OnScheduled;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.components.RequiredPermission;
 import org.apache.nifi.expression.ExpressionLanguageScope;
@@ -55,14 +56,12 @@ import jakarta.jms.Destination;
 import jakarta.jms.Message;
 import java.io.StringWriter;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static org.apache.nifi.jms.processors.ioconcept.reader.record.ProvenanceEventTemplates.PROVENANCE_EVENT_DETAILS_ON_RECORDSET_FAILURE;
 import static org.apache.nifi.jms.processors.ioconcept.reader.record.ProvenanceEventTemplates.PROVENANCE_EVENT_DETAILS_ON_RECORDSET_RECOVER;
@@ -162,40 +161,48 @@ public class PublishJMS extends AbstractJMSProcessor<JMSPublisher> {
             .description("All FlowFiles that cannot be sent to JMS destination are routed to this relationship")
             .build();
 
-    private static final List<PropertyDescriptor> propertyDescriptors;
-    private final static Set<Relationship> relationships;
+    private static final List<PropertyDescriptor> COMMON_PROPERTY_DESCRIPTORS = Stream.concat(
+            JNDI_JMS_CF_PROPERTIES.stream(),
+            JMS_CF_PROPERTIES.stream()
+    ).toList();
 
-    /*
-     * Will ensure that the list of property descriptors is build only once.
-     * Will also create a Set of relationships
-     */
-    static {
-        List<PropertyDescriptor> _propertyDescriptors = new ArrayList<>();
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = Stream.concat(
+            Stream.of(
+                    CF_SERVICE,
+                    DESTINATION,
+                    DESTINATION_TYPE,
+                    USER,
+                    PASSWORD,
+                    CLIENT_ID,
+                    MESSAGE_BODY,
+                    CHARSET,
+                    ALLOW_ILLEGAL_HEADER_CHARS,
+                    ATTRIBUTES_AS_HEADERS_REGEX,
+                    MAX_BATCH_SIZE,
+                    RECORD_READER,
+                    RECORD_WRITER),
+            COMMON_PROPERTY_DESCRIPTORS.stream()
+    ).toList();
 
-        _propertyDescriptors.add(CF_SERVICE);
-        _propertyDescriptors.add(DESTINATION);
-        _propertyDescriptors.add(DESTINATION_TYPE);
-        _propertyDescriptors.add(USER);
-        _propertyDescriptors.add(PASSWORD);
-        _propertyDescriptors.add(CLIENT_ID);
+    private final static Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS,
+            REL_FAILURE
+    );
 
-        _propertyDescriptors.add(MESSAGE_BODY);
-        _propertyDescriptors.add(CHARSET);
-        _propertyDescriptors.add(ALLOW_ILLEGAL_HEADER_CHARS);
-        _propertyDescriptors.add(ATTRIBUTES_AS_HEADERS_REGEX);
+    volatile Boolean allowIllegalChars;
+    volatile Pattern attributeHeaderPattern;
+    volatile RecordReaderFactory readerFactory;
+    volatile RecordSetWriterFactory writerFactory;
 
-        _propertyDescriptors.add(RECORD_READER);
-        _propertyDescriptors.add(RECORD_WRITER);
+    @OnScheduled
+    public void onScheduled(final ProcessContext context) {
+        allowIllegalChars = context.getProperty(ALLOW_ILLEGAL_HEADER_CHARS).asBoolean();
 
-        _propertyDescriptors.addAll(JNDI_JMS_CF_PROPERTIES);
-        _propertyDescriptors.addAll(JMS_CF_PROPERTIES);
+        final String attributeHeaderRegex = context.getProperty(ATTRIBUTES_AS_HEADERS_REGEX).getValue();
+        attributeHeaderPattern = Pattern.compile(attributeHeaderRegex);
 
-        propertyDescriptors = Collections.unmodifiableList(_propertyDescriptors);
-
-        Set<Relationship> _relationships = new HashSet<>();
-        _relationships.add(REL_SUCCESS);
-        _relationships.add(REL_FAILURE);
-        relationships = Collections.unmodifiableSet(_relationships);
+        readerFactory = context.getProperty(RECORD_READER).asControllerService(RecordReaderFactory.class);
+        writerFactory = context.getProperty(RECORD_WRITER).asControllerService(RecordSetWriterFactory.class);
     }
 
     /**
@@ -211,20 +218,21 @@ public class PublishJMS extends AbstractJMSProcessor<JMSPublisher> {
      */
     @Override
     protected void rendezvousWithJms(ProcessContext context, ProcessSession processSession, JMSPublisher publisher) throws ProcessException {
-        FlowFile flowFile = processSession.get();
-        if (flowFile != null) {
+        final List<FlowFile> flowFiles = processSession.get(context.getProperty(MAX_BATCH_SIZE).asInteger());
+        if (flowFiles.isEmpty()) {
+            return;
+        }
+
+        flowFiles.forEach(flowFile -> {
             try {
                 final String destinationName = context.getProperty(DESTINATION).evaluateAttributeExpressions(flowFile).getValue();
                 final String charset = context.getProperty(CHARSET).evaluateAttributeExpressions(flowFile).getValue();
-                final Boolean allowIllegalChars = context.getProperty(ALLOW_ILLEGAL_HEADER_CHARS).asBoolean();
-                final String attributeHeaderRegex = context.getProperty(ATTRIBUTES_AS_HEADERS_REGEX).getValue();
 
                 final Map<String, String> attributesToSend = new HashMap<>();
                 // REGEX Attributes
-                final Pattern pattern = Pattern.compile(attributeHeaderRegex);
                 for (final Map.Entry<String, String> entry : flowFile.getAttributes().entrySet()) {
                     final String key = entry.getKey();
-                    if (pattern.matcher(key).matches()) {
+                    if (attributeHeaderPattern.matcher(key).matches()) {
                         if (allowIllegalChars || key.endsWith(".type") || (!key.contains("-") && !key.contains("."))) {
                             attributesToSend.put(key, flowFile.getAttribute(key));
                         }
@@ -232,9 +240,6 @@ public class PublishJMS extends AbstractJMSProcessor<JMSPublisher> {
                 }
 
                 if (context.getProperty(RECORD_READER).isSet()) {
-                    final RecordReaderFactory readerFactory = context.getProperty(RECORD_READER).asControllerService(RecordReaderFactory.class);
-                    final RecordSetWriterFactory writerFactory = context.getProperty(RECORD_WRITER).asControllerService(RecordSetWriterFactory.class);
-
                     final FlowFileReader flowFileReader = new StateTrackingFlowFileReader(
                             getIdentifier(),
                             new RecordSupplier(readerFactory, writerFactory),
@@ -278,7 +283,7 @@ public class PublishJMS extends AbstractJMSProcessor<JMSPublisher> {
             } catch (Exception e) {
                 handleException(context, processSession, publisher, flowFile, e);
             }
-        }
+        });
     }
 
     private void handleException(ProcessContext context, ProcessSession processSession, JMSPublisher publisher, FlowFile flowFile, Exception e) {
@@ -290,7 +295,7 @@ public class PublishJMS extends AbstractJMSProcessor<JMSPublisher> {
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return propertyDescriptors;
+        return PROPERTY_DESCRIPTORS;
     }
 
     /**
@@ -298,7 +303,7 @@ public class PublishJMS extends AbstractJMSProcessor<JMSPublisher> {
      */
     @Override
     public Set<Relationship> getRelationships() {
-        return relationships;
+        return RELATIONSHIPS;
     }
 
     /**

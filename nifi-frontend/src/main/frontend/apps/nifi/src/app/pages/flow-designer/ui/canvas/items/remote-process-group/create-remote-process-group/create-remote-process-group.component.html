@@ -17,7 +17,7 @@
 
 <h2 mat-dialog-title>Create Remote Process Group</h2>
 <form class="create-remote-process-group-form" [formGroup]="createRemoteProcessGroupForm">
-    <error-banner></error-banner>
+    <context-error-banner [context]="ErrorContextKey.REMOTE_PROCESS_GROUP"></context-error-banner>
     <mat-dialog-content>
         <div class="flex gap-x-4">
             <div class="w-full">
@@ -156,9 +156,8 @@
             <button
                 [disabled]="!createRemoteProcessGroupForm.dirty || createRemoteProcessGroupForm.invalid || saving.value"
                 type="button"
-                color="primary"
                 (click)="createRemoteProcessGroup()"
-                mat-button>
+                mat-flat-button>
                 <span *nifiSpinner="saving.value">Add</span>
             </button>
         </mat-dialog-actions>

@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { DestroyRef, inject, Injectable } from '@angular/core';
+import { Injectable, OnDestroy } from '@angular/core';
 import { Store } from '@ngrx/store';
 import { CanvasState } from '../../state';
 import { CanvasUtils } from '../canvas-utils.service';
@@ -29,20 +29,17 @@ import {
     selectAnySelectedComponentIds,
     selectTransitionRequired
 } from '../../state/flow/flow.selectors';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { QuickSelectBehavior } from '../behavior/quick-select-behavior.service';
 import { ValidationErrorsTip } from '../../../../ui/common/tooltips/validation-errors-tip/validation-errors-tip.component';
-import { TextTip } from '../../../../ui/common/tooltips/text-tip/text-tip.component';
+import { ComponentType, TextTip, NiFiCommon } from '@nifi/shared';
 import { Dimension } from '../../state/shared';
-import { ComponentType } from '../../../../state/shared';
-import { filter, switchMap } from 'rxjs';
-import { NiFiCommon } from '../../../../service/nifi-common.service';
+import { filter, Subject, switchMap, takeUntil } from 'rxjs';
 
 @Injectable({
     providedIn: 'root'
 })
-export class ProcessorManager {
-    private destroyRef = inject(DestroyRef);
+export class ProcessorManager implements OnDestroy {
+    private destroyed$: Subject<boolean> = new Subject();
 
     private dimensions: Dimension = {
         width: 352,
@@ -52,7 +49,7 @@ export class ProcessorManager {
     private static readonly PREVIEW_NAME_LENGTH: number = 25;
 
     private processors: [] = [];
-    private processorContainer: any;
+    private processorContainer: any = null;
     private transitionRequired = false;
 
     constructor(
@@ -604,7 +601,7 @@ export class ProcessorManager {
             //update the processor icon
             processor
                 .select('text.processor-icon')
-                .classed('unauthorized accent-color', !processorData.permissions.canRead);
+                .classed('unauthorized tertiary-color', !processorData.permissions.canRead);
 
             //update the processor border
             processor.select('rect.border').classed('unauthorized', !processorData.permissions.canRead);
@@ -652,7 +649,7 @@ export class ProcessorManager {
                 } else {
                     // undo changes made above
                     processor.select('text.processor-icon').attr('class', () => {
-                        return 'processor-icon accent-color';
+                        return 'processor-icon tertiary-color';
                     });
                     processor.select('rect.processor-icon-container').style('fill', null);
                     processor.select('rect.border').style('stroke', null);
@@ -689,13 +686,13 @@ export class ProcessorManager {
                 let clazz = 'primary-color';
 
                 if (d.status.aggregateSnapshot.runStatus === 'Validating') {
-                    clazz = 'validating surface-color';
+                    clazz = 'validating neutral-color';
                 } else if (d.status.aggregateSnapshot.runStatus === 'Invalid') {
                     clazz = 'invalid caution-color';
                 } else if (d.status.aggregateSnapshot.runStatus === 'Running') {
-                    clazz = 'running success-color-lighter';
+                    clazz = 'running success-color-default';
                 } else if (d.status.aggregateSnapshot.runStatus === 'Stopped') {
-                    clazz = 'stopped warn-color-lighter';
+                    clazz = 'stopped error-color-variant';
                 }
 
                 return `run-status-icon ${clazz}`;
@@ -832,7 +829,10 @@ export class ProcessorManager {
 
         this.store
             .select(selectProcessors)
-            .pipe(takeUntilDestroyed(this.destroyRef))
+            .pipe(
+                filter(() => this.processorContainer !== null),
+                takeUntil(this.destroyed$)
+            )
             .subscribe((processors) => {
                 this.set(processors);
             });
@@ -841,8 +841,9 @@ export class ProcessorManager {
             .select(selectFlowLoadingStatus)
             .pipe(
                 filter((status) => status === 'success'),
+                filter(() => this.processorContainer !== null),
                 switchMap(() => this.store.select(selectAnySelectedComponentIds)),
-                takeUntilDestroyed(this.destroyRef)
+                takeUntil(this.destroyed$)
             )
             .subscribe((selected) => {
                 this.processorContainer.selectAll('g.processor').classed('selected', function (d: any) {
@@ -852,10 +853,19 @@ export class ProcessorManager {
 
         this.store
             .select(selectTransitionRequired)
-            .pipe(takeUntilDestroyed(this.destroyRef))
+            .pipe(takeUntil(this.destroyed$))
             .subscribe((transitionRequired) => {
                 this.transitionRequired = transitionRequired;
             });
+    }
+
+    public destroy(): void {
+        this.processorContainer = null;
+        this.destroyed$.next(true);
+    }
+
+    ngOnDestroy(): void {
+        this.destroyed$.complete();
     }
 
     private set(processors: any): void {

@@ -16,6 +16,7 @@
  */
 package org.apache.nifi.reporting.s2s;
 
+import java.net.Proxy;
 import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLContext;
 import org.apache.nifi.components.PropertyDescriptor;
@@ -28,16 +29,23 @@ import org.apache.nifi.events.EventReporter;
 import org.apache.nifi.expression.ExpressionLanguageScope;
 import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.util.StandardValidators;
+import org.apache.nifi.proxy.ProxyConfiguration;
+import org.apache.nifi.proxy.ProxyConfigurationService;
+import org.apache.nifi.proxy.ProxySpec;
 import org.apache.nifi.remote.client.SiteToSiteClient;
 import org.apache.nifi.remote.protocol.SiteToSiteTransportProtocol;
 import org.apache.nifi.remote.protocol.http.HttpProxy;
 import org.apache.nifi.remote.util.SiteToSiteRestApiClient;
 import org.apache.nifi.reporting.ReportingContext;
-import org.apache.nifi.ssl.RestrictedSSLContextService;
-import org.apache.nifi.ssl.SSLContextService;
-import org.apache.nifi.util.StringUtils;
+import org.apache.nifi.ssl.SSLContextProvider;
 
 public class SiteToSiteUtils {
+
+    // Obsolete property names
+    public static final String OBSOLETE_PROXY_HOST = "s2s-http-proxy-hostname";
+    public static final String OBSOLETE_PROXY_PORT = "s2s-http-proxy-port";
+    public static final String OBSOLETE_PROXY_USERNAME = "s2s-http-proxy-username";
+    public static final String OBSOLETE_PROXY_PASSWORD = "s2s-http-proxy-password";
 
     public static final PropertyDescriptor DESTINATION_URL = new PropertyDescriptor.Builder()
             .name("Destination URL")
@@ -62,7 +70,7 @@ public class SiteToSiteUtils {
             .displayName("SSL Context Service")
             .description("The SSL Context Service to use when communicating with the destination. If not specified, communications will not be secure.")
             .required(false)
-            .identifiesControllerService(RestrictedSSLContextService.class)
+            .identifiesControllerService(SSLContextProvider.class)
             .build();
     public static final PropertyDescriptor INSTANCE_URL = new PropertyDescriptor.Builder()
             .name("Instance URL")
@@ -105,36 +113,10 @@ public class SiteToSiteUtils {
             .allowableValues(SiteToSiteTransportProtocol.values())
             .defaultValue(SiteToSiteTransportProtocol.RAW.name())
             .build();
-    public static final PropertyDescriptor HTTP_PROXY_HOSTNAME = new PropertyDescriptor.Builder()
-            .name("s2s-http-proxy-hostname")
-            .displayName("HTTP Proxy hostname")
-            .description("Specify the proxy server's hostname to use. If not specified, HTTP traffics are sent directly to the target NiFi instance.")
-            .required(false)
-            .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
+    public static final PropertyDescriptor PROXY_CONFIGURATION_SERVICE = new PropertyDescriptor.Builder()
+            .fromPropertyDescriptor(ProxyConfiguration.createProxyConfigPropertyDescriptor(ProxySpec.HTTP, ProxySpec.HTTP_AUTH))
+            .dependsOn(TRANSPORT_PROTOCOL, SiteToSiteTransportProtocol.HTTP.name())
             .build();
-    public static final PropertyDescriptor HTTP_PROXY_PORT = new PropertyDescriptor.Builder()
-            .name("s2s-http-proxy-port")
-            .displayName("HTTP Proxy port")
-            .description("Specify the proxy server's port number, optional. If not specified, default port 80 will be used.")
-            .required(false)
-            .addValidator(StandardValidators.PORT_VALIDATOR)
-            .build();
-    public static final PropertyDescriptor HTTP_PROXY_USERNAME = new PropertyDescriptor.Builder()
-            .name("s2s-http-proxy-username")
-            .displayName("HTTP Proxy username")
-            .description("Specify an user name to connect to the proxy server, optional.")
-            .required(false)
-            .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
-            .build();
-    public static final PropertyDescriptor HTTP_PROXY_PASSWORD = new PropertyDescriptor.Builder()
-            .name("s2s-http-proxy-password")
-            .displayName("HTTP Proxy password")
-            .description("Specify an user password to connect to the proxy server, optional.")
-            .required(false)
-            .sensitive(true)
-            .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
-            .build();
-
     public static final PropertyDescriptor PLATFORM = new PropertyDescriptor.Builder()
             .name("Platform")
             .description("The value to use for the platform field in each event.")
@@ -145,8 +127,8 @@ public class SiteToSiteUtils {
             .build();
 
     public static SiteToSiteClient getClient(PropertyContext reportContext, ComponentLog logger, StateManager stateManager) {
-        final SSLContextService sslContextService = reportContext.getProperty(SiteToSiteUtils.SSL_CONTEXT).asControllerService(SSLContextService.class);
-        final SSLContext sslContext = sslContextService == null ? null : sslContextService.createContext();
+        final SSLContextProvider sslContextProvider = reportContext.getProperty(SiteToSiteUtils.SSL_CONTEXT).asControllerService(SSLContextProvider.class);
+        final SSLContext sslContext = sslContextProvider == null ? null : sslContextProvider.createContext();
         final EventReporter eventReporter = (EventReporter) (severity, category, message) -> {
             switch (severity) {
                 case WARNING:
@@ -162,9 +144,18 @@ public class SiteToSiteUtils {
         final String destinationUrl = reportContext.getProperty(SiteToSiteUtils.DESTINATION_URL).evaluateAttributeExpressions().getValue();
 
         final SiteToSiteTransportProtocol mode = SiteToSiteTransportProtocol.valueOf(reportContext.getProperty(SiteToSiteUtils.TRANSPORT_PROTOCOL).getValue());
-        final HttpProxy httpProxy = mode.equals(SiteToSiteTransportProtocol.RAW) || StringUtils.isEmpty(reportContext.getProperty(SiteToSiteUtils.HTTP_PROXY_HOSTNAME).getValue()) ? null
-                : new HttpProxy(reportContext.getProperty(SiteToSiteUtils.HTTP_PROXY_HOSTNAME).getValue(), reportContext.getProperty(SiteToSiteUtils.HTTP_PROXY_PORT).asInteger(),
-                reportContext.getProperty(SiteToSiteUtils.HTTP_PROXY_USERNAME).getValue(), reportContext.getProperty(SiteToSiteUtils.HTTP_PROXY_PASSWORD).getValue());
+
+        HttpProxy httpProxy = null;
+        if (mode == SiteToSiteTransportProtocol.HTTP) {
+            final ProxyConfigurationService proxyConfigurationService = reportContext.getProperty(SiteToSiteUtils.PROXY_CONFIGURATION_SERVICE).asControllerService(ProxyConfigurationService.class);
+            if (proxyConfigurationService != null) {
+                final ProxyConfiguration proxyConfiguration = proxyConfigurationService.getConfiguration();
+                if (proxyConfiguration.getProxyType() == Proxy.Type.HTTP) {
+                    httpProxy = new HttpProxy(proxyConfiguration.getProxyServerHost(), proxyConfiguration.getProxyServerPort(),
+                            proxyConfiguration.getProxyUserName(), proxyConfiguration.getProxyUserPassword());
+                }
+            }
+        }
 
         // If no state manager was provided and this context supports retrieving it, do so
         if (stateManager == null && reportContext instanceof ReportingContext) {

@@ -142,7 +142,7 @@ public class ListedEntityTracker<T extends ListableEntity> {
             return null;
         }
         try (final GZIPInputStream in = new GZIPInputStream(new ByteArrayInputStream(v))) {
-            return objectMapper.readValue(in, new TypeReference<Map<String, ListedEntity>>() { });
+            return objectMapper.readValue(in, new TypeReference<>() { });
         }
     };
 
@@ -174,8 +174,8 @@ public class ListedEntityTracker<T extends ListableEntity> {
     }
 
     static void validateProperties(ValidationContext context, Collection<ValidationResult> results, Scope scope) {
-        validateRequiredProperty(context, results, ListedEntityTracker.TRACKING_STATE_CACHE);
-        validateRequiredProperty(context, results, ListedEntityTracker.TRACKING_TIME_WINDOW);
+        validateRequiredProperty(context, results, TRACKING_STATE_CACHE);
+        validateRequiredProperty(context, results, TRACKING_TIME_WINDOW);
 
         if (Scope.LOCAL.equals(scope)
             && StringUtils.isEmpty(context.getProperty(NODE_IDENTIFIER).evaluateAttributeExpressions().getValue())) {
@@ -200,13 +200,10 @@ public class ListedEntityTracker<T extends ListableEntity> {
 
     private static final String CACHE_KEY_PREFIX = "ListedEntities";
     private String getCacheKey() {
-        switch (scope) {
-            case LOCAL:
-                return format("%s::%s::%s", CACHE_KEY_PREFIX, componentId, nodeId);
-            case CLUSTER:
-                return format("%s::%s", CACHE_KEY_PREFIX, componentId);
-        }
-        throw new IllegalArgumentException("Unknown scope: " + scope);
+        return switch (scope) {
+            case LOCAL -> format("%s::%s::%s", CACHE_KEY_PREFIX, componentId, nodeId);
+            case CLUSTER -> format("%s::%s", CACHE_KEY_PREFIX, componentId);
+        };
     }
 
     private void persistListedEntities(Map<String, ListedEntity> listedEntities) throws IOException {
@@ -241,7 +238,7 @@ public class ListedEntityTracker<T extends ListableEntity> {
         mapCacheClient = context.getProperty(TRACKING_STATE_CACHE).asControllerService(DistributedMapCacheClient.class);
         this.scope = scope;
         if (Scope.LOCAL.equals(scope)) {
-            nodeId = context.getProperty(ListedEntityTracker.NODE_IDENTIFIER).evaluateAttributeExpressions().getValue();
+            nodeId = context.getProperty(NODE_IDENTIFIER).evaluateAttributeExpressions().getValue();
         } else {
             nodeId = null;
         }

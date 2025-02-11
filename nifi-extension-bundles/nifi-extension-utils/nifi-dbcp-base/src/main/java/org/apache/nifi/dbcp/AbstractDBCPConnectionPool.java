@@ -86,7 +86,7 @@ public abstract class AbstractDBCPConnectionPool extends AbstractControllerServi
                     .explanation("Successfully configured data source")
                     .build());
 
-            try (final Connection conn = getConnection(basicDataSource, kerberosUser)) {
+            try (final Connection ignored = getConnection(basicDataSource, kerberosUser)) {
                 results.add(new ConfigVerificationResult.Builder()
                         .verificationStepName("Establish Connection")
                         .outcome(SUCCESSFUL)
@@ -204,16 +204,13 @@ public abstract class AbstractDBCPConnectionPool extends AbstractControllerServi
         final KerberosUser kerberosUser;
         final KerberosUserService kerberosUserService = context.getProperty(KERBEROS_USER_SERVICE).asControllerService(KerberosUserService.class);
 
-        if (kerberosUserService != null) {
-            kerberosUser = kerberosUserService.createKerberosUser();
+        if (kerberosUserService == null) {
+            kerberosUser = null;
         } else {
-            kerberosUser = getKerberosUserByCredentials(context);
+            kerberosUser = kerberosUserService.createKerberosUser();
         }
-        return kerberosUser;
-    }
 
-    protected KerberosUser getKerberosUserByCredentials(final ConfigurationContext context) {
-        return null;
+        return kerberosUser;
     }
 
 

@@ -24,11 +24,11 @@ import okhttp3.mockwebserver.RecordedRequest;
 import org.apache.nifi.proxy.ProxyConfiguration;
 import org.apache.nifi.proxy.ProxyConfigurationService;
 import org.apache.nifi.reporting.InitializationException;
-import org.apache.nifi.security.util.SslContextFactory;
-import org.apache.nifi.security.util.TemporaryKeyStoreBuilder;
-import org.apache.nifi.security.util.TlsConfiguration;
-import org.apache.nifi.security.util.TlsException;
-import org.apache.nifi.ssl.SSLContextService;
+import org.apache.nifi.security.cert.builder.StandardCertificateBuilder;
+import org.apache.nifi.security.ssl.EphemeralKeyStoreBuilder;
+import org.apache.nifi.security.ssl.StandardSslContextBuilder;
+import org.apache.nifi.security.ssl.StandardTrustManagerBuilder;
+import org.apache.nifi.ssl.SSLContextProvider;
 import org.apache.nifi.util.NoOpProcessor;
 import org.apache.nifi.util.TestRunner;
 import org.apache.nifi.util.TestRunners;
@@ -47,10 +47,17 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.X509TrustManager;
+import javax.security.auth.x500.X500Principal;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.URI;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.KeyStore;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
+import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -60,7 +67,7 @@ import static org.mockito.Mockito.when;
 class StandardWebClientServiceProviderTest {
     private static final String SERVICE_ID = StandardWebClientServiceProvider.class.getSimpleName();
 
-    private static final String SSL_CONTEXT_SERVICE_ID = SSLContextService.class.getSimpleName();
+    private static final String SSL_CONTEXT_SERVICE_ID = SSLContextProvider.class.getSimpleName();
 
     private static final String PROXY_SERVICE_ID = ProxyConfigurationService.class.getSimpleName();
 
@@ -88,14 +95,12 @@ class StandardWebClientServiceProviderTest {
 
     private static final boolean TUNNEL_PROXY_DISABLED = false;
 
-    static TlsConfiguration tlsConfiguration;
-
     static SSLContext sslContext;
 
     static X509TrustManager trustManager;
 
     @Mock
-    SSLContextService sslContextService;
+    SSLContextProvider sslContextProvider;
 
     @Mock
     ProxyConfigurationService proxyConfigurationService;
@@ -107,10 +112,21 @@ class StandardWebClientServiceProviderTest {
     StandardWebClientServiceProvider provider;
 
     @BeforeAll
-    static void setTlsConfiguration() throws TlsException {
-        tlsConfiguration = new TemporaryKeyStoreBuilder().build();
-        sslContext = SslContextFactory.createSslContext(tlsConfiguration);
-        trustManager = SslContextFactory.getX509TrustManager(tlsConfiguration);
+    static void setTlsConfiguration() throws Exception {
+        final KeyPair keyPair = KeyPairGenerator.getInstance("RSA").generateKeyPair();
+        final X509Certificate certificate = new StandardCertificateBuilder(keyPair, new X500Principal("CN=localhost"), Duration.ofHours(1)).build();
+        final KeyStore keyStore = new EphemeralKeyStoreBuilder()
+                .addPrivateKeyEntry(new KeyStore.PrivateKeyEntry(keyPair.getPrivate(), new Certificate[]{certificate}))
+                .build();
+        final char[] protectionParameter = new char[]{};
+
+        sslContext = new StandardSslContextBuilder()
+                .trustStore(keyStore)
+                .keyStore(keyStore)
+                .keyPassword(protectionParameter)
+                .build();
+
+        trustManager = new StandardTrustManagerBuilder().trustStore(keyStore).build();
     }
 
     @BeforeEach
@@ -162,12 +178,12 @@ class StandardWebClientServiceProviderTest {
 
     @Test
     void testGetWebServiceClientSslContextServiceConfiguredGetUri() throws InitializationException, InterruptedException {
-        when(sslContextService.getIdentifier()).thenReturn(SSL_CONTEXT_SERVICE_ID);
-        when(sslContextService.getSslAlgorithm()).thenReturn(tlsConfiguration.getProtocol());
-        when(sslContextService.createTrustManager()).thenReturn(trustManager);
+        when(sslContextProvider.getIdentifier()).thenReturn(SSL_CONTEXT_SERVICE_ID);
+        when(sslContextProvider.createTrustManager()).thenReturn(trustManager);
+        when(sslContextProvider.createContext()).thenReturn(sslContext);
 
-        runner.addControllerService(SSL_CONTEXT_SERVICE_ID, sslContextService);
-        runner.enableControllerService(sslContextService);
+        runner.addControllerService(SSL_CONTEXT_SERVICE_ID, sslContextProvider);
+        runner.enableControllerService(sslContextProvider);
 
         runner.setProperty(provider, StandardWebClientServiceProvider.SSL_CONTEXT_SERVICE, SSL_CONTEXT_SERVICE_ID);
         runner.enableControllerService(provider);

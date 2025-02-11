@@ -24,7 +24,6 @@ import { NgClass } from '@angular/common';
 
 @Component({
     selector: 'processor-cluster-table',
-    standalone: true,
     imports: [MatTableModule, MatSortModule, NgClass],
     templateUrl: './processor-cluster-table.component.html',
     styleUrl: './processor-cluster-table.component.scss'
@@ -120,15 +119,15 @@ export class ProcessorClusterTable extends ComponentClusterTable<NodeProcessorSt
     getRunStatusIcon(processor: NodeProcessorStatusSnapshot): string {
         switch (processor.statusSnapshot.runStatus.toLowerCase()) {
             case 'running':
-                return 'running fa fa-play success-color-lighter';
+                return 'running fa fa-play success-color-default';
             case 'stopped':
-                return 'stopped fa fa-stop warn-color-lighter';
+                return 'stopped fa fa-stop error-color-variant';
             case 'enabled':
-                return 'enabled fa fa-flash success-color';
+                return 'enabled fa fa-flash success-color-variant';
             case 'disabled':
-                return 'disabled icon icon-enable-false surface-color';
+                return 'disabled icon icon-enable-false neutral-color';
             case 'validating':
-                return 'validating fa fa-spin fa-circle-notch surface-color';
+                return 'validating fa fa-spin fa-circle-notch neutral-color';
             case 'invalid':
                 return 'invalid fa fa-warning caution-color';
             default:

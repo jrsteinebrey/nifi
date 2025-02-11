@@ -46,11 +46,13 @@ import { NiFiState } from '../../../../state';
 import { selectFlowConfiguration } from '../../../../state/flow-configuration/flow-configuration.selectors';
 import { getComponentStateAndOpenDialog } from '../../../../state/component-state/component-state.actions';
 import { navigateToComponentDocumentation } from '../../../../state/documentation/documentation.actions';
+import { ComponentType } from '@nifi/shared';
 
 @Component({
     selector: 'reporting-tasks',
     templateUrl: './reporting-tasks.component.html',
-    styleUrls: ['./reporting-tasks.component.scss']
+    styleUrls: ['./reporting-tasks.component.scss'],
+    standalone: false
 })
 export class ReportingTasks implements OnInit, OnDestroy {
     reportingTaskState$ = this.store.select(selectReportingTasksState);
@@ -138,7 +140,8 @@ export class ReportingTasks implements OnInit, OnDestroy {
                         context: 'Reporting Task'
                     },
                     parameters: {
-                        select: entity.component.type,
+                        componentType: ComponentType.ReportingTask,
+                        type: entity.component.type,
                         group: entity.component.bundle.group,
                         artifact: entity.component.bundle.artifact,
                         version: entity.component.bundle.version

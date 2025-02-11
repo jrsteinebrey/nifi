@@ -21,8 +21,7 @@ import { SummaryTableFilterModule } from '../../common/summary-table-filter/summ
 import { MatSortModule, Sort } from '@angular/material/sort';
 import { SummaryTableFilterColumn } from '../../common/summary-table-filter/summary-table-filter.component';
 import { MatTableModule } from '@angular/material/table';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
-import { ComponentType } from '../../../../../state/shared';
+import { ComponentType, NiFiCommon } from '@nifi/shared';
 import { RouterLink } from '@angular/router';
 import { MatPaginatorModule } from '@angular/material/paginator';
 import { RemoteProcessGroupStatusSnapshot, RemoteProcessGroupStatusSnapshotEntity } from '../../../state';
@@ -34,7 +33,6 @@ export type SupportedColumns = 'name' | 'uri' | 'transmitting' | 'sent' | 'recei
 
 @Component({
     selector: 'remote-process-group-status-table',
-    standalone: true,
     imports: [
         CommonModule,
         SummaryTableFilterModule,
@@ -113,9 +111,9 @@ export class RemoteProcessGroupStatusTable extends ComponentStatusTable<RemotePr
 
     getTransmissionStatusIcon(rpg: RemoteProcessGroupStatusSnapshotEntity): string {
         if (rpg.remoteProcessGroupStatusSnapshot.transmissionStatus === 'Transmitting') {
-            return 'transmitting success-color fa fa-bullseye';
+            return 'transmitting success-color-variant fa fa-bullseye';
         } else {
-            return 'not-transmitting icon icon-transmit-false surface-color';
+            return 'not-transmitting icon icon-transmit-false neutral-color';
         }
     }
 

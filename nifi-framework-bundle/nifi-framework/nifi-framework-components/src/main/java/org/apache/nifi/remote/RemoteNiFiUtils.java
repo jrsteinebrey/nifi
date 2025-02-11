@@ -16,7 +16,7 @@
  */
 package org.apache.nifi.remote;
 
-import org.apache.nifi.web.util.WebUtils;
+import org.apache.nifi.web.util.WebClientUtils;
 import org.glassfish.jersey.client.ClientConfig;
 import org.glassfish.jersey.client.ClientProperties;
 
@@ -45,9 +45,9 @@ public class RemoteNiFiUtils {
 
         final Client client;
         if (sslContext == null) {
-            client = WebUtils.createClient(clientConfig);
+            client = WebClientUtils.createClient(clientConfig);
         } else {
-            client = WebUtils.createClient(clientConfig, sslContext);
+            client = WebClientUtils.createClient(clientConfig, sslContext);
         }
 
         return client;
@@ -63,7 +63,7 @@ public class RemoteNiFiUtils {
         final URI uri = URI.create(String.format("%s/controller/users", baseApiUri));
 
         // set up the query params
-        MultivaluedHashMap entity = new MultivaluedHashMap();
+        MultivaluedHashMap<String, String> entity = new MultivaluedHashMap<>();
         entity.add("justification", "A Remote instance of NiFi has attempted to create a reference to this NiFi. This action must be approved first.");
 
         // get the resource

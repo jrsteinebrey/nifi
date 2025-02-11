@@ -66,8 +66,6 @@ import jakarta.ws.rs.core.UriBuilder;
 import jakarta.ws.rs.core.UriInfo;
 import java.text.Collator;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -159,12 +157,12 @@ public class RuleResource {
         }
 
         // save the criteria
-        saveCriteria(requestContext, criteria);
+        final ComponentDetails componentDetails = saveCriteria(requestContext, criteria);
 
         // create the response entity
         final EvaluationContextEntity responseEntity = new EvaluationContextEntity();
-        responseEntity.setClientId(requestEntity.getClientId());
-        responseEntity.setRevision(requestEntity.getRevision());
+        responseEntity.setClientId(componentDetails.getRevision().getClientId());
+        responseEntity.setRevision(componentDetails.getRevision().getVersion());
         responseEntity.setProcessorId(requestEntity.getProcessorId());
         responseEntity.setFlowFilePolicy(criteria.getFlowFilePolicy().name());
         responseEntity.setRuleOrder(criteria.getRuleOrder());
@@ -231,12 +229,12 @@ public class RuleResource {
         criteria.addRule(rule);
 
         // save the criteria
-        saveCriteria(requestContext, criteria);
+        final ComponentDetails componentDetails = saveCriteria(requestContext, criteria);
 
         // create the response entity
         final RuleEntity responseEntity = new RuleEntity();
-        responseEntity.setClientId(requestEntity.getClientId());
-        responseEntity.setRevision(requestEntity.getRevision());
+        responseEntity.setClientId(componentDetails.getRevision().getClientId());
+        responseEntity.setRevision(componentDetails.getRevision().getVersion());
         responseEntity.setProcessorId(requestEntity.getProcessorId());
         responseEntity.setRule(DtoFactory.createRuleDTO(rule));
 
@@ -427,12 +425,9 @@ public class RuleResource {
         }
 
         // sort the rules
-        Collections.sort(ruleDtos, new Comparator<RuleDTO>() {
-            @Override
-            public int compare(RuleDTO r1, RuleDTO r2) {
-                final Collator collator = Collator.getInstance(Locale.US);
-                return collator.compare(r1.getName(), r2.getName());
-            }
+        ruleDtos.sort((r1, r2) -> {
+            final Collator collator = Collator.getInstance(Locale.US);
+            return collator.compare(r1.getName(), r2.getName());
         });
 
         // create the response entity
@@ -527,12 +522,12 @@ public class RuleResource {
         }
 
         // save the criteria
-        saveCriteria(requestContext, criteria);
+        final ComponentDetails componentDetails = saveCriteria(requestContext, criteria);
 
         // create the response entity
         final RuleEntity responseEntity = new RuleEntity();
-        responseEntity.setClientId(requestEntity.getClientId());
-        responseEntity.setRevision(requestEntity.getRevision());
+        responseEntity.setClientId(componentDetails.getRevision().getClientId());
+        responseEntity.setRevision(componentDetails.getRevision().getVersion());
         responseEntity.setProcessorId(requestEntity.getProcessorId());
         responseEntity.setRule(DtoFactory.createRuleDTO(rule));
 
@@ -575,12 +570,12 @@ public class RuleResource {
         criteria.deleteRule(rule);
 
         // save the criteria
-        saveCriteria(requestContext, criteria);
+        final ComponentDetails componentDetails = saveCriteria(requestContext, criteria);
 
         // create the response entity
         final RulesEntity responseEntity = new RulesEntity();
-        responseEntity.setClientId(clientId);
-        responseEntity.setRevision(revision);
+        responseEntity.setClientId(componentDetails.getRevision().getClientId());
+        responseEntity.setRevision(componentDetails.getRevision().getVersion());
         responseEntity.setProcessorId(processorId);
 
         // generate the response
@@ -620,7 +615,7 @@ public class RuleResource {
         return criteria;
     }
 
-    private void saveCriteria(final NiFiWebConfigurationRequestContext requestContext, final Criteria criteria) {
+    private ComponentDetails saveCriteria(final NiFiWebConfigurationRequestContext requestContext, final Criteria criteria) {
         // serialize the criteria
         final String annotationData = CriteriaSerDe.serialize(criteria);
 
@@ -629,7 +624,7 @@ public class RuleResource {
 
         try {
             // save the annotation data
-            configurationContext.updateComponent(requestContext, annotationData, null);
+            return configurationContext.updateComponent(requestContext, annotationData, null);
         } catch (final InvalidRevisionException ire) {
             throw new WebApplicationException(ire, invalidRevision(ire.getMessage()));
         } catch (final IllegalArgumentException iae) {

@@ -16,10 +16,18 @@
  */
 package org.apache.nifi.processors.standard;
 
-import org.apache.nifi.components.AllowableValue;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.components.ValidationContext;
 import org.apache.nifi.components.ValidationResult;
+import org.apache.nifi.context.PropertyContext;
+import org.apache.nifi.database.dialect.service.api.ColumnDefinition;
+import org.apache.nifi.database.dialect.service.api.StandardColumnDefinition;
+import org.apache.nifi.database.dialect.service.api.DatabaseDialectService;
+import org.apache.nifi.database.dialect.service.api.QueryStatementRequest;
+import org.apache.nifi.database.dialect.service.api.StandardQueryStatementRequest;
+import org.apache.nifi.database.dialect.service.api.StatementResponse;
+import org.apache.nifi.database.dialect.service.api.StatementType;
+import org.apache.nifi.database.dialect.service.api.TableDefinition;
 import org.apache.nifi.dbcp.DBCPService;
 import org.apache.nifi.expression.ExpressionLanguageScope;
 import org.apache.nifi.flowfile.FlowFile;
@@ -29,7 +37,7 @@ import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
-import org.apache.nifi.processors.standard.db.DatabaseAdapter;
+import org.apache.nifi.processors.standard.db.DatabaseAdapterDescriptor;
 import org.apache.nifi.processors.standard.db.impl.PhoenixDatabaseAdapter;
 import org.apache.nifi.util.StringUtils;
 
@@ -57,7 +65,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.ServiceLoader;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -67,18 +75,18 @@ import static java.sql.Types.BINARY;
 import static java.sql.Types.BIT;
 import static java.sql.Types.BLOB;
 import static java.sql.Types.BOOLEAN;
+import static java.sql.Types.CHAR;
 import static java.sql.Types.CLOB;
+import static java.sql.Types.DATE;
 import static java.sql.Types.DECIMAL;
 import static java.sql.Types.DOUBLE;
 import static java.sql.Types.FLOAT;
 import static java.sql.Types.INTEGER;
-import static java.sql.Types.LONGVARBINARY;
-import static java.sql.Types.NUMERIC;
-import static java.sql.Types.CHAR;
-import static java.sql.Types.DATE;
 import static java.sql.Types.LONGNVARCHAR;
+import static java.sql.Types.LONGVARBINARY;
 import static java.sql.Types.LONGVARCHAR;
 import static java.sql.Types.NCHAR;
+import static java.sql.Types.NUMERIC;
 import static java.sql.Types.NVARCHAR;
 import static java.sql.Types.REAL;
 import static java.sql.Types.ROWID;
@@ -184,9 +192,9 @@ public abstract class AbstractDatabaseFetchProcessor extends AbstractSessionFact
     // The delimiter to use when referencing qualified names (such as table@!@column in the state map)
     protected static final String NAMESPACE_DELIMITER = "@!@";
 
-    public static final PropertyDescriptor DB_TYPE;
+    public static final PropertyDescriptor DB_TYPE = DatabaseAdapterDescriptor.getDatabaseTypeDescriptor("db-fetch-db-type");
+    static final PropertyDescriptor DATABASE_DIALECT_SERVICE = DatabaseAdapterDescriptor.getDatabaseDialectServiceDescriptor(DB_TYPE);
 
-    protected final static Map<String, DatabaseAdapter> dbAdapters = new HashMap<>();
     protected final Map<String, Integer> columnTypeMap = new HashMap<>();
 
     // This value is set when the processor is scheduled and indicates whether the Table Name property contains Expression Language.
@@ -205,28 +213,10 @@ public abstract class AbstractDatabaseFetchProcessor extends AbstractSessionFact
 
     private static final DateTimeFormatter TIME_TYPE_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
 
+    private static final String ZERO_RESULT_WHERE_CLAUSE = "1 = 0";
+
     // A Map (name to value) of initial maximum-value properties, filled at schedule-time and used at trigger-time
     protected Map<String, String> maxValueProperties;
-
-    static {
-        // Load the DatabaseAdapters
-        ArrayList<AllowableValue> dbAdapterValues = new ArrayList<>();
-        ServiceLoader<DatabaseAdapter> dbAdapterLoader = ServiceLoader.load(DatabaseAdapter.class);
-        dbAdapterLoader.forEach(it -> {
-            dbAdapters.put(it.getName(), it);
-            dbAdapterValues.add(new AllowableValue(it.getName(), it.getName(), it.getDescription()));
-        });
-
-        DB_TYPE = new PropertyDescriptor.Builder()
-                .name("db-fetch-db-type")
-                .displayName("Database Type")
-                .description("The type/flavor of database, used for generating database-specific code. In many cases the Generic type "
-                        + "should suffice, but some databases (such as Oracle) require custom SQL clauses. ")
-                .allowableValues(dbAdapterValues.toArray(new AllowableValue[dbAdapterValues.size()]))
-                .defaultValue("Generic")
-                .required(true)
-                .build();
-    }
 
     // A common validation procedure for DB fetch processors, it stores whether the Table Name and/or Max Value Column properties have expression language
     protected Collection<ValidationResult> customValidate(ValidationContext validationContext) {
@@ -242,6 +232,8 @@ public abstract class AbstractDatabaseFetchProcessor extends AbstractSessionFact
     }
 
     public void setup(final ProcessContext context, boolean shouldCleanCache, FlowFile flowFile) {
+        final DatabaseDialectService databaseDialectService = getDatabaseDialectService(context);
+
         synchronized (setupComplete) {
             setupComplete.set(false);
             final String maxValueColumnNames = context.getProperty(MAX_VALUE_COLUMN_NAMES).evaluateAttributeExpressions(flowFile).getValue();
@@ -257,23 +249,15 @@ public abstract class AbstractDatabaseFetchProcessor extends AbstractSessionFact
             final String tableName = context.getProperty(TABLE_NAME).evaluateAttributeExpressions(flowFile).getValue();
             final String sqlQuery = context.getProperty(SQL_QUERY).evaluateAttributeExpressions().getValue();
 
-            final DatabaseAdapter dbAdapter = dbAdapters.get(context.getProperty(DB_TYPE).getValue());
             try (final Connection con = dbcpService.getConnection(flowFile == null ? Collections.emptyMap() : flowFile.getAttributes());
                  final Statement st = con.createStatement()) {
 
                 // Try a query that returns no rows, for the purposes of getting metadata about the columns. It is possible
                 // to use DatabaseMetaData.getColumns(), but not all drivers support this, notably the schema-on-read
                 // approach as in Apache Drill
-                String query;
-
-                if (StringUtils.isEmpty(sqlQuery)) {
-                    query = dbAdapter.getSelectStatement(tableName, maxValueColumnNames, "1 = 0", null, null, null);
-                } else {
-                    StringBuilder sbQuery = getWrappedQuery(dbAdapter, sqlQuery, tableName);
-                    sbQuery.append(" WHERE 1=0");
-
-                    query = sbQuery.toString();
-                }
+                final QueryStatementRequest statementRequest = getMaxValueStatementRequest(tableName, maxValueColumnNames, sqlQuery);
+                final StatementResponse statementResponse = databaseDialectService.getStatement(statementRequest);
+                final String query = statementResponse.sql();
 
                 ResultSet resultSet = st.executeQuery(query);
                 ResultSetMetaData resultSetMetaData = resultSet.getMetaData();
@@ -283,17 +267,17 @@ public abstract class AbstractDatabaseFetchProcessor extends AbstractSessionFact
                         columnTypeMap.clear();
                     }
 
-                    final List<String> maxValueColumnNameList = Arrays.asList(maxValueColumnNames.toLowerCase().split(","));
+                    final String[] maxValueColumnNameList = maxValueColumnNames.toLowerCase().split(",");
                     final List<String> maxValueQualifiedColumnNameList = new ArrayList<>();
 
-                    for (String maxValueColumn:maxValueColumnNameList) {
-                        String colKey = getStateKey(tableName, maxValueColumn.trim(), dbAdapter);
+                    for (String maxValueColumn : maxValueColumnNameList) {
+                        String colKey = getStateKey(tableName, maxValueColumn.trim());
                         maxValueQualifiedColumnNameList.add(colKey);
                     }
 
                     for (int i = 1; i <= numCols; i++) {
                         String colName = resultSetMetaData.getColumnName(i).toLowerCase();
-                        String colKey = getStateKey(tableName, colName, dbAdapter);
+                        String colKey = getStateKey(tableName, colName);
 
                         //only include columns that are part of the maximum value tracking column list
                         if (!maxValueQualifiedColumnNameList.contains(colKey)) {
@@ -304,8 +288,8 @@ public abstract class AbstractDatabaseFetchProcessor extends AbstractSessionFact
                         columnTypeMap.putIfAbsent(colKey, colType);
                     }
 
-                    for (String maxValueColumn:maxValueColumnNameList) {
-                        String colKey = getStateKey(tableName, maxValueColumn.trim().toLowerCase(), dbAdapter);
+                    for (String maxValueColumn : maxValueColumnNameList) {
+                        String colKey = getStateKey(tableName, maxValueColumn.trim().toLowerCase());
                         if (!columnTypeMap.containsKey(colKey)) {
                             throw new ProcessException("Column not found in the table/query specified: " + maxValueColumn);
                         }
@@ -321,15 +305,32 @@ public abstract class AbstractDatabaseFetchProcessor extends AbstractSessionFact
         }
     }
 
-    protected static StringBuilder getWrappedQuery(DatabaseAdapter dbAdapter, String sqlQuery, String tableName) {
-       return new StringBuilder("SELECT * FROM (" + sqlQuery + ") " + dbAdapter.getTableAliasClause(tableName));
+    protected DatabaseDialectService getDatabaseDialectService(final PropertyContext context) {
+        final String databaseType = context.getProperty(DB_TYPE).getValue();
+        return DatabaseAdapterDescriptor.getDatabaseDialectService(context, DATABASE_DIALECT_SERVICE, databaseType);
+    }
+
+    private QueryStatementRequest getMaxValueStatementRequest(final String tableName, final String maxValueColumnNames, final String derivedTableQuery) {
+        final List<ColumnDefinition> maxValueColumns = Arrays.stream(maxValueColumnNames.split(","))
+                .map(StandardColumnDefinition::new)
+                .map(ColumnDefinition.class::cast)
+                .toList();
+
+        final TableDefinition tableDefinition = new TableDefinition(Optional.empty(), Optional.empty(), tableName, maxValueColumns);
+        return new StandardQueryStatementRequest(
+                StatementType.SELECT,
+                tableDefinition,
+                Optional.ofNullable(derivedTableQuery),
+                Optional.of(ZERO_RESULT_WHERE_CLAUSE),
+                Optional.empty(),
+                Optional.empty()
+        );
     }
 
     protected static String getMaxValueFromRow(ResultSet resultSet,
                                                int columnIndex,
                                                Integer type,
-                                               String maxValueString,
-                                               String databaseType)
+                                               String maxValueString)
             throws ParseException, IOException, SQLException {
 
         // Skip any columns we're not keeping track of or whose value is null
@@ -422,7 +423,7 @@ public abstract class AbstractDatabaseFetchProcessor extends AbstractSessionFact
                 if (maxValueString != null) {
                     try {
                         maxTimeValue = LocalTime.parse(maxValueString, TIME_TYPE_FORMAT);
-                    } catch (DateTimeParseException pe) {
+                    } catch (DateTimeParseException ignored) {
                         // Shouldn't happen, but just in case, leave the value as null so the new value will be stored
                     }
                 }
@@ -521,17 +522,18 @@ public abstract class AbstractDatabaseFetchProcessor extends AbstractSessionFact
      * Construct a key string for a corresponding state value.
      * @param prefix A prefix may contain database and table name, or just table name, this can be null
      * @param columnName A column name
-     * @param adapter DatabaseAdapter is used to unwrap identifiers
      * @return a state key string
      */
-    protected static String getStateKey(String prefix, String columnName, DatabaseAdapter adapter) {
+    protected static String getStateKey(String prefix, String columnName) {
         StringBuilder sb = new StringBuilder();
         if (prefix != null) {
-            sb.append(adapter.unwrapIdentifier(prefix.toLowerCase()));
+            final String prefixUnwrapped = prefix.toLowerCase().replaceAll("[\"`\\[\\]]", "");
+            sb.append(prefixUnwrapped);
             sb.append(NAMESPACE_DELIMITER);
         }
         if (columnName != null) {
-            sb.append(adapter.unwrapIdentifier(columnName.toLowerCase()));
+            final String columnNameUnwrapped = columnName.toLowerCase().replaceAll("[\"`\\[\\]]", "");
+            sb.append(columnNameUnwrapped);
         }
         return sb.toString();
     }

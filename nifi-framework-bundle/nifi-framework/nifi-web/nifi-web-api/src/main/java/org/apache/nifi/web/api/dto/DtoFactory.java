@@ -40,6 +40,7 @@ import org.apache.nifi.annotation.behavior.Stateful;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.DeprecationNotice;
 import org.apache.nifi.annotation.documentation.Tags;
+import org.apache.nifi.asset.Asset;
 import org.apache.nifi.authorization.AccessPolicy;
 import org.apache.nifi.authorization.Authorizer;
 import org.apache.nifi.authorization.AuthorizerCapabilityDetection;
@@ -107,6 +108,7 @@ import org.apache.nifi.controller.state.SortedStateUtils;
 import org.apache.nifi.controller.status.ConnectionStatus;
 import org.apache.nifi.controller.status.PortStatus;
 import org.apache.nifi.controller.status.ProcessGroupStatus;
+import org.apache.nifi.controller.status.ProcessingPerformanceStatus;
 import org.apache.nifi.controller.status.ProcessorStatus;
 import org.apache.nifi.controller.status.RemoteProcessGroupStatus;
 import org.apache.nifi.controller.status.analytics.ConnectionStatusPredictions;
@@ -130,6 +132,9 @@ import org.apache.nifi.history.History;
 import org.apache.nifi.nar.ExtensionDefinition;
 import org.apache.nifi.nar.ExtensionManager;
 import org.apache.nifi.nar.NarClassLoadersHolder;
+import org.apache.nifi.nar.NarManifest;
+import org.apache.nifi.nar.NarNode;
+import org.apache.nifi.nar.NarState;
 import org.apache.nifi.nar.PythonBundle;
 import org.apache.nifi.parameter.Parameter;
 import org.apache.nifi.parameter.ParameterContext;
@@ -219,6 +224,7 @@ import org.apache.nifi.web.api.dto.status.PortStatusDTO;
 import org.apache.nifi.web.api.dto.status.PortStatusSnapshotDTO;
 import org.apache.nifi.web.api.dto.status.ProcessGroupStatusDTO;
 import org.apache.nifi.web.api.dto.status.ProcessGroupStatusSnapshotDTO;
+import org.apache.nifi.web.api.dto.status.ProcessingPerformanceStatusDTO;
 import org.apache.nifi.web.api.dto.status.ProcessorStatusDTO;
 import org.apache.nifi.web.api.dto.status.ProcessorStatusSnapshotDTO;
 import org.apache.nifi.web.api.dto.status.RemoteProcessGroupStatusDTO;
@@ -227,6 +233,7 @@ import org.apache.nifi.web.api.entity.AccessPolicyEntity;
 import org.apache.nifi.web.api.entity.AccessPolicySummaryEntity;
 import org.apache.nifi.web.api.entity.AffectedComponentEntity;
 import org.apache.nifi.web.api.entity.AllowableValueEntity;
+import org.apache.nifi.web.api.entity.AssetEntity;
 import org.apache.nifi.web.api.entity.BulletinEntity;
 import org.apache.nifi.web.api.entity.ComponentReferenceEntity;
 import org.apache.nifi.web.api.entity.ConnectionStatusSnapshotEntity;
@@ -250,6 +257,10 @@ import org.apache.nifi.web.controller.ControllerFacade;
 import org.apache.nifi.web.revision.RevisionManager;
 
 import jakarta.ws.rs.WebApplicationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
 import java.text.Collator;
 import java.text.NumberFormat;
 import java.util.ArrayList;
@@ -279,20 +290,17 @@ import java.util.stream.Collectors;
 
 public final class DtoFactory {
 
-   @SuppressWarnings("rawtypes")
-   private final static Comparator<Class> CLASS_NAME_COMPARATOR = new Comparator<Class>() {
-       @Override
-       public int compare(final Class class1, final Class class2) {
-           return Collator.getInstance(Locale.US).compare(class1.getSimpleName(), class2.getSimpleName());
-       }
-   };
-   public static final String SENSITIVE_VALUE_MASK = "********";
+    private static final Logger logger = LoggerFactory.getLogger(DtoFactory.class);
 
-   private BulletinRepository bulletinRepository;
-   private ControllerServiceProvider controllerServiceProvider;
-   private EntityFactory entityFactory;
-   private Authorizer authorizer;
-   private ExtensionManager extensionManager;
+    @SuppressWarnings("rawtypes")
+    private final static Comparator<Class> CLASS_NAME_COMPARATOR = (class1, class2) -> Collator.getInstance(Locale.US).compare(class1.getSimpleName(), class2.getSimpleName());
+    public static final String SENSITIVE_VALUE_MASK = "********";
+
+    private BulletinRepository bulletinRepository;
+    private ControllerServiceProvider controllerServiceProvider;
+    private EntityFactory entityFactory;
+    private Authorizer authorizer;
+    private ExtensionManager extensionManager;
 
    public ControllerConfigurationDTO createControllerConfigurationDto(final ControllerFacade controllerFacade) {
        final ControllerConfigurationDTO dto = new ControllerConfigurationDTO();
@@ -623,6 +631,7 @@ public final class DtoFactory {
        final FlowFileSummaryDTO dto = new FlowFileSummaryDTO();
        dto.setUuid(summary.getUuid());
        dto.setFilename(summary.getFilename());
+       dto.setMimeType(summary.getMimeType());
 
        dto.setPenalized(summary.isPenalized());
        final long penaltyExpiration = summary.getPenaltyExpirationMillis() - now.getTime();
@@ -651,6 +660,7 @@ public final class DtoFactory {
        final FlowFileDTO dto = new FlowFileDTO();
        dto.setUuid(record.getAttribute(CoreAttributes.UUID.key()));
        dto.setFilename(record.getAttribute(CoreAttributes.FILENAME.key()));
+       dto.setMimeType(record.getAttribute(CoreAttributes.MIME_TYPE.key()));
 
        dto.setPenalized(record.isPenalized());
        final long penaltyExpiration = record.getPenaltyExpirationMillis() - now.getTime();
@@ -1047,6 +1057,11 @@ public final class DtoFactory {
        snapshot.setActiveThreadCount(processGroupStatus.getActiveThreadCount());
        snapshot.setTerminatedThreadCount(processGroupStatus.getTerminatedThreadCount());
 
+       final ProcessingPerformanceStatus performanceStatus = processGroupStatus.getProcessingPerformanceStatus();
+       if (performanceStatus != null) {
+           snapshot.setProcessingPerformanceStatus(createProcessingPerformanceStatusDTO(performanceStatus));
+       }
+
        StatusMerger.updatePrettyPrintedFields(snapshot);
        return processGroupStatusDto;
    }
@@ -1263,6 +1278,11 @@ public final class DtoFactory {
        snapshot.setActiveThreadCount(procStatus.getActiveThreadCount());
        snapshot.setTerminatedThreadCount(procStatus.getTerminatedThreadCount());
        snapshot.setType(procStatus.getType());
+
+       final ProcessingPerformanceStatus performanceStatus = procStatus.getProcessingPerformanceStatus();
+       if (performanceStatus != null) {
+           snapshot.setProcessingPerformanceStatus(createProcessingPerformanceStatusDTO(procStatus.getProcessingPerformanceStatus()));
+       }
 
        StatusMerger.updatePrettyPrintedFields(snapshot);
        return dto;
@@ -1493,6 +1513,26 @@ public final class DtoFactory {
        return config;
    }
 
+   public AssetEntity createAssetEntity(final Asset asset) {
+         final AssetEntity entity = new AssetEntity();
+         entity.setAsset(createAssetDto(asset));
+         return entity;
+   }
+
+   public AssetDTO createAssetDto(final Asset asset) {
+       final File assetFile = asset.getFile();
+       final AssetDTO dto = new AssetDTO();
+       dto.setId(asset.getIdentifier());
+       dto.setName(asset.getName());
+       dto.setDigest(asset.getDigest().orElse(null));
+       dto.setMissingContent(!assetFile.exists());
+       return dto;
+   }
+
+   public AssetReferenceDTO createAssetReferenceDto(final Asset asset) {
+       return new AssetReferenceDTO(asset.getIdentifier(), asset.getName());
+   }
+
    public ParameterEntity createParameterEntity(final ParameterContext parameterContext, final Parameter parameter, final RevisionManager revisionManager,
                                                 final ParameterContextLookup parameterContextLookup) {
        final ParameterDTO dto = createParameterDto(parameterContext, parameter, revisionManager, parameterContextLookup);
@@ -1517,6 +1557,8 @@ public final class DtoFactory {
            dto.setValue(descriptor.isSensitive() ? SENSITIVE_VALUE_MASK : parameter.getValue());
        }
        dto.setProvided(parameter.isProvided());
+       final List<Asset> assets = parameter.getReferencedAssets();
+       dto.setReferencedAssets(assets == null ? List.of() : parameter.getReferencedAssets().stream().map(this::createAssetReferenceDto).toList());
 
        final ParameterReferenceManager parameterReferenceManager = parameterContext.getParameterReferenceManager();
 
@@ -1571,12 +1613,7 @@ public final class DtoFactory {
        dto.setDefaultSchedulingPeriod(defaultSchedulingPeriod);
 
        // sort a copy of the properties
-       final Map<PropertyDescriptor, String> sortedProperties = new TreeMap<>(new Comparator<PropertyDescriptor>() {
-           @Override
-           public int compare(final PropertyDescriptor o1, final PropertyDescriptor o2) {
-               return Collator.getInstance(Locale.US).compare(o1.getName(), o2.getName());
-           }
-       });
+       final Map<PropertyDescriptor, String> sortedProperties = new TreeMap<>((o1, o2) -> Collator.getInstance(Locale.US).compare(o1.getName(), o2.getName()));
        sortedProperties.putAll(reportingTaskNode.getRawPropertyValues());
 
        // get the property order from the reporting task
@@ -1643,7 +1680,7 @@ public final class DtoFactory {
        final List<Bundle> compatibleBundles = extensionManager.getBundles(parameterProviderNode.getCanonicalClassName()).stream().filter(bundle -> {
            final BundleCoordinate coordinate = bundle.getBundleDetails().getCoordinate();
            return bundleCoordinate.getGroup().equals(coordinate.getGroup()) && bundleCoordinate.getId().equals(coordinate.getId());
-       }).collect(Collectors.toList());
+       }).toList();
 
        final ParameterProviderDTO dto = new ParameterProviderDTO();
        dto.setId(parameterProviderNode.getIdentifier());
@@ -1748,7 +1785,7 @@ public final class DtoFactory {
        final List<Bundle> compatibleBundles = extensionManager.getBundles(controllerServiceNode.getCanonicalClassName()).stream().filter(bundle -> {
            final BundleCoordinate coordinate = bundle.getBundleDetails().getCoordinate();
            return bundleCoordinate.getGroup().equals(coordinate.getGroup()) && bundleCoordinate.getId().equals(coordinate.getId());
-       }).collect(Collectors.toList());
+       }).toList();
 
        final Class<? extends ControllerService> controllerServiceClass = controllerServiceNode.getControllerServiceImplementation().getClass();
 
@@ -1772,12 +1809,7 @@ public final class DtoFactory {
        dto.setVersionedComponentId(controllerServiceNode.getVersionedComponentId().orElse(null));
 
        // sort a copy of the properties
-       final Map<PropertyDescriptor, String> sortedProperties = new TreeMap<>(new Comparator<PropertyDescriptor>() {
-           @Override
-           public int compare(final PropertyDescriptor o1, final PropertyDescriptor o2) {
-               return Collator.getInstance(Locale.US).compare(o1.getName(), o2.getName());
-           }
-       });
+       final Map<PropertyDescriptor, String> sortedProperties = new TreeMap<>((o1, o2) -> Collator.getInstance(Locale.US).compare(o1.getName(), o2.getName()));
        sortedProperties.putAll(controllerServiceNode.getRawPropertyValues());
 
        // get the property order from the controller service
@@ -1900,12 +1932,7 @@ public final class DtoFactory {
        }
 
        // process properties unconditionally since dynamic properties are available here and not in getPropertyDescriptors
-       final Map<PropertyDescriptor, String> sortedProperties = new TreeMap<>(new Comparator<PropertyDescriptor>() {
-           @Override
-           public int compare(final PropertyDescriptor o1, final PropertyDescriptor o2) {
-               return Collator.getInstance(Locale.US).compare(o1.getName(), o2.getName());
-           }
-       });
+       final Map<PropertyDescriptor, String> sortedProperties = new TreeMap<>((o1, o2) -> Collator.getInstance(Locale.US).compare(o1.getName(), o2.getName()));
        sortedProperties.putAll(component.getRawPropertyValues());
 
        final Map<PropertyDescriptor, String> orderedProperties = new LinkedHashMap<>();
@@ -1916,8 +1943,8 @@ public final class DtoFactory {
 
        // build the descriptor and property dtos
        dto.setGroupId(processGroupId);
-       dto.setDescriptors(new LinkedHashMap<String, PropertyDescriptorDTO>());
-       dto.setProperties(new LinkedHashMap<String, String>());
+       dto.setDescriptors(new LinkedHashMap<>());
+       dto.setProperties(new LinkedHashMap<>());
        for (final Map.Entry<PropertyDescriptor, String> entry : orderedProperties.entrySet()) {
            final PropertyDescriptor descriptor = entry.getKey();
 
@@ -3111,12 +3138,14 @@ public final class DtoFactory {
            final List<ControllerServiceApiDTO> dtos = new ArrayList<>();
            for (final Class serviceApi : serviceApis) {
                final Bundle bundle = extensionManager.getBundle(serviceApi.getClassLoader());
-               final BundleCoordinate bundleCoordinate = bundle.getBundleDetails().getCoordinate();
+               if (bundle != null) {
+                   final BundleCoordinate bundleCoordinate = bundle.getBundleDetails().getCoordinate();
 
-               final ControllerServiceApiDTO dto = new ControllerServiceApiDTO();
-               dto.setType(serviceApi.getName());
-               dto.setBundle(createBundleDto(bundleCoordinate));
-               dtos.add(dto);
+                   final ControllerServiceApiDTO dto = new ControllerServiceApiDTO();
+                   dto.setType(serviceApi.getName());
+                   dto.setBundle(createBundleDto(bundleCoordinate));
+                   dtos.add(dto);
+               }
            }
            return dtos;
        } else {
@@ -3223,6 +3252,10 @@ public final class DtoFactory {
        return Optional.of(dto);
    }
 
+    public Set<DocumentedTypeDTO> fromDocumentedTypes(final Set<ExtensionDefinition> extensionDefinitions) {
+       return fromDocumentedTypes(extensionDefinitions, null, null, null);
+    }
+
    /**
     * Gets the DocumentedTypeDTOs from the specified classes.
     *
@@ -3242,8 +3275,16 @@ public final class DtoFactory {
                continue;
            }
 
-           final Class cls = extensionManager.getClass(extensionDefinition);
-           classBundles.put(cls, extensionDefinition.getBundle());
+           // Catch Throwable here to protect against an extension that may have been registered, but throws an Error when attempting to access the Class,
+           // we don't need to fail the overall request since we can still return all the other components that are still usable
+           try {
+               final Class cls = extensionManager.getClass(extensionDefinition);
+               if (cls != null) {
+                   classBundles.put(cls, extensionDefinition.getBundle());
+               }
+           } catch (final Throwable t) {
+               logger.warn("Unable to get extension class for [{}]", extensionDefinition.getImplementationClassName(), t);
+           }
        }
 
        final Set<DocumentedTypeDTO> documentedTypes = fromDocumentedTypes(classBundles, bundleGroupFilter, bundleArtifactFilter, typeFilter);
@@ -3317,12 +3358,7 @@ public final class DtoFactory {
        }
 
        // sort the relationships
-       relationships.sort(new Comparator<RelationshipDTO>() {
-           @Override
-           public int compare(final RelationshipDTO r1, final RelationshipDTO r2) {
-               return Collator.getInstance(Locale.US).compare(r1.getName(), r2.getName());
-           }
-       });
+       relationships.sort((r1, r2) -> Collator.getInstance(Locale.US).compare(r1.getName(), r2.getName()));
 
        // set the relationships
        dto.setRelationships(relationships);
@@ -3357,28 +3393,25 @@ public final class DtoFactory {
     */
    public BulletinBoardDTO createBulletinBoardDto(final List<BulletinEntity> bulletins) {
        // sort the bulletins
-       Collections.sort(bulletins, new Comparator<BulletinEntity>() {
-           @Override
-           public int compare(final BulletinEntity bulletin1, final BulletinEntity bulletin2) {
-               if (bulletin1 == null && bulletin2 == null) {
-                   return 0;
-               } else if (bulletin1 == null) {
-                   return 1;
-               } else if (bulletin2 == null) {
-                   return -1;
-               }
+       Collections.sort(bulletins, (bulletin1, bulletin2) -> {
+           if (bulletin1 == null && bulletin2 == null) {
+               return 0;
+           } else if (bulletin1 == null) {
+               return 1;
+           } else if (bulletin2 == null) {
+               return -1;
+           }
 
-               final Date timestamp1 = bulletin1.getTimestamp();
-               final Date timestamp2 = bulletin2.getTimestamp();
-               if (timestamp1 == null && timestamp2 == null) {
-                   return 0;
-               } else if (timestamp1 == null) {
-                   return 1;
-               } else if (timestamp2 == null) {
-                   return -1;
-               } else {
-                   return timestamp1.compareTo(timestamp2);
-               }
+           final Date timestamp1 = bulletin1.getTimestamp();
+           final Date timestamp2 = bulletin2.getTimestamp();
+           if (timestamp1 == null && timestamp2 == null) {
+               return 0;
+           } else if (timestamp1 == null) {
+               return 1;
+           } else if (timestamp2 == null) {
+               return -1;
+           } else {
+               return timestamp1.compareTo(timestamp2);
            }
        });
 
@@ -4230,10 +4263,12 @@ public final class DtoFactory {
        // set the identifies controller service is applicable
        if (propertyDescriptor.getControllerServiceDefinition() != null) {
            final Class serviceClass = propertyDescriptor.getControllerServiceDefinition();
-           final Bundle serviceBundle = extensionManager.getBundle(serviceClass.getClassLoader());
-
            dto.setIdentifiesControllerService(serviceClass.getName());
-           dto.setIdentifiesControllerServiceBundle(createBundleDto(serviceBundle.getBundleDetails().getCoordinate()));
+
+           final Bundle serviceBundle = extensionManager.getBundle(serviceClass.getClassLoader());
+           if (serviceBundle != null) {
+               dto.setIdentifiesControllerServiceBundle(createBundleDto(serviceBundle.getBundleDetails().getCoordinate()));
+           }
        }
 
        final Class<? extends ControllerService> serviceDefinition = propertyDescriptor.getControllerServiceDefinition();
@@ -4855,12 +4890,7 @@ public final class DtoFactory {
 
        // populate node events
        final List<NodeEvent> nodeEvents = new ArrayList<>(events);
-       Collections.sort(nodeEvents, new Comparator<NodeEvent>() {
-           @Override
-           public int compare(final NodeEvent event1, final NodeEvent event2) {
-               return new Date(event2.getTimestamp()).compareTo(new Date(event1.getTimestamp()));
-           }
-       });
+       Collections.sort(nodeEvents, (event1, event2) -> new Date(event2.getTimestamp()).compareTo(new Date(event1.getTimestamp())));
 
        // create the node event dtos
        final List<NodeEventDTO> nodeEventDtos = new ArrayList<>();
@@ -4952,34 +4982,12 @@ public final class DtoFactory {
        return dto;
    }
 
-
-   /* setters */
-   public void setControllerServiceProvider(final ControllerServiceProvider controllerServiceProvider) {
-       this.controllerServiceProvider = controllerServiceProvider;
-   }
-
-   public void setAuthorizer(final Authorizer authorizer) {
-       this.authorizer = authorizer;
-   }
-
-   public void setEntityFactory(final EntityFactory entityFactory) {
-       this.entityFactory = entityFactory;
-   }
-
-   public void setBulletinRepository(BulletinRepository bulletinRepository) {
-       this.bulletinRepository = bulletinRepository;
-   }
-
-   public void setExtensionManager(ExtensionManager extensionManager) {
-       this.extensionManager = extensionManager;
-   }
-
    public FlowAnalysisRuleDTO createFlowAnalysisRuleDto(FlowAnalysisRuleNode flowAnalysisRuleNode) {
        final BundleCoordinate bundleCoordinate = flowAnalysisRuleNode.getBundleCoordinate();
        final List<Bundle> compatibleBundles = extensionManager.getBundles(flowAnalysisRuleNode.getCanonicalClassName()).stream().filter(bundle -> {
            final BundleCoordinate coordinate = bundle.getBundleDetails().getCoordinate();
            return bundleCoordinate.getGroup().equals(coordinate.getGroup()) && bundleCoordinate.getId().equals(coordinate.getId());
-       }).collect(Collectors.toList());
+       }).toList();
 
        final Class<? extends FlowAnalysisRule> flowAnalysisRuleClass = flowAnalysisRuleNode.getFlowAnalysisRule().getClass();
 
@@ -5052,4 +5060,76 @@ public final class DtoFactory {
 
        return dto;
    }
+
+    public NarSummaryDTO createNarSummaryDto(final NarNode narNode) {
+       final NarManifest narManifest = narNode.getManifest();
+       final BundleCoordinate coordinate = narManifest.getCoordinate();
+
+       final NarSummaryDTO dto = new NarSummaryDTO();
+       dto.setIdentifier(narNode.getIdentifier());
+       dto.setCoordinate(createNarCoordinateDto(coordinate));
+       dto.setDependencyCoordinate(createNarCoordinateDto(narNode.getManifest().getDependencyCoordinate()));
+       dto.setBuildTime(narManifest.getBuildTimestamp());
+       dto.setCreatedBy(narManifest.getCreatedBy());
+       dto.setDigest(narNode.getNarFileDigest());
+       dto.setSourceType(narNode.getSource().name());
+       dto.setSourceIdentifier(narNode.getSourceIdentifier());
+       dto.setState(narNode.getState().getValue());
+       dto.setFailureMessage(narNode.getFailureMessage());
+
+        final Set<ExtensionDefinition> extensionDefinitions = new HashSet<>();
+        extensionDefinitions.addAll(extensionManager.getTypes(coordinate));
+        extensionDefinitions.addAll(extensionManager.getPythonExtensions(coordinate));
+       dto.setExtensionCount(extensionDefinitions.size());
+
+       final NarState narState = narNode.getState();
+       dto.setInstallComplete(narState == NarState.INSTALLED || narState == NarState.MISSING_DEPENDENCY || narState == NarState.FAILED);
+       return dto;
+    }
+
+   public NarCoordinateDTO createNarCoordinateDto(final BundleCoordinate bundleCoordinate) {
+       if (bundleCoordinate == null) {
+           return null;
+       }
+       final NarCoordinateDTO dto = new NarCoordinateDTO();
+       dto.setGroup(bundleCoordinate.getGroup());
+       dto.setArtifact(bundleCoordinate.getId());
+       dto.setVersion(bundleCoordinate.getVersion());
+       return dto;
+   }
+
+    /* setters */
+    public void setControllerServiceProvider(final ControllerServiceProvider controllerServiceProvider) {
+        this.controllerServiceProvider = controllerServiceProvider;
+    }
+
+    public void setAuthorizer(final Authorizer authorizer) {
+        this.authorizer = authorizer;
+    }
+
+    public void setEntityFactory(final EntityFactory entityFactory) {
+        this.entityFactory = entityFactory;
+    }
+
+    public void setBulletinRepository(BulletinRepository bulletinRepository) {
+        this.bulletinRepository = bulletinRepository;
+    }
+
+    public void setExtensionManager(ExtensionManager extensionManager) {
+        this.extensionManager = extensionManager;
+    }
+
+    private ProcessingPerformanceStatusDTO createProcessingPerformanceStatusDTO(final ProcessingPerformanceStatus performanceStatus) {
+
+       final ProcessingPerformanceStatusDTO performanceStatusDTO = new ProcessingPerformanceStatusDTO();
+
+        performanceStatusDTO.setIdentifier(performanceStatus.getIdentifier());
+        performanceStatusDTO.setCpuDuration(performanceStatus.getCpuDuration());
+        performanceStatusDTO.setContentReadDuration(performanceStatusDTO.getContentReadDuration());
+        performanceStatusDTO.setContentWriteDuration(performanceStatus.getContentWriteDuration());
+        performanceStatusDTO.setSessionCommitDuration(performanceStatus.getSessionCommitDuration());
+        performanceStatusDTO.setGarbageCollectionDuration(performanceStatus.getGarbageCollectionDuration());
+
+        return performanceStatusDTO;
+    }
 }

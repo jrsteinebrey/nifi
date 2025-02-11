@@ -30,7 +30,9 @@ import org.apache.nifi.context.PropertyContext;
 import org.apache.nifi.processors.aws.credentials.provider.factory.CredentialsStrategy;
 import org.apache.nifi.processors.aws.signer.AwsCustomSignerUtil;
 import org.apache.nifi.processors.aws.signer.AwsSignerType;
-import org.apache.nifi.ssl.SSLContextService;
+import org.apache.nifi.proxy.ProxyConfiguration;
+import org.apache.nifi.proxy.ProxyConfigurationService;
+import org.apache.nifi.ssl.SSLContextProvider;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.regions.Region;
@@ -40,6 +42,7 @@ import software.amazon.awssdk.services.sts.auth.StsAssumeRoleCredentialsProvider
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
 
 import javax.net.ssl.SSLContext;
+import java.net.Proxy;
 import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -48,8 +51,7 @@ import java.util.Collection;
 import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderControllerService.ASSUME_ROLE_ARN;
 import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderControllerService.ASSUME_ROLE_EXTERNAL_ID;
 import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderControllerService.ASSUME_ROLE_NAME;
-import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderControllerService.ASSUME_ROLE_PROXY_HOST;
-import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderControllerService.ASSUME_ROLE_PROXY_PORT;
+import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderControllerService.ASSUME_ROLE_PROXY_CONFIGURATION_SERVICE;
 import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderControllerService.ASSUME_ROLE_SSL_CONTEXT_SERVICE;
 import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderControllerService.ASSUME_ROLE_STS_CUSTOM_SIGNER_CLASS_NAME;
 import static org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderControllerService.ASSUME_ROLE_STS_ENDPOINT;
@@ -93,16 +95,6 @@ public class AssumeRoleCredentialsStrategy extends AbstractCredentialsStrategy {
         return false;
     }
 
-    protected boolean proxyVariablesValidForAssumeRole(final PropertyContext propertyContext) {
-        final String assumeRoleProxyHost = propertyContext.getProperty(ASSUME_ROLE_PROXY_HOST).getValue();
-        final String assumeRoleProxyPort = propertyContext.getProperty(ASSUME_ROLE_PROXY_PORT).getValue();
-        if (assumeRoleProxyHost != null && !assumeRoleProxyHost.isEmpty()
-                && assumeRoleProxyPort != null && !assumeRoleProxyPort.isEmpty()) {
-            return true;
-        }
-        return false;
-    }
-
     @Override
     public Collection<ValidationResult> validate(final ValidationContext validationContext,
                                                  final CredentialsStrategy primaryStrategy) {
@@ -118,17 +110,6 @@ public class AssumeRoleCredentialsStrategy extends AbstractCredentialsStrategy {
                 validationFailureResults.add(new ValidationResult.Builder().valid(false).input(maxSessionTime + "")
                         .explanation(MAX_SESSION_TIME.getDisplayName() +
                                 " must be between 900 and 3600 seconds").build());
-            }
-
-            final boolean assumeRoleProxyHostIsSet = validationContext.getProperty(ASSUME_ROLE_PROXY_HOST).isSet();
-            final boolean assumeRoleProxyPortIsSet = validationContext.getProperty(ASSUME_ROLE_PROXY_PORT).isSet();
-
-            // Both proxy host and proxy port are required if present
-            if (assumeRoleProxyHostIsSet ^ assumeRoleProxyPortIsSet) {
-                validationFailureResults.add(new ValidationResult.Builder().input("Assume Role Proxy Host and Port")
-                        .valid(false)
-                        .explanation("Assume role with proxy requires both host and port for the proxy to be set")
-                        .build());
             }
         }
 
@@ -150,21 +131,26 @@ public class AssumeRoleCredentialsStrategy extends AbstractCredentialsStrategy {
         final String assumeRoleSTSRegion = propertyContext.getProperty(ASSUME_ROLE_STS_REGION).getValue();
         final String assumeRoleSTSEndpoint = propertyContext.getProperty(ASSUME_ROLE_STS_ENDPOINT).getValue();
         final String assumeRoleSTSSigner = propertyContext.getProperty(ASSUME_ROLE_STS_SIGNER_OVERRIDE).getValue();
-        final SSLContextService sslContextService = propertyContext.getProperty(ASSUME_ROLE_SSL_CONTEXT_SERVICE).asControllerService(SSLContextService.class);
+        final SSLContextProvider sslContextProvider = propertyContext.getProperty(ASSUME_ROLE_SSL_CONTEXT_SERVICE).asControllerService(SSLContextProvider.class);
+        final ProxyConfigurationService proxyConfigurationService = propertyContext.getProperty(ASSUME_ROLE_PROXY_CONFIGURATION_SERVICE).asControllerService(ProxyConfigurationService.class);
 
         final ClientConfiguration config = new ClientConfiguration();
 
-        if (sslContextService != null) {
-            final SSLContext sslContext = sslContextService.createContext();
+        if (sslContextProvider != null) {
+            final SSLContext sslContext = sslContextProvider.createContext();
             config.getApacheHttpClientConfig().setSslSocketFactory(new SSLConnectionSocketFactory(sslContext));
         }
 
-        // If proxy variables are set, then create Client Configuration with those values
-        if (proxyVariablesValidForAssumeRole(propertyContext)) {
-            final String assumeRoleProxyHost = propertyContext.getProperty(ASSUME_ROLE_PROXY_HOST).getValue();
-            final int assumeRoleProxyPort = propertyContext.getProperty(ASSUME_ROLE_PROXY_PORT).asInteger();
-            config.withProxyHost(assumeRoleProxyHost);
-            config.withProxyPort(assumeRoleProxyPort);
+        if (proxyConfigurationService != null) {
+            final ProxyConfiguration proxyConfiguration = proxyConfigurationService.getConfiguration();
+            if (proxyConfiguration.getProxyType() == Proxy.Type.HTTP) {
+                config.withProxyHost(proxyConfiguration.getProxyServerHost());
+                config.withProxyPort(proxyConfiguration.getProxyServerPort());
+                if (proxyConfiguration.hasCredential()) {
+                    config.withProxyUsername(proxyConfiguration.getProxyUserName());
+                    config.withProxyPassword(proxyConfiguration.getProxyUserPassword());
+                }
+            }
         }
 
         final AwsSignerType assumeRoleSTSSignerType = AwsSignerType.forValue(assumeRoleSTSSigner);
@@ -213,24 +199,31 @@ public class AssumeRoleCredentialsStrategy extends AbstractCredentialsStrategy {
         final String assumeRoleExternalId = propertyContext.getProperty(ASSUME_ROLE_EXTERNAL_ID).getValue();
         final String assumeRoleSTSEndpoint = propertyContext.getProperty(ASSUME_ROLE_STS_ENDPOINT).getValue();
         final String stsRegion = propertyContext.getProperty(ASSUME_ROLE_STS_REGION).getValue();
-        final SSLContextService sslContextService = propertyContext.getProperty(ASSUME_ROLE_SSL_CONTEXT_SERVICE).asControllerService(SSLContextService.class);
+        final SSLContextProvider sslContextProvider = propertyContext.getProperty(ASSUME_ROLE_SSL_CONTEXT_SERVICE).asControllerService(SSLContextProvider.class);
+        final ProxyConfigurationService proxyConfigurationService = propertyContext.getProperty(ASSUME_ROLE_PROXY_CONFIGURATION_SERVICE).asControllerService(ProxyConfigurationService.class);
 
         final StsAssumeRoleCredentialsProvider.Builder builder = StsAssumeRoleCredentialsProvider.builder();
 
         final ApacheHttpClient.Builder httpClientBuilder = ApacheHttpClient.builder();
 
-        if (sslContextService != null) {
-            final SSLContext sslContext = sslContextService.createContext();
+        if (sslContextProvider != null) {
+            final SSLContext sslContext = sslContextProvider.createContext();
             httpClientBuilder.socketFactory(new SSLConnectionSocketFactory(sslContext));
         }
 
-        if (proxyVariablesValidForAssumeRole(propertyContext)) {
-            final String assumeRoleProxyHost = propertyContext.getProperty(ASSUME_ROLE_PROXY_HOST).getValue();
-            final int assumeRoleProxyPort = propertyContext.getProperty(ASSUME_ROLE_PROXY_PORT).asInteger();
-            final software.amazon.awssdk.http.apache.ProxyConfiguration proxyConfig = software.amazon.awssdk.http.apache.ProxyConfiguration.builder()
-                    .endpoint(URI.create(String.format("%s:%s", assumeRoleProxyHost, assumeRoleProxyPort)))
-                    .build();
-            httpClientBuilder.proxyConfiguration(proxyConfig);
+        if (proxyConfigurationService != null) {
+            final ProxyConfiguration proxyConfiguration = proxyConfigurationService.getConfiguration();
+            if (proxyConfiguration.getProxyType() == Proxy.Type.HTTP) {
+                final software.amazon.awssdk.http.apache.ProxyConfiguration.Builder proxyConfigBuilder = software.amazon.awssdk.http.apache.ProxyConfiguration.builder()
+                        .endpoint(URI.create(String.format("http://%s:%s", proxyConfiguration.getProxyServerHost(), proxyConfiguration.getProxyServerPort())));
+
+                if (proxyConfiguration.hasCredential()) {
+                    proxyConfigBuilder.username(proxyConfiguration.getProxyUserName());
+                    proxyConfigBuilder.password(proxyConfiguration.getProxyUserPassword());
+                }
+
+                httpClientBuilder.proxyConfiguration(proxyConfigBuilder.build());
+            }
         }
 
         if (stsRegion == null) {

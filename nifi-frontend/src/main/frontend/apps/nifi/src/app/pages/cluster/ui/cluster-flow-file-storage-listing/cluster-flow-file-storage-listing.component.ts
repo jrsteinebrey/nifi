@@ -29,7 +29,7 @@ import { NiFiState } from '../../../../state';
 import { initialClusterState } from '../../state/cluster-listing/cluster-listing.reducer';
 import { ClusterNodeRepositoryStorageUsage } from '../../../../state/system-diagnostics';
 import { map } from 'rxjs';
-import { isDefinedAndNotNull } from '../../../../state/shared';
+import { isDefinedAndNotNull } from '@nifi/shared';
 import { AsyncPipe } from '@angular/common';
 import {
     clearFlowFileStorageNodeSelection,
@@ -39,7 +39,6 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
     selector: 'cluster-flow-file-storage-listing',
-    standalone: true,
     imports: [RepositoryStorageTable, NgxSkeletonLoaderModule, AsyncPipe],
     templateUrl: './cluster-flow-file-storage-listing.component.html',
     styleUrl: './cluster-flow-file-storage-listing.component.scss'

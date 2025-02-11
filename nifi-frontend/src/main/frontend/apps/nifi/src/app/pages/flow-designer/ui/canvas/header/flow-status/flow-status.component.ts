@@ -19,26 +19,47 @@ import { Component, Input } from '@angular/core';
 import { ControllerStatus } from '../../../../state/flow';
 import { initialState } from '../../../../state/flow/flow.reducer';
 import { BulletinsTip } from '../../../../../../ui/common/tooltips/bulletins-tip/bulletins-tip.component';
-import { BulletinEntity, BulletinsTipInput } from '../../../../../../state/shared';
+import { BulletinsTipInput } from '../../../../../../state/shared';
 
 import { Search } from '../search/search.component';
-import { NifiTooltipDirective } from '../../../../../../ui/common/tooltips/nifi-tooltip.directive';
+import { BulletinEntity, NifiTooltipDirective, Storage } from '@nifi/shared';
 import { ClusterSummary } from '../../../../../../state/cluster-summary';
 import { ConnectedPosition } from '@angular/cdk/overlay';
+import { FlowAnalysisState } from '../../../../state/flow-analysis';
+import { CommonModule } from '@angular/common';
+import { Store } from '@ngrx/store';
+import { NiFiState } from '../../../../../../state';
+import { setFlowAnalysisOpen } from '../../../../state/flow/flow.actions';
+import { CanvasUtils } from '../../../../service/canvas-utils.service';
 
 @Component({
     selector: 'flow-status',
-    standalone: true,
     templateUrl: './flow-status.component.html',
-    imports: [Search, NifiTooltipDirective],
+    imports: [Search, NifiTooltipDirective, CommonModule],
     styleUrls: ['./flow-status.component.scss']
 })
 export class FlowStatus {
+    private static readonly FLOW_ANALYSIS_VISIBILITY_KEY: string = 'flow-analysis-visibility';
+    private static readonly FLOW_ANALYSIS_KEY: string = 'flow-analysis';
+    public flowAnalysisNotificationClass: string = '';
     @Input() controllerStatus: ControllerStatus = initialState.flowStatus.controllerStatus;
     @Input() lastRefreshed: string = initialState.flow.processGroupFlow.lastRefreshed;
     @Input() clusterSummary: ClusterSummary | null = null;
     @Input() currentProcessGroupId: string = initialState.id;
     @Input() loadingStatus = false;
+    @Input() flowAnalysisOpen = initialState.flowAnalysisOpen;
+    @Input() set flowAnalysisState(state: FlowAnalysisState) {
+        if (!state.ruleViolations.length) {
+            this.flowAnalysisNotificationClass = 'primary-color';
+        } else {
+            const isEnforcedRuleViolated = state.ruleViolations.find((v) => {
+                return v.enforcementPolicy === 'ENFORCE';
+            });
+            isEnforcedRuleViolated
+                ? (this.flowAnalysisNotificationClass = 'enforce')
+                : (this.flowAnalysisNotificationClass = 'warn');
+        }
+    }
 
     @Input() set bulletins(bulletins: BulletinEntity[]) {
         if (bulletins) {
@@ -51,6 +72,24 @@ export class FlowStatus {
     private filteredBulletins: BulletinEntity[] = initialState.controllerBulletins.bulletins;
 
     protected readonly BulletinsTip = BulletinsTip;
+
+    constructor(
+        private store: Store<NiFiState>,
+        private storage: Storage,
+        private canvasUtils: CanvasUtils
+    ) {
+        try {
+            const item: { [key: string]: boolean } | null = this.storage.getItem(
+                FlowStatus.FLOW_ANALYSIS_VISIBILITY_KEY
+            );
+            if (item) {
+                const flowAnalysisOpen = item[FlowStatus.FLOW_ANALYSIS_KEY] === true;
+                this.store.dispatch(setFlowAnalysisOpen({ flowAnalysisOpen }));
+            }
+        } catch (e) {
+            // likely could not parse item... ignoring
+        }
+    }
 
     hasTerminatedThreads(): boolean {
         return this.controllerStatus.terminatedThreadCount > 0;
@@ -69,10 +108,10 @@ export class FlowStatus {
             this.clusterSummary?.connectedToCluster === false ||
             this.clusterSummary?.connectedNodeCount != this.clusterSummary?.totalNodeCount
         ) {
-            return 'warn-color-darker';
+            return 'error-color';
         }
 
-        return 'primary-color';
+        return 'secondary-color';
     }
 
     formatActiveThreads(): string {
@@ -95,16 +134,16 @@ export class FlowStatus {
         if (this.hasTerminatedThreads()) {
             return 'warning';
         } else if (this.controllerStatus.activeThreadCount === 0) {
-            return 'zero primary-color-lighter';
+            return 'zero secondary-color';
         }
-        return 'primary-color';
+        return 'secondary-color';
     }
 
     getQueuedStyle(): string {
         if (this.controllerStatus.queued.indexOf('0 / 0') == 0) {
-            return 'zero primary-color-lighter';
+            return 'zero secondary-color';
         }
-        return 'primary-color';
+        return 'secondary-color';
     }
 
     formatValue(value: number | undefined) {
@@ -116,7 +155,7 @@ export class FlowStatus {
 
     getActiveStyle(value: number | undefined, activeStyle: string): string {
         if (value === undefined || value <= 0) {
-            return 'zero primary-color-lighter';
+            return 'zero secondary-color';
         }
         return activeStyle;
     }
@@ -131,6 +170,12 @@ export class FlowStatus {
         };
     }
 
+    getMostSevereBulletinLevel(): string | null {
+        // determine the most severe of the bulletins
+        const mostSevere = this.canvasUtils.getMostSevereBulletin(this.filteredBulletins);
+        return mostSevere ? mostSevere.bulletin.level.toLowerCase() : null;
+    }
+
     getBulletinTooltipPosition(): ConnectedPosition {
         return {
             originX: 'end',
@@ -140,5 +185,19 @@ export class FlowStatus {
             offsetX: -8,
             offsetY: 8
         };
+    }
+
+    toggleFlowAnalysis(): void {
+        const flowAnalysisOpen = !this.flowAnalysisOpen;
+        this.store.dispatch(setFlowAnalysisOpen({ flowAnalysisOpen }));
+
+        // update the current value in storage
+        let item: { [key: string]: boolean } | null = this.storage.getItem(FlowStatus.FLOW_ANALYSIS_VISIBILITY_KEY);
+        if (item == null) {
+            item = {};
+        }
+
+        item[FlowStatus.FLOW_ANALYSIS_KEY] = flowAnalysisOpen;
+        this.storage.setItem(FlowStatus.FLOW_ANALYSIS_VISIBILITY_KEY, item);
     }
 }

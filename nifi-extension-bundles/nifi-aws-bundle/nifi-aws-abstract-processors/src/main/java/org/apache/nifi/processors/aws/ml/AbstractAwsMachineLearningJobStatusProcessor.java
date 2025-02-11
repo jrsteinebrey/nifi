@@ -79,7 +79,7 @@ public abstract class AbstractAwsMachineLearningJobStatusProcessor<
             .autoTerminateDefault(true)
             .build();
     public static final String FAILURE_REASON_ATTRIBUTE = "failure.reason";
-    protected static final List<PropertyDescriptor> PROPERTIES = List.of(
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
             TASK_ID,
             MANDATORY_AWS_CREDENTIALS_PROVIDER_SERVICE,
             REGION,
@@ -92,6 +92,10 @@ public abstract class AbstractAwsMachineLearningJobStatusProcessor<
             .findAndAddModules()
             .build();
 
+    protected static List<PropertyDescriptor> getCommonPropertyDescriptors() {
+        return PROPERTY_DESCRIPTORS;
+    }
+
     @Override
     public void migrateProperties(final PropertyConfiguration config) {
         config.renameProperty("aws-region", REGION.getName());
@@ -99,10 +103,10 @@ public abstract class AbstractAwsMachineLearningJobStatusProcessor<
 
     @Override
     public Set<Relationship> getRelationships() {
-        return relationships;
+        return RELATIONSHIPS;
     }
 
-    private static final Set<Relationship> relationships = Set.of(
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
             REL_ORIGINAL,
             REL_SUCCESS,
             REL_RUNNING,
@@ -112,7 +116,7 @@ public abstract class AbstractAwsMachineLearningJobStatusProcessor<
 
     @Override
     public List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return PROPERTIES;
+        return PROPERTY_DESCRIPTORS;
     }
 
     protected FlowFile writeToFlowFile(final ProcessSession session, final FlowFile flowFile, final AwsResponse response) {

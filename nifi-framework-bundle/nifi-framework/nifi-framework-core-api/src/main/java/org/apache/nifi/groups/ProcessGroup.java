@@ -909,6 +909,15 @@ public interface ProcessGroup extends ComponentAuthorizable, Positionable, Versi
     void move(final Snippet snippet, final ProcessGroup destination);
 
     /**
+     * Adds the versioned component additions to this Process Group.
+     *
+     * @param additions the components to add
+     * @param componentIdSeed a seed value to use when generating ID's for new components
+     * @return the component additions
+     */
+    ComponentAdditions addVersionedComponents(VersionedComponentAdditions additions, String componentIdSeed);
+
+    /**
      * Updates the Process Group to match the proposed flow
      *
      * @param proposedSnapshot the proposed flow
@@ -1213,6 +1222,12 @@ public interface ProcessGroup extends ComponentAuthorizable, Positionable, Versi
      * @throws IllegalStateException if the Execution Engine cannot be set to the given value
      */
     void verifyCanSetExecutionEngine(ExecutionEngine executionEngine);
+
+    /**
+     * Verifies that the Process Group is in a state in which the Execution Engine can be changed.
+     * @throws IllegalStateException if the Execution Engine cannot be changed at this time
+     */
+    void verifyCanUpdateExecutionEngine();
 
     /**
      * Sets the maximum number on concurrent tasks that can be run in this Process Group if using the Stateless Execution Engine

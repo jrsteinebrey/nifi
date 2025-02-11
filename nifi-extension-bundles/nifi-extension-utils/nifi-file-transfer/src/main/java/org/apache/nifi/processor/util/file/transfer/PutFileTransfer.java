@@ -25,7 +25,6 @@ import org.apache.nifi.processor.ProcessSession;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.exception.FlowFileAccessException;
 import org.apache.nifi.processor.exception.ProcessException;
-import org.apache.nifi.processor.io.InputStreamCallback;
 import org.apache.nifi.util.StopWatch;
 import org.apache.nifi.util.StringUtils;
 
@@ -33,8 +32,6 @@ import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -59,20 +56,19 @@ public abstract class PutFileTransfer<T extends FileTransfer> extends AbstractPr
             .description("FlowFiles that were rejected by the destination system")
             .build();
 
-    private final Set<Relationship> relationships;
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS,
+            REL_FAILURE,
+            REL_REJECT
+    );
 
     public PutFileTransfer() {
         super();
-        final Set<Relationship> relationships = new HashSet<>();
-        relationships.add(REL_SUCCESS);
-        relationships.add(REL_FAILURE);
-        relationships.add(REL_REJECT);
-        this.relationships = Collections.unmodifiableSet(relationships);
     }
 
     @Override
     public Set<Relationship> getRelationships() {
-        return relationships;
+        return RELATIONSHIPS;
     }
 
     protected abstract T getFileTransfer(final ProcessContext context);
@@ -120,16 +116,13 @@ public abstract class PutFileTransfer<T extends FileTransfer> extends AbstractPr
                     beforePut(flowFile, context, transfer);
                     final FlowFile flowFileToTransfer = flowFile;
                     final AtomicReference<String> fullPathRef = new AtomicReference<>(null);
-                    session.read(flowFile, new InputStreamCallback() {
-                        @Override
-                        public void process(final InputStream in) throws IOException {
-                            try (final InputStream bufferedIn = new BufferedInputStream(in)) {
-                                if (workingDirPath != null && context.getProperty(FileTransfer.CREATE_DIRECTORY).asBoolean()) {
-                                    transfer.ensureDirectoryExists(flowFileToTransfer, new File(workingDirPath));
-                                }
-
-                                fullPathRef.set(transfer.put(flowFileToTransfer, workingDirPath, conflictResult.getFileName(), bufferedIn));
+                    session.read(flowFile, in -> {
+                        try (final InputStream bufferedIn = new BufferedInputStream(in)) {
+                            if (workingDirPath != null && context.getProperty(FileTransfer.CREATE_DIRECTORY).asBoolean()) {
+                                transfer.ensureDirectoryExists(flowFileToTransfer, new File(workingDirPath));
                             }
+
+                            fullPathRef.set(transfer.put(flowFileToTransfer, workingDirPath, conflictResult.getFileName(), bufferedIn));
                         }
                     });
                     afterPut(flowFile, context, transfer);
@@ -225,7 +218,6 @@ public abstract class PutFileTransfer<T extends FileTransfer> extends AbstractPr
                 logger.warn("Resolving conflict by rejecting {} due to conflicting filename with a directory or file already on remote server", flowFile);
                 break;
             case FileTransfer.CONFLICT_RESOLUTION_REPLACE:
-                transfer.deleteFile(flowFile, path, fileName);
                 destinationRelationship = REL_SUCCESS;
                 transferFile = true;
                 penalizeFile = false;

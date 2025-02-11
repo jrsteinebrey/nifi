@@ -24,7 +24,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { Store } from '@ngrx/store';
 import { NiFiState } from '../../../../state';
 import { selectRegistryClientTypes } from '../../../../state/extension-types/extension-types.selectors';
-import { YesNoDialog } from '../../../../ui/common/yes-no-dialog/yes-no-dialog.component';
+import { LARGE_DIALOG, SMALL_DIALOG, YesNoDialog } from '@nifi/shared';
 import { Router } from '@angular/router';
 import { RegistryClientService } from '../../service/registry-client.service';
 import { CreateRegistryClient } from '../../ui/registry-clients/create-registry-client/create-registry-client.component';
@@ -36,8 +36,8 @@ import { PropertyTableHelperService } from '../../../../service/property-table-h
 import * as ErrorActions from '../../../../state/error/error.actions';
 import { ErrorHelper } from '../../../../service/error-helper.service';
 import { HttpErrorResponse } from '@angular/common/http';
-import { LARGE_DIALOG, MEDIUM_DIALOG, SMALL_DIALOG } from '../../../../index';
 import { BackNavigation } from '../../../../state/navigation';
+import { ErrorContextKey } from '../../../../state/error';
 
 @Injectable()
 export class RegistryClientsEffects {
@@ -81,7 +81,7 @@ export class RegistryClientsEffects {
                 concatLatestFrom(() => this.store.select(selectRegistryClientTypes)),
                 tap(([, registryClientTypes]) => {
                     const dialogReference = this.dialog.open(CreateRegistryClient, {
-                        ...MEDIUM_DIALOG,
+                        ...LARGE_DIALOG,
                         data: {
                             registryClientTypes
                         }
@@ -150,7 +150,13 @@ export class RegistryClientsEffects {
         this.actions$.pipe(
             ofType(RegistryClientsActions.registryClientsBannerApiError),
             map((action) => action.error),
-            switchMap((error) => of(ErrorActions.addBannerError({ error })))
+            switchMap((error) =>
+                of(
+                    ErrorActions.addBannerError({
+                        errorContext: { errors: [error], context: ErrorContextKey.REGISTRY_CLIENTS }
+                    })
+                )
+            )
         )
     );
 
@@ -252,8 +258,6 @@ export class RegistryClientsEffects {
                         });
 
                     editDialogReference.afterClosed().subscribe((response) => {
-                        this.store.dispatch(ErrorActions.clearBannerErrors());
-
                         if (response != 'ROUTED') {
                             this.store.dispatch(
                                 RegistryClientsActions.selectClient({

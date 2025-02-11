@@ -17,45 +17,39 @@
 
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { PropertyItem } from '../../property-table.component';
-import { CdkDrag, CdkDragHandle } from '@angular/cdk/drag-drop';
+import { CdkDrag } from '@angular/cdk/drag-drop';
 import { AbstractControl, FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
-import { NgForOf, NgIf, NgTemplateOutlet } from '@angular/common';
-import { NifiTooltipDirective } from '../../../tooltips/nifi-tooltip.directive';
-import { AllowableValue, Parameter, PropertyDescriptor } from '../../../../../state/shared';
+import { NgForOf, NgIf } from '@angular/common';
+import { AllowableValue, ParameterConfig, PropertyDescriptor } from '../../../../../state/shared';
 import { MatOptionModule } from '@angular/material/core';
 import { MatSelectModule } from '@angular/material/select';
-import { MatTooltipModule } from '@angular/material/tooltip';
-import { TextTip } from '../../../tooltips/text-tip/text-tip.component';
+import { TextTip, NifiTooltipDirective, NiFiCommon, Parameter } from '@nifi/shared';
 import { A11yModule } from '@angular/cdk/a11y';
 import { NgxSkeletonLoaderModule } from 'ngx-skeleton-loader';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
 
 export interface AllowableValueItem extends AllowableValue {
     id: number;
+    disabled: boolean;
 }
 
 @Component({
     selector: 'combo-editor',
-    standalone: true,
     templateUrl: './combo-editor.component.html',
     imports: [
         CdkDrag,
-        CdkDragHandle,
         ReactiveFormsModule,
         MatDialogModule,
         MatInputModule,
         MatButtonModule,
         MatCheckboxModule,
-        NgTemplateOutlet,
         NifiTooltipDirective,
         MatOptionModule,
         MatSelectModule,
         NgForOf,
-        MatTooltipModule,
         NgIf,
         A11yModule,
         NgxSkeletonLoaderModule
@@ -72,22 +66,22 @@ export class ComboEditor {
 
         this.descriptor = item.descriptor;
         this.sensitive = item.descriptor.sensitive;
+        this.savedValue = item.savedValue;
 
         this.itemSet = true;
         this.initialAllowableValues();
     }
 
-    @Input() set parameters(parameters: Parameter[]) {
-        this._parameters = parameters;
-
-        this.supportsParameters = parameters != null;
+    @Input() set parameterConfig(parameterConfig: ParameterConfig) {
+        this.parameters = parameterConfig.parameters;
+        this.supportsParameters = parameterConfig.supportsParameters;
         this.initialAllowableValues();
     }
     @Input() width!: number;
     @Input() readonly: boolean = false;
 
     @Output() ok: EventEmitter<any> = new EventEmitter<any>();
-    @Output() cancel: EventEmitter<void> = new EventEmitter<void>();
+    @Output() close: EventEmitter<void> = new EventEmitter<void>();
 
     protected readonly TextTip = TextTip;
 
@@ -107,7 +101,8 @@ export class ComboEditor {
 
     itemSet = false;
     configuredValue: string | null = null;
-    _parameters!: Parameter[];
+    savedValue: string | null = null;
+    parameters: Parameter[] | null = null;
 
     constructor(
         private formBuilder: FormBuilder,
@@ -130,6 +125,7 @@ export class ComboEditor {
             if (!this.descriptor.required) {
                 const noValue: AllowableValueItem = {
                     id: i++,
+                    disabled: false,
                     displayName: 'No value',
                     value: null
                 };
@@ -146,7 +142,10 @@ export class ComboEditor {
                     (allowableValueEntity) => {
                         const allowableValue: AllowableValueItem = {
                             ...allowableValueEntity.allowableValue,
-                            id: i++
+                            id: i++,
+                            disabled:
+                                !allowableValueEntity.canRead &&
+                                allowableValueEntity.allowableValue.value !== this.savedValue
                         };
                         this.itemLookup.set(allowableValue.id, allowableValue);
 
@@ -165,6 +164,7 @@ export class ComboEditor {
                 // and hiding the parameter options select
                 const referencesParameterOption: AllowableValueItem = {
                     id: i++,
+                    disabled: false,
                     displayName: 'Reference Parameter...',
                     value: null
                 };
@@ -183,16 +183,16 @@ export class ComboEditor {
                     this.allowableValueChanged(this.referencesParametersId);
                 }
 
-                const parameters: Parameter[] = this._parameters;
-                if (parameters.length > 0) {
+                if (this.parameters !== null && this.parameters.length > 0) {
                     // capture the value of i which will be the id of the first
                     // parameter
                     this.configuredParameterId = i;
 
                     // create allowable values for each parameter
-                    parameters.forEach((parameter) => {
+                    this.parameters.forEach((parameter) => {
                         const parameterItem: AllowableValueItem = {
                             id: i++,
+                            disabled: false,
                             displayName: parameter.name,
                             value: `#{${parameter.name}}`,
                             description: parameter.description
@@ -290,6 +290,6 @@ export class ComboEditor {
     }
 
     cancelClicked(): void {
-        this.cancel.next();
+        this.close.next();
     }
 }

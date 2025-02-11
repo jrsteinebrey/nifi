@@ -30,6 +30,7 @@ import org.apache.nifi.controller.ConfigurationContext;
 import org.apache.nifi.controller.status.ConnectionStatus;
 import org.apache.nifi.controller.status.ProcessGroupStatus;
 import org.apache.nifi.controller.status.ProcessorStatus;
+import org.apache.nifi.controller.status.analytics.ConnectionStatusPredictions;
 import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.Processor;
 import org.apache.nifi.provenance.MockProvenanceEvent;
@@ -61,7 +62,6 @@ import org.apache.nifi.util.db.JdbcProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
 import java.io.IOException;
@@ -80,6 +80,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -128,11 +129,29 @@ class TestQueryNiFiReportingTask {
         root1ConnectionStatus.setId("root1");
         root1ConnectionStatus.setQueuedCount(1000);
         root1ConnectionStatus.setBackPressureObjectThreshold(1000);
+        // Set backpressure predictions
+        ConnectionStatusPredictions connectionStatusPredictions1 = new ConnectionStatusPredictions();
+        connectionStatusPredictions1.setPredictedTimeToCountBackpressureMillis(2000);
+        connectionStatusPredictions1.setPredictedTimeToBytesBackpressureMillis(2000);
+        connectionStatusPredictions1.setNextPredictedQueuedBytes(1024);
+        connectionStatusPredictions1.setNextPredictedQueuedCount(1);
+        connectionStatusPredictions1.setPredictedPercentBytes(55);
+        connectionStatusPredictions1.setPredictedPercentCount(30);
+        root1ConnectionStatus.setPredictions(connectionStatusPredictions1);
 
         ConnectionStatus root2ConnectionStatus = new ConnectionStatus();
         root2ConnectionStatus.setId("root2");
         root2ConnectionStatus.setQueuedCount(500);
         root2ConnectionStatus.setBackPressureObjectThreshold(1000);
+        // Set backpressure predictions
+        ConnectionStatusPredictions connectionStatusPredictions2 = new ConnectionStatusPredictions();
+        connectionStatusPredictions2.setPredictedTimeToBytesBackpressureMillis(2000);
+        connectionStatusPredictions2.setPredictedTimeToBytesBackpressureMillis(2000);
+        connectionStatusPredictions2.setNextPredictedQueuedBytes(1024);
+        connectionStatusPredictions2.setNextPredictedQueuedCount(1);
+        connectionStatusPredictions2.setPredictedPercentBytes(55);
+        connectionStatusPredictions2.setPredictedPercentCount(30);
+        root2ConnectionStatus.setPredictions(connectionStatusPredictions2);
 
         Collection<ConnectionStatus> rootConnectionStatuses = new ArrayList<>();
         rootConnectionStatuses.add(root1ConnectionStatus);
@@ -151,6 +170,15 @@ class TestQueryNiFiReportingTask {
         ConnectionStatus nestedConnectionStatus = new ConnectionStatus();
         nestedConnectionStatus.setId("nested");
         nestedConnectionStatus.setQueuedCount(1001);
+        // Set backpressure predictions
+        ConnectionStatusPredictions connectionStatusPredictions3 = new ConnectionStatusPredictions();
+        connectionStatusPredictions3.setPredictedTimeToBytesBackpressureMillis(2000);
+        connectionStatusPredictions3.setPredictedTimeToBytesBackpressureMillis(2000);
+        connectionStatusPredictions3.setNextPredictedQueuedBytes(1024);
+        connectionStatusPredictions3.setNextPredictedQueuedCount(1);
+        connectionStatusPredictions3.setPredictedPercentBytes(55);
+        connectionStatusPredictions3.setPredictedPercentCount(30);
+        nestedConnectionStatus.setPredictions(connectionStatusPredictions3);
         Collection<ConnectionStatus> nestedConnectionStatuses = new ArrayList<>();
         nestedConnectionStatuses.add(nestedConnectionStatus);
         groupStatus2.setConnectionStatus(nestedConnectionStatuses);
@@ -163,6 +191,15 @@ class TestQueryNiFiReportingTask {
         ConnectionStatus nestedConnectionStatus2 = new ConnectionStatus();
         nestedConnectionStatus2.setId("nested2");
         nestedConnectionStatus2.setQueuedCount(3);
+        // Set backpressure predictions
+        ConnectionStatusPredictions connectionStatusPredictions4 = new ConnectionStatusPredictions();
+        connectionStatusPredictions4.setPredictedTimeToBytesBackpressureMillis(2000);
+        connectionStatusPredictions4.setPredictedTimeToBytesBackpressureMillis(2000);
+        connectionStatusPredictions4.setNextPredictedQueuedBytes(1024);
+        connectionStatusPredictions4.setNextPredictedQueuedCount(1);
+        connectionStatusPredictions4.setPredictedPercentBytes(55);
+        connectionStatusPredictions4.setPredictedPercentCount(30);
+        nestedConnectionStatus2.setPredictions(connectionStatusPredictions4);
         Collection<ConnectionStatus> nestedConnectionStatuses2 = new ArrayList<>();
         nestedConnectionStatuses2.add(nestedConnectionStatus2);
         groupStatus3.setConnectionStatus(nestedConnectionStatuses2);
@@ -200,11 +237,11 @@ class TestQueryNiFiReportingTask {
         List<Map<String, Object>> rows = mockRecordSinkService.getRows();
         assertEquals(4, rows.size());
         // Validate the first row
-        Map<String, Object> row = rows.get(0);
+        Map<String, Object> row = rows.getFirst();
         assertEquals(3, row.size()); // Only projected 2 columns
         Object id = row.get("id");
 
-        assertTrue(id instanceof String);
+        assertInstanceOf(String.class, id);
         assertEquals("nested", id);
         assertEquals(1001, row.get("queuedCount"));
         // Validate the second row
@@ -224,6 +261,20 @@ class TestQueryNiFiReportingTask {
         id = row.get("id");
         assertEquals("nested2", id);
         assertEquals(3, row.get("queuedCount"));
+    }
+
+    @Test
+    void testConnectionStatusTableJoin() throws InitializationException {
+        final Map<PropertyDescriptor, String> properties = new HashMap<>();
+        properties.put(QueryMetricsUtil.RECORD_SINK, "mock-record-sink");
+        properties.put(QueryMetricsUtil.QUERY, "SELECT id "
+                + "FROM CONNECTION_STATUS "
+                + "JOIN CONNECTION_STATUS_PREDICTIONS ON CONNECTION_STATUS_PREDICTIONS.connectionId = CONNECTION_STATUS.id");
+        reportingTask = initTask(properties);
+        reportingTask.onTrigger(context);
+
+        List<Map<String, Object>> rows = mockRecordSinkService.getRows();
+        assertEquals(4, rows.size());
     }
 
     @Test
@@ -432,11 +483,11 @@ class TestQueryNiFiReportingTask {
 
         List<Map<String, Object>> rows = mockRecordSinkService.getRows();
         assertEquals(1, rows.size());
-        Map<String, Object> row = rows.get(0);
+        Map<String, Object> row = rows.getFirst();
         assertEquals(11, row.size());
 
-        assertTrue(row.get(MetricNames.JVM_DAEMON_THREAD_COUNT.replace(".", "_")) instanceof Integer);
-        assertTrue(row.get(MetricNames.JVM_HEAP_USAGE.replace(".", "_")) instanceof Double);
+        assertInstanceOf(Integer.class, row.get(MetricNames.JVM_DAEMON_THREAD_COUNT.replace(".", "_")));
+        assertInstanceOf(Double.class, row.get(MetricNames.JVM_HEAP_USAGE.replace(".", "_")));
     }
 
     @Test
@@ -450,8 +501,8 @@ class TestQueryNiFiReportingTask {
         List<Map<String, Object>> rows = mockRecordSinkService.getRows();
         assertEquals(4, rows.size());
         // Validate the first row
-        Map<String, Object> row = rows.get(0);
-        assertEquals(21, row.size());
+        Map<String, Object> row = rows.getFirst();
+        assertEquals(26, row.size());
         assertEquals(1L, row.get("bytesRead"));
         // Validate the second row
         row = rows.get(1);
@@ -487,7 +538,7 @@ class TestQueryNiFiReportingTask {
         List<Map<String, Object>> rows = mockRecordSinkService.getRows();
         assertEquals(1001, rows.size());
         // Validate the first row
-        Map<String, Object> row = rows.get(0);
+        Map<String, Object> row = rows.getFirst();
         assertEquals(24, row.size());
         // Verify the first row contents
         final Long firstEventId = (Long) row.get("eventId");
@@ -498,11 +549,11 @@ class TestQueryNiFiReportingTask {
         assertNull(row.get("previousContentPath"));
 
         Object o = row.get("previousAttributes");
-        assertTrue(o instanceof Map);
+        assertInstanceOf(Map.class, o);
         Map<String, String> previousAttributes = (Map<String, String>) o;
         assertEquals("A", previousAttributes.get("test.value"));
         o = row.get("updatedAttributes");
-        assertTrue(o instanceof Map);
+        assertInstanceOf(Map.class, o);
         Map<String, String> updatedAttributes = (Map<String, String>) o;
         assertEquals("B", updatedAttributes.get("test.value"));
 
@@ -544,7 +595,7 @@ class TestQueryNiFiReportingTask {
         }
 
         // Validate the first row
-        Map<String, Object> row = rows.get(0);
+        Map<String, Object> row = rows.getFirst();
         assertEquals(14, row.size());
         assertNotNull(row.get("bulletinId"));
         assertEquals("controller", row.get("bulletinCategory"));
@@ -574,7 +625,7 @@ class TestQueryNiFiReportingTask {
         List<Map<String, Object>> rows = mockRecordSinkService.getRows();
         assertEquals(1, rows.size());
         // Validate the first row
-        Map<String, Object> row = rows.get(0);
+        Map<String, Object> row = rows.getFirst();
         assertEquals(22, row.size());
         // Verify the first row contents
         assertEquals(123, row.get("actionId"));
@@ -669,13 +720,10 @@ class TestQueryNiFiReportingTask {
 
         Mockito.when(eventAccess.getProvenanceRepository()).thenReturn(mockProvenanceRepository);
         try {
-            Mockito.when(eventAccess.getProvenanceEvents(anyLong(), anyInt())).thenAnswer(new Answer<List<ProvenanceEventRecord>>() {
-                @Override
-                public List<ProvenanceEventRecord> answer(final InvocationOnMock invocation) throws Throwable {
-                    final long startEventId = invocation.getArgument(0);
-                    final int max = invocation.getArgument(1);
-                    return mockProvenanceRepository.getEvents(startEventId, max);
-                }
+            Mockito.when(eventAccess.getProvenanceEvents(anyLong(), anyInt())).thenAnswer((Answer<List<ProvenanceEventRecord>>) invocation -> {
+                final long startEventId = invocation.getArgument(0);
+                final int max = invocation.getArgument(1);
+                return mockProvenanceRepository.getEvents(startEventId, max);
             });
         } catch (final IOException e) {
             // Won't happen

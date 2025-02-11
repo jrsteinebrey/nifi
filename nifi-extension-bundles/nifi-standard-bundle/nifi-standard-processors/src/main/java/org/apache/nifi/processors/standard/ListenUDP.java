@@ -41,11 +41,9 @@ import org.apache.nifi.processor.util.listen.event.EventFactory;
 import org.apache.nifi.processor.util.listen.event.StandardEvent;
 import org.apache.nifi.processor.util.listen.event.StandardEventFactory;
 
-import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -82,15 +80,17 @@ public class ListenUDP extends AbstractListenEventBatchingProcessor<StandardEven
             .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .build();
 
+    private static final List<PropertyDescriptor> ADDITIONAL_PROPERTIES = List.of(
+            SENDING_HOST,
+            SENDING_HOST_PORT
+    );
+
     public static final String UDP_PORT_ATTR = "udp.port";
     public static final String UDP_SENDER_ATTR = "udp.sender";
 
     @Override
     protected List<PropertyDescriptor> getAdditionalProperties() {
-        return Arrays.asList(
-                SENDING_HOST,
-                SENDING_HOST_PORT
-        );
+        return ADDITIONAL_PROPERTIES;
     }
 
     @Override
@@ -120,19 +120,18 @@ public class ListenUDP extends AbstractListenEventBatchingProcessor<StandardEven
     }
 
     @Override
-    protected ChannelDispatcher createDispatcher(final ProcessContext context, final BlockingQueue<StandardEvent> events)
-            throws IOException {
+    protected ChannelDispatcher createDispatcher(final ProcessContext context, final BlockingQueue<StandardEvent> events) {
         final String sendingHost = context.getProperty(SENDING_HOST).evaluateAttributeExpressions().getValue();
         final Integer sendingHostPort = context.getProperty(SENDING_HOST_PORT).evaluateAttributeExpressions().asInteger();
         final Integer bufferSize = context.getProperty(RECV_BUFFER_SIZE).asDataSize(DataUnit.B).intValue();
         final ByteBufferSource byteBufferSource = new ByteBufferPool(context.getMaxConcurrentTasks(), bufferSize);
-        final EventFactory<StandardEvent> eventFactory = new StandardEventFactory();
+        final EventFactory<StandardEvent> eventFactory = new StandardEventFactory<>();
         return new DatagramChannelDispatcher<>(eventFactory, byteBufferSource, events, getLogger(), sendingHost, sendingHostPort);
     }
 
     @Override
     protected Map<String, String> getAttributes(final FlowFileEventBatch batch) {
-        final String sender = batch.getEvents().get(0).getSender();
+        final String sender = batch.getEvents().getFirst().getSender();
         final Map<String, String> attributes = new HashMap<>(3);
         attributes.put(UDP_SENDER_ATTR, sender);
         attributes.put(UDP_PORT_ATTR, String.valueOf(port));
@@ -141,11 +140,10 @@ public class ListenUDP extends AbstractListenEventBatchingProcessor<StandardEven
 
     @Override
     protected String getTransitUri(FlowFileEventBatch batch) {
-        final String sender = batch.getEvents().get(0).getSender();
+        final String sender = batch.getEvents().getFirst().getSender();
         final String senderHost = sender.startsWith("/") && sender.length() > 1 ? sender.substring(1) : sender;
-        final String transitUri = new StringBuilder().append("udp").append("://").append(senderHost).append(":")
+        return new StringBuilder().append("udp").append("://").append(senderHost).append(":")
                 .append(port).toString();
-        return transitUri;
     }
 
     public static class HostValidator implements Validator {

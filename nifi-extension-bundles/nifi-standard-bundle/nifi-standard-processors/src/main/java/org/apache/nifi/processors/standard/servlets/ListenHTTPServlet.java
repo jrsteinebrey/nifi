@@ -16,27 +16,6 @@
  */
 package org.apache.nifi.processors.standard.servlets;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
-import java.security.cert.X509Certificate;
-import java.util.Collection;
-import java.util.Enumeration;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.regex.Pattern;
-import java.util.zip.GZIPInputStream;
 import jakarta.servlet.AsyncContext;
 import jakarta.servlet.MultipartConfigElement;
 import jakarta.servlet.ServletConfig;
@@ -76,6 +55,28 @@ import org.apache.nifi.util.FlowFileUnpackagerV1;
 import org.apache.nifi.util.FlowFileUnpackagerV2;
 import org.apache.nifi.util.FlowFileUnpackagerV3;
 import org.eclipse.jetty.ee10.servlet.ServletContextRequest;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.cert.X509Certificate;
+import java.util.Collection;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
+import java.util.zip.GZIPInputStream;
 
 @Path("")
 public class ListenHTTPServlet extends HttpServlet {
@@ -157,22 +158,6 @@ public class ListenHTTPServlet extends HttpServlet {
         }
     }
 
-    private void notAllowed(final HttpServletRequest request, final HttpServletResponse response) throws IOException {
-        response.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED, "Method Not Allowed");
-    }
-
-    @Override
-    protected void doTrace(final HttpServletRequest request, final HttpServletResponse response) throws ServletException, IOException {
-        notAllowed(request, response);
-        logger.debug("Denying TRACE request; method not allowed.");
-    }
-
-    @Override
-    protected void doOptions(final HttpServletRequest request, final HttpServletResponse response) throws ServletException, IOException {
-        notAllowed(request, response);
-        logger.debug("Denying OPTIONS request; method not allowed.");
-    }
-
     @Override
     protected void doPost(final HttpServletRequest request, final HttpServletResponse response) throws ServletException, IOException {
 
@@ -189,7 +174,7 @@ public class ListenHTTPServlet extends HttpServlet {
             if (sessionFactory == null) {
                 try {
                     Thread.sleep(10);
-                } catch (final InterruptedException e) {
+                } catch (final InterruptedException ignored) {
                 }
             }
         } while (sessionFactory == null);
@@ -247,7 +232,7 @@ public class ListenHTTPServlet extends HttpServlet {
             if (destinationVersion != null) {
                 try {
                     protocolVersion = Integer.valueOf(destinationVersion);
-                } catch (final NumberFormatException e) {
+                } catch (final NumberFormatException ignored) {
                     // Value was invalid. Treat as if the header were missing.
                 }
             }

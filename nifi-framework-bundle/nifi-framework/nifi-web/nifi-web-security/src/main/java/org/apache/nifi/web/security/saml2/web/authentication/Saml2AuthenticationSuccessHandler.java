@@ -23,7 +23,7 @@ import org.apache.nifi.web.security.cookie.ApplicationCookieService;
 import org.apache.nifi.web.security.cookie.StandardApplicationCookieService;
 import org.apache.nifi.web.security.jwt.provider.BearerTokenProvider;
 import org.apache.nifi.web.security.token.LoginAuthenticationToken;
-import org.apache.nifi.web.util.RequestUriBuilder;
+import org.apache.nifi.web.servlet.shared.RequestUriBuilder;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
@@ -126,8 +126,7 @@ public class Saml2AuthenticationSuccessHandler extends SimpleUrlAuthenticationSu
         final Object principal = authentication.getPrincipal();
 
         final String identity;
-        if (principal instanceof Saml2AuthenticatedPrincipal) {
-            final Saml2AuthenticatedPrincipal authenticatedPrincipal = (Saml2AuthenticatedPrincipal) principal;
+        if (principal instanceof Saml2AuthenticatedPrincipal authenticatedPrincipal) {
             identity = identityConverter.convert(authenticatedPrincipal);
         } else {
             identity = authentication.getName();

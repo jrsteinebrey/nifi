@@ -26,6 +26,8 @@ import org.apache.nifi.annotation.lifecycle.OnScheduled;
 import org.apache.nifi.annotation.lifecycle.OnShutdown;
 import org.apache.nifi.annotation.lifecycle.OnStopped;
 import org.apache.nifi.annotation.lifecycle.OnUnscheduled;
+import org.apache.nifi.annotation.notification.OnPrimaryNodeStateChange;
+import org.apache.nifi.annotation.notification.PrimaryNodeState;
 import org.apache.nifi.components.DescribedValue;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.components.ValidationContext;
@@ -73,9 +75,10 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
-import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toSet;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class StandardProcessorTestRunner implements TestRunner {
 
@@ -225,7 +228,7 @@ public class StandardProcessorTestRunner implements TestRunner {
             executorService.shutdown();
             try {
                 executorService.awaitTermination(runWait, TimeUnit.MILLISECONDS);
-            } catch (final InterruptedException e1) {
+            } catch (final InterruptedException ignored) {
             }
         }
 
@@ -242,7 +245,7 @@ public class StandardProcessorTestRunner implements TestRunner {
                     unscheduledRun = true;
                     unSchedule();
                 }
-            } catch (final InterruptedException | ExecutionException e) {
+            } catch (final InterruptedException | ExecutionException ignored) {
             }
         }
 
@@ -324,22 +327,12 @@ public class StandardProcessorTestRunner implements TestRunner {
 
     @Override
     public void assertAllFlowFilesContainAttribute(final String attributeName) {
-        assertAllFlowFiles(new FlowFileValidator() {
-            @Override
-            public void assertFlowFile(FlowFile f) {
-                Assertions.assertNotNull(f.getAttribute(attributeName));
-            }
-        });
+        assertAllFlowFiles(f -> Assertions.assertNotNull(f.getAttribute(attributeName)));
     }
 
     @Override
     public void assertAllFlowFilesContainAttribute(final Relationship relationship, final String attributeName) {
-        assertAllFlowFiles(relationship, new FlowFileValidator() {
-            @Override
-            public void assertFlowFile(FlowFile f) {
-                Assertions.assertNotNull(f.getAttribute(attributeName));
-            }
-        });
+        assertAllFlowFiles(relationship, f -> Assertions.assertNotNull(f.getAttribute(attributeName)));
     }
 
     @Override
@@ -397,17 +390,17 @@ public class StandardProcessorTestRunner implements TestRunner {
 
     @Override
     public void assertTransferCount(final Relationship relationship, final int count) {
-        Assertions.assertEquals(count, getFlowFilesForRelationship(relationship).size());
+        assertEquals(count, getFlowFilesForRelationship(relationship).size());
     }
 
     @Override
     public void assertTransferCount(final String relationship, final int count) {
-        Assertions.assertEquals(count, getFlowFilesForRelationship(relationship).size());
+        assertEquals(count, getFlowFilesForRelationship(relationship).size());
     }
 
     @Override
     public void assertPenalizeCount(final int count) {
-        Assertions.assertEquals(count, getPenalizedFlowFiles().size());
+        assertEquals(count, getPenalizedFlowFiles().size());
     }
 
     @Override
@@ -422,7 +415,7 @@ public class StandardProcessorTestRunner implements TestRunner {
 
     @Override
     public void assertNotValid() {
-        Assertions.assertFalse(context.isValid(), "Processor appears to be valid but expected it to be invalid");
+        assertFalse(context.isValid(), "Processor appears to be valid but expected it to be invalid");
     }
 
     @Override
@@ -432,12 +425,12 @@ public class StandardProcessorTestRunner implements TestRunner {
 
     @Override
     public void assertQueueEmpty() {
-        Assertions.assertTrue(flowFileQueue.isEmpty());
+        assertTrue(flowFileQueue.isEmpty());
     }
 
     @Override
     public void assertQueueNotEmpty() {
-        Assertions.assertFalse(flowFileQueue.isEmpty());
+        assertFalse(flowFileQueue.isEmpty());
     }
 
     @Override
@@ -456,7 +449,7 @@ public class StandardProcessorTestRunner implements TestRunner {
 
     @Override
     public MockFlowFile enqueue(final Path path) throws IOException {
-        return enqueue(path, new HashMap<String, String>());
+        return enqueue(path, new HashMap<>());
     }
 
     @Override
@@ -472,7 +465,7 @@ public class StandardProcessorTestRunner implements TestRunner {
 
     @Override
     public MockFlowFile enqueue(final byte[] data) {
-        return enqueue(data, new HashMap<String, String>());
+        return enqueue(data, new HashMap<>());
     }
 
     @Override
@@ -493,7 +486,7 @@ public class StandardProcessorTestRunner implements TestRunner {
 
     @Override
     public MockFlowFile enqueue(final InputStream data) {
-        return enqueue(data, new HashMap<String, String>());
+        return enqueue(data, new HashMap<>());
     }
 
     @Override
@@ -655,7 +648,7 @@ public class StandardProcessorTestRunner implements TestRunner {
 
     @Override
     public void addControllerService(final String identifier, final ControllerService service) throws InitializationException {
-        addControllerService(identifier, service, new HashMap<String, String>());
+        addControllerService(identifier, service, new HashMap<>());
     }
 
     @Override
@@ -664,7 +657,7 @@ public class StandardProcessorTestRunner implements TestRunner {
         controllerServiceLoggers.put(identifier, mockComponentLog);
         final MockStateManager serviceStateManager = new MockStateManager(service);
         final MockControllerServiceInitializationContext initContext = new MockControllerServiceInitializationContext(
-                requireNonNull(service), requireNonNull(identifier), mockComponentLog, serviceStateManager, kerberosContext);
+                Objects.requireNonNull(service), Objects.requireNonNull(identifier), mockComponentLog, serviceStateManager, kerberosContext);
         controllerServiceStateManagers.put(identifier, serviceStateManager);
         initContext.addControllerServices(context);
         service.initialize(initContext);
@@ -988,6 +981,14 @@ public class StandardProcessorTestRunner implements TestRunner {
 
     @Override
     public void setPrimaryNode(boolean primaryNode) {
+        if (context.isPrimary() != primaryNode) {
+            try {
+                ReflectionUtils.invokeMethodsWithAnnotation(OnPrimaryNodeStateChange.class, processor,
+                        primaryNode ? PrimaryNodeState.ELECTED_PRIMARY_NODE : PrimaryNodeState.PRIMARY_NODE_REVOKED);
+            } catch (final Exception e) {
+                Assertions.fail("Could not invoke methods annotated with @OnPrimaryNodeStateChange annotation due to: " + e);
+            }
+        }
         context.setPrimaryNode(primaryNode);
     }
 

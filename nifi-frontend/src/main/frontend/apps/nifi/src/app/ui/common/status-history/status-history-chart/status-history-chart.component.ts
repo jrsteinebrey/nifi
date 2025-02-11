@@ -15,23 +15,22 @@
  * limitations under the License.
  */
 
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { Component, EventEmitter, Input, OnDestroy, Output } from '@angular/core';
 
 import { FieldDescriptor } from '../../../../state/status-history';
 import * as d3 from 'd3';
-import { NiFiCommon } from '../../../../service/nifi-common.service';
+import { NiFiCommon } from '@nifi/shared';
 import { Instance, NIFI_NODE_CONFIG, Stats, VisibleInstances } from '../index';
 import { debounceTime, Subject } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
     selector: 'status-history-chart',
-    standalone: true,
     imports: [],
     templateUrl: './status-history-chart.component.html',
     styleUrls: ['./status-history-chart.component.scss']
 })
-export class StatusHistoryChart {
+export class StatusHistoryChart implements OnDestroy {
     private _instances!: Instance[];
     private _selectedDescriptor: FieldDescriptor | null = null;
     private _visibleInstances: VisibleInstances = {};
@@ -179,22 +178,9 @@ export class StatusHistoryChart {
         // clear out the dom for the chart
         chartContainer.replaceChildren();
 
-        // calculate the dimensions
-        chartContainer.setAttribute('height', this.getChartMinHeight() + 'px');
-
         // determine the new width/height
-        let width = chartContainer.clientWidth - margin.left - margin.right;
-        let height = chartContainer.clientHeight - margin.top - margin.bottom;
-
-        const maxWidth = Math.min(chartContainer.clientWidth, this.getChartMaxWidth());
-        if (width > maxWidth) {
-            width = maxWidth;
-        }
-
-        const maxHeight = this.getChartMaxHeight();
-        if (height > maxHeight) {
-            height = maxHeight;
-        }
+        const width = chartContainer.clientWidth - margin.left - margin.right;
+        const height = chartContainer.clientHeight - margin.top - margin.bottom;
 
         // define the x axis for the main chart
         const x = d3.scaleTime().range([0, width]);
@@ -618,52 +604,6 @@ export class StatusHistoryChart {
         brushed();
     }
 
-    private getChartMinHeight() {
-        const chartContainer = document.getElementById('status-history-chart-container')!;
-        const controlContainer = document.getElementById('status-history-chart-control-container')!;
-
-        const marginTop: any = controlContainer.computedStyleMap().get('margin-top');
-        return (
-            chartContainer.parentElement!.clientHeight - controlContainer.clientHeight - parseInt(marginTop.value, 10)
-        );
-    }
-
-    private getChartMaxHeight() {
-        const controlContainer = document.getElementById('status-history-chart-control-container')!;
-
-        const marginTop: any = controlContainer.computedStyleMap().get('margin-top');
-        const statusHistory = document.getElementsByClassName('status-history')![0];
-        const dialogContent = statusHistory.getElementsByClassName('status-history-dialog-content')![0];
-        const descriptorContainer = document.getElementsByClassName('selected-descriptor-container')![0];
-        const dialogStyles: any = dialogContent.computedStyleMap();
-        const bodyHeight = document.body.getBoundingClientRect().height;
-
-        return (
-            bodyHeight -
-            controlContainer.clientHeight -
-            descriptorContainer.clientHeight -
-            parseInt(marginTop.value, 10) -
-            parseInt(dialogStyles.get('top')?.value) -
-            parseInt(dialogStyles.get('bottom')?.value)
-        );
-    }
-
-    private getChartMaxWidth() {
-        const statusHistory = document.getElementsByClassName('status-history')![0];
-        const dialogContent = statusHistory.getElementsByClassName('status-history-dialog-content')![0];
-        const dialogContentStyles: any = dialogContent.computedStyleMap();
-        const fullDialogStyles: any = statusHistory.computedStyleMap();
-        const bodyWidth = document.body.getBoundingClientRect().width;
-
-        return (
-            bodyWidth -
-            statusHistory.clientWidth -
-            parseInt(fullDialogStyles.get('left')?.value, 10) -
-            parseInt(dialogContentStyles.get('left')?.value) -
-            parseInt(dialogContentStyles.get('right')?.value)
-        );
-    }
-
     private getMinValue(nodeInstances: any): any {
         return d3.min(nodeInstances, (d: any) => {
             return d3.min(d.values, (s: any) => s.value);
@@ -685,5 +625,10 @@ export class StatusHistoryChart {
             });
         });
         return totalValue / snapshotCount;
+    }
+
+    ngOnDestroy(): void {
+        this.nodeStats$.complete();
+        this.clusterStats$.complete();
     }
 }

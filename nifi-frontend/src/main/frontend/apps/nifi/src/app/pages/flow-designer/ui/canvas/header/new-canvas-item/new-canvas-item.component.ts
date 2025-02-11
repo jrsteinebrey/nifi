@@ -23,15 +23,12 @@ import { createComponentRequest, setDragging } from '../../../../state/flow/flow
 import { Client } from '../../../../../../service/client.service';
 import { selectDragging } from '../../../../state/flow/flow.selectors';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ComponentType } from '../../../../../../state/shared';
 import { CanvasView } from '../../../../service/canvas-view.service';
-import { NifiTooltipDirective } from '../../../../../../ui/common/tooltips/nifi-tooltip.directive';
-import { TextTip } from '../../../../../../ui/common/tooltips/text-tip/text-tip.component';
+import { ComponentType, NifiTooltipDirective, TextTip } from '@nifi/shared';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 
 @Component({
     selector: 'new-canvas-item',
-    standalone: true,
     templateUrl: './new-canvas-item.component.html',
     imports: [CdkDrag, NifiTooltipDirective],
     styleUrls: ['./new-canvas-item.component.scss']

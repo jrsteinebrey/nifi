@@ -92,6 +92,8 @@ public enum MiNiFiProperties {
     C2_SECURITY_KEYSTORE_TYPE("c2.security.keystore.type", "JKS", false, false, VALID),
     C2_REQUEST_COMPRESSION("c2.request.compression", "none", false, true, VALID),
     C2_BOOTSTRAP_ACKNOWLEDGE_TIMEOUT("c2.bootstrap.acknowledge.timeout", "15 sec", false, true, VALID),
+    C2_FLOW_INFO_PROCESSOR_BULLETIN_LIMIT("c2.flow.info.processor.bulletin.limit", "1000", false, true, NON_NEGATIVE_INTEGER_VALIDATOR ),
+    C2_FLOW_INFO_PROCESSOR_STATUS_ENABLED("c2.flow.info.processor.status.enabled", "true", false, true, BOOLEAN_VALIDATOR),
     NIFI_MINIFI_NOTIFIER_INGESTORS("nifi.minifi.notifier.ingestors", null, false, true, VALID),
     NIFI_MINIFI_NOTIFIER_INGESTORS_FILE_CONFIG_PATH("nifi.minifi.notifier.ingestors.file.config.path", null, false, true, VALID),
     NIFI_MINIFI_NOTIFIER_INGESTORS_FILE_POLLING_PERIOD_SECONDS("nifi.minifi.notifier.ingestors.file.polling.period.seconds", null, false, true, NON_NEGATIVE_INTEGER_VALIDATOR),
@@ -121,7 +123,6 @@ public enum MiNiFiProperties {
     public static final String MINIFI_LOG_DIRECTORY = "nifi.minifi.log.directory";
     public static final String MINIFI_APP_LOG_FILE = "nifi.minifi.app.log.file";
     public static final String MINIFI_BOOTSTRAP_LOG_FILE = "nifi.minifi.bootstrap.log.file";
-    public static final String ADDITIONAL_SENSITIVE_PROPERTIES_KEY = "nifi.minifi.sensitive.props.additional.keys";
 
     private final String key;
     private final String defaultValue;
@@ -138,7 +139,7 @@ public enum MiNiFiProperties {
     }
 
     public static LinkedHashMap<String, MiNiFiProperties> sortedPropertiesByKey() {
-        return Arrays.stream(MiNiFiProperties.values())
+        return Arrays.stream(values())
             .sorted()
             .collect(Collectors.toMap(MiNiFiProperties::getKey, Function.identity(), (x, y) -> y, LinkedHashMap::new));
     }

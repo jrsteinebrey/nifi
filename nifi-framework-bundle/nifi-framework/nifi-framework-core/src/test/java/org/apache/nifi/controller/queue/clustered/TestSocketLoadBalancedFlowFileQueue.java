@@ -35,17 +35,13 @@ import org.apache.nifi.controller.repository.ContentRepository;
 import org.apache.nifi.controller.repository.FlowFileRecord;
 import org.apache.nifi.controller.repository.FlowFileRepository;
 import org.apache.nifi.controller.repository.SwapSummary;
-import org.apache.nifi.controller.repository.claim.ResourceClaimManager;
-import org.apache.nifi.controller.repository.claim.StandardResourceClaimManager;
 import org.apache.nifi.events.EventReporter;
-import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.flowfile.FlowFilePrioritizer;
 import org.apache.nifi.provenance.ProvenanceEventRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.mockito.Mockito;
-import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
 import java.io.IOException;
@@ -72,11 +68,9 @@ import static org.mockito.Mockito.when;
 
 public class TestSocketLoadBalancedFlowFileQueue {
 
-    private Connection connection;
     private FlowFileRepository flowFileRepo;
     private ContentRepository contentRepo;
     private ProvenanceEventRepository provRepo;
-    private ResourceClaimManager claimManager;
     private ClusterCoordinator clusterCoordinator;
     private MockSwapManager swapManager;
     private EventReporter eventReporter;
@@ -89,13 +83,12 @@ public class TestSocketLoadBalancedFlowFileQueue {
     @BeforeEach
     public void setup() {
         MockFlowFileRecord.resetIdGenerator();
-        connection = mock(Connection.class);
+        Connection connection = mock(Connection.class);
         when(connection.getIdentifier()).thenReturn("unit-test");
 
         flowFileRepo = mock(FlowFileRepository.class);
         contentRepo = mock(ContentRepository.class);
         provRepo = mock(ProvenanceEventRepository.class);
-        claimManager = new StandardResourceClaimManager();
         clusterCoordinator = mock(ClusterCoordinator.class);
         swapManager = new MockSwapManager();
         eventReporter = EventReporter.NO_OP;
@@ -107,28 +100,20 @@ public class TestSocketLoadBalancedFlowFileQueue {
         nodeIds.add(createNodeIdentifier("11111111-1111-1111-1111-111111111111"));
         nodeIds.add(createNodeIdentifier("22222222-2222-2222-2222-222222222222"));
 
-        Mockito.doAnswer(new Answer<Set<NodeIdentifier>>() {
-            @Override
-            public Set<NodeIdentifier> answer(InvocationOnMock invocation) throws Throwable {
-                return new HashSet<>(nodeIds);
-            }
-        }).when(clusterCoordinator).getNodeIdentifiers();
+        Mockito.doAnswer((Answer<Set<NodeIdentifier>>) invocation -> new HashSet<>(nodeIds)).when(clusterCoordinator).getNodeIdentifiers();
 
         when(clusterCoordinator.getLocalNodeIdentifier()).thenReturn(localNodeIdentifier);
 
-        doAnswer(new Answer() {
-            @Override
-            public Object answer(final InvocationOnMock invocation) throws Throwable {
-                clusterTopologyEventListener = invocation.getArgument(0);
-                return null;
-            }
+        doAnswer(invocation -> {
+            clusterTopologyEventListener = invocation.getArgument(0);
+            return null;
         }).when(clusterCoordinator).registerEventListener(Mockito.any(ClusterTopologyEventListener.class));
 
         final ProcessScheduler scheduler = mock(ProcessScheduler.class);
 
         final AsyncLoadBalanceClientRegistry registry = mock(AsyncLoadBalanceClientRegistry.class);
         queue = new SocketLoadBalancedFlowFileQueue("unit-test", scheduler, flowFileRepo, provRepo,
-            contentRepo, claimManager, clusterCoordinator, registry, swapManager, 10000, eventReporter);
+            contentRepo, clusterCoordinator, registry, swapManager, 10000, eventReporter);
     }
 
     private NodeIdentifier createNodeIdentifier() {
@@ -152,7 +137,7 @@ public class TestSocketLoadBalancedFlowFileQueue {
         assertFalse(queue.isEmpty());
         assertSame(FlowFileAvailability.HEAD_OF_QUEUE_PENALIZED, queue.getFlowFileAvailability());
 
-        // Adjust the penalty expiration so that it's not longer penalized.
+        // Adjust the penalty expiration so that it's no longer penalized.
         // This will not change the FlowFile Availability, however, because it has already stored the
         // Penalty expiration date elsewhere. To trigger that to change, we need to add something to the queue
         // or remove something. We don't want to remove the data yet, so we add a new FlowFile.
@@ -178,13 +163,10 @@ public class TestSocketLoadBalancedFlowFileQueue {
 
     @Test
     public void testPriorities() {
-        final FlowFilePrioritizer iValuePrioritizer = new FlowFilePrioritizer() {
-            @Override
-            public int compare(final FlowFile o1, final FlowFile o2) {
-                final int i1 = Integer.parseInt(o1.getAttribute("i"));
-                final int i2 = Integer.parseInt(o2.getAttribute("i"));
-                return Integer.compare(i1, i2);
-            }
+        final FlowFilePrioritizer iValuePrioritizer = (o1, o2) -> {
+            final int i1 = Integer.parseInt(o1.getAttribute("i"));
+            final int i2 = Integer.parseInt(o2.getAttribute("i"));
+            return Integer.compare(i1, i2);
         };
 
         queue.setPriorities(Collections.singletonList(iValuePrioritizer));
@@ -209,13 +191,10 @@ public class TestSocketLoadBalancedFlowFileQueue {
 
     @Test
     public void testPrioritiesWhenSetBeforeLocalNodeIdDetermined() {
-        final FlowFilePrioritizer iValuePrioritizer = new FlowFilePrioritizer() {
-            @Override
-            public int compare(final FlowFile o1, final FlowFile o2) {
-                final int i1 = Integer.parseInt(o1.getAttribute("i"));
-                final int i2 = Integer.parseInt(o2.getAttribute("i"));
-                return Integer.compare(i1, i2);
-            }
+        final FlowFilePrioritizer iValuePrioritizer = (o1, o2) -> {
+            final int i1 = Integer.parseInt(o1.getAttribute("i"));
+            final int i2 = Integer.parseInt(o2.getAttribute("i"));
+            return Integer.compare(i1, i2);
         };
 
         final ProcessScheduler scheduler = mock(ProcessScheduler.class);
@@ -223,7 +202,7 @@ public class TestSocketLoadBalancedFlowFileQueue {
         when(clusterCoordinator.getLocalNodeIdentifier()).thenReturn(null);
 
         queue = new SocketLoadBalancedFlowFileQueue("unit-test", scheduler, flowFileRepo, provRepo,
-            contentRepo, claimManager, clusterCoordinator, registry, swapManager, 10000, eventReporter);
+            contentRepo, clusterCoordinator, registry, swapManager, 10000, eventReporter);
         queue.setPriorities(Collections.singletonList(iValuePrioritizer));
 
         when(clusterCoordinator.getLocalNodeIdentifier()).thenReturn(null);
@@ -529,7 +508,7 @@ public class TestSocketLoadBalancedFlowFileQueue {
 
     @Test
     @Timeout(10)
-    public void testChangeInPartitionerTriggersRebalance() throws InterruptedException {
+    public void testChangeInPartitionerTriggersRebalance() {
         // Create partitioner that sends first 2 FlowFiles to Partition 0, next 2 to Partition 1, and then next 4 to Partition 3.
         queue.setFlowFilePartitioner(new StaticSequencePartitioner(new int[] {0, 1, 0, 1}, false));
 
@@ -549,7 +528,7 @@ public class TestSocketLoadBalancedFlowFileQueue {
 
     @Test
     @Timeout(10)
-    public void testDataInRemotePartitionForLocalIdIsMovedToLocalPartition() throws InterruptedException {
+    public void testDataInRemotePartitionForLocalIdIsMovedToLocalPartition() {
         nodeIds.clear();
 
         final NodeIdentifier id1 = createNodeIdentifier();
@@ -563,7 +542,7 @@ public class TestSocketLoadBalancedFlowFileQueue {
 
         final AsyncLoadBalanceClientRegistry registry = mock(AsyncLoadBalanceClientRegistry.class);
         queue = new SocketLoadBalancedFlowFileQueue("unit-test", mock(ProcessScheduler.class), flowFileRepo, provRepo,
-            contentRepo, claimManager, clusterCoordinator, registry, swapManager, 10000, eventReporter);
+            contentRepo, clusterCoordinator, registry, swapManager, 10000, eventReporter);
 
         queue.setFlowFilePartitioner(new RoundRobinPartitioner());
 

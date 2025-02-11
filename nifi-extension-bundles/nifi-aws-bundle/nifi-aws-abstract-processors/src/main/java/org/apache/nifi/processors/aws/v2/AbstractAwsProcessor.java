@@ -38,26 +38,29 @@ import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.processors.aws.credentials.provider.service.AWSCredentialsProviderService;
 import org.apache.nifi.proxy.ProxyConfiguration;
-import org.apache.nifi.proxy.ProxyConfigurationService;
-import org.apache.nifi.ssl.SSLContextService;
+import org.apache.nifi.proxy.ProxySpec;
+import org.apache.nifi.ssl.SSLContextProvider;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.awscore.client.builder.AwsClientBuilder;
 import software.amazon.awssdk.core.SdkClient;
 import software.amazon.awssdk.core.client.builder.SdkClientBuilder;
 import software.amazon.awssdk.core.client.config.SdkAdvancedClientOption;
 import software.amazon.awssdk.core.retry.RetryPolicy;
-import software.amazon.awssdk.http.FileStoreTlsKeyManagersProvider;
 import software.amazon.awssdk.http.TlsKeyManagersProvider;
+import software.amazon.awssdk.http.TlsTrustManagersProvider;
 import software.amazon.awssdk.regions.Region;
 
+import javax.net.ssl.KeyManager;
 import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509ExtendedKeyManager;
+import javax.net.ssl.X509TrustManager;
 import java.net.Proxy;
 import java.net.URI;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -97,7 +100,10 @@ public abstract class AbstractAwsProcessor<T extends SdkClient> extends Abstract
             .description("FlowFiles are routed to failure relationship")
             .build();
 
-    private static final Set<Relationship> relationships = Set.of(REL_SUCCESS, REL_FAILURE);
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS,
+            REL_FAILURE
+    );
 
     public static final PropertyDescriptor REGION = new PropertyDescriptor.Builder()
             .name("Region")
@@ -117,7 +123,7 @@ public abstract class AbstractAwsProcessor<T extends SdkClient> extends Abstract
             .name("SSL Context Service")
             .description("Specifies an optional SSL Context Service that, if provided, will be used to create connections")
             .required(false)
-            .identifiesControllerService(SSLContextService.class)
+            .identifiesControllerService(SSLContextProvider.class)
             .build();
 
     public static final PropertyDescriptor ENDPOINT_OVERRIDE = new PropertyDescriptor.Builder()
@@ -138,13 +144,7 @@ public abstract class AbstractAwsProcessor<T extends SdkClient> extends Abstract
         .identifiesControllerService(AWSCredentialsProviderService.class)
         .build();
 
-    public static final PropertyDescriptor PROXY_CONFIGURATION_SERVICE = new PropertyDescriptor.Builder()
-        .name("proxy-configuration-service")
-        .displayName("Proxy Configuration Service")
-        .description("Specifies the Proxy Configuration Controller Service to proxy network requests.")
-        .identifiesControllerService(ProxyConfigurationService.class)
-        .required(false)
-        .build();
+    public static final PropertyDescriptor PROXY_CONFIGURATION_SERVICE = ProxyConfiguration.createProxyConfigPropertyDescriptor(ProxySpec.HTTP, ProxySpec.HTTP_AUTH);
 
 
     protected static final String DEFAULT_USER_AGENT = "NiFi";
@@ -183,7 +183,7 @@ public abstract class AbstractAwsProcessor<T extends SdkClient> extends Abstract
 
     @Override
     public Set<Relationship> getRelationships() {
-        return relationships;
+        return RELATIONSHIPS;
     }
 
     @Override
@@ -288,22 +288,27 @@ public abstract class AbstractAwsProcessor<T extends SdkClient> extends Abstract
         httpClientConfigurer.configureBasicSettings(Duration.ofMillis(communicationsTimeout), context.getMaxConcurrentTasks());
 
         if (this.getSupportedPropertyDescriptors().contains(SSL_CONTEXT_SERVICE)) {
-            final SSLContextService sslContextService = context.getProperty(SSL_CONTEXT_SERVICE).asControllerService(SSLContextService.class);
-            if (sslContextService != null) {
-                final TrustManager[] trustManagers = new TrustManager[] {sslContextService.createTrustManager()};
-                final TlsKeyManagersProvider keyManagersProvider = FileStoreTlsKeyManagersProvider
-                        .create(Path.of(sslContextService.getKeyStoreFile()), sslContextService.getKeyStoreType(), sslContextService.getKeyStorePassword());
-                httpClientConfigurer.configureTls(trustManagers, keyManagersProvider);
+            final SSLContextProvider sslContextProvider = context.getProperty(SSL_CONTEXT_SERVICE).asControllerService(SSLContextProvider.class);
+            if (sslContextProvider != null) {
+                final X509TrustManager trustManager = sslContextProvider.createTrustManager();
+                final TrustManager[] trustManagers = new TrustManager[]{trustManager};
+                final TlsTrustManagersProvider trustManagersProvider = () -> trustManagers;
+
+                final TlsKeyManagersProvider keyManagersProvider;
+                final Optional<X509ExtendedKeyManager> keyManagerFound = sslContextProvider.createKeyManager();
+                if (keyManagerFound.isPresent()) {
+                    final X509ExtendedKeyManager keyManager = keyManagerFound.get();
+                    final KeyManager[] keyManagers = new KeyManager[]{keyManager};
+                    keyManagersProvider = () -> keyManagers;
+                } else {
+                    keyManagersProvider = null;
+                }
+
+                httpClientConfigurer.configureTls(trustManagersProvider, keyManagersProvider);
             }
         }
 
-        final ProxyConfiguration proxyConfig = ProxyConfiguration.getConfiguration(context, () -> {
-            if (context.getProperty(ProxyConfigurationService.PROXY_CONFIGURATION_SERVICE).isSet()) {
-                final ProxyConfigurationService configurationService = context.getProperty(ProxyConfigurationService.PROXY_CONFIGURATION_SERVICE).asControllerService(ProxyConfigurationService.class);
-                return configurationService.getConfiguration();
-            }
-            return ProxyConfiguration.DIRECT_CONFIGURATION;
-        });
+        final ProxyConfiguration proxyConfig = ProxyConfiguration.getConfiguration(context);
 
         if (Proxy.Type.HTTP.equals(proxyConfig.getProxyType())) {
             httpClientConfigurer.configureProxy(proxyConfig);

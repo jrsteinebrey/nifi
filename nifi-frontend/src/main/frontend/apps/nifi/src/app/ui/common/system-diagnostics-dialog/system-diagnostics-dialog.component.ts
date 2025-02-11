@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatDialogModule } from '@angular/material/dialog';
@@ -28,18 +28,14 @@ import {
 } from '../../../state/system-diagnostics/system-diagnostics.selectors';
 import { MatButtonModule } from '@angular/material/button';
 import { reloadSystemDiagnostics } from '../../../state/system-diagnostics/system-diagnostics.actions';
-import { NiFiCommon } from '../../../service/nifi-common.service';
-import { TextTip } from '../tooltips/text-tip/text-tip.component';
-import { NifiTooltipDirective } from '../tooltips/nifi-tooltip.directive';
-import { isDefinedAndNotNull } from '../../../state/shared';
+import { isDefinedAndNotNull, NiFiCommon, NifiTooltipDirective, TextTip } from '@nifi/shared';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { ErrorBanner } from '../error-banner/error-banner.component';
-import { clearBannerErrors } from '../../../state/error/error.actions';
 import { TabbedDialog } from '../tabbed-dialog/tabbed-dialog.component';
+import { ErrorContextKey } from '../../../state/error';
+import { ContextErrorBanner } from '../context-error-banner/context-error-banner.component';
 
 @Component({
     selector: 'system-diagnostics-dialog',
-    standalone: true,
     imports: [
         CommonModule,
         MatTabsModule,
@@ -47,12 +43,12 @@ import { TabbedDialog } from '../tabbed-dialog/tabbed-dialog.component';
         MatButtonModule,
         NifiTooltipDirective,
         MatProgressBarModule,
-        ErrorBanner
+        ContextErrorBanner
     ],
     templateUrl: './system-diagnostics-dialog.component.html',
     styleUrls: ['./system-diagnostics-dialog.component.scss']
 })
-export class SystemDiagnosticsDialog extends TabbedDialog implements OnInit, OnDestroy {
+export class SystemDiagnosticsDialog extends TabbedDialog implements OnInit {
     systemDiagnostics$ = this.store.select(selectSystemDiagnostics);
     loadedTimestamp$ = this.store.select(selectSystemDiagnosticsLoadedTimestamp);
     status$ = this.store.select(selectSystemDiagnosticsStatus);
@@ -75,10 +71,6 @@ export class SystemDiagnosticsDialog extends TabbedDialog implements OnInit, OnD
         });
     }
 
-    ngOnDestroy(): void {
-        this.store.dispatch(clearBannerErrors());
-    }
-
     refreshSystemDiagnostics() {
         this.store.dispatch(
             reloadSystemDiagnostics({
@@ -99,4 +91,5 @@ export class SystemDiagnosticsDialog extends TabbedDialog implements OnInit, OnD
     }
 
     protected readonly TextTip = TextTip;
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

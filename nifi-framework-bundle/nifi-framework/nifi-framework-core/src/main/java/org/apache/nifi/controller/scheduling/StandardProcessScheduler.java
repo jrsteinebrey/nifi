@@ -62,6 +62,7 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -216,8 +217,7 @@ public final class StandardProcessScheduler implements ProcessScheduler {
             try {
                 schedulingAgent.shutdown();
             } catch (final Throwable t) {
-                LOG.error("Failed to shutdown Scheduling Agent {} due to {}", schedulingAgent, t.toString());
-                LOG.error("", t);
+                LOG.error("Failed to shutdown Scheduling Agent {}", schedulingAgent, t);
             }
         }
 
@@ -227,7 +227,7 @@ public final class StandardProcessScheduler implements ProcessScheduler {
     @Override
     public void shutdownReportingTask(final ReportingTaskNode reportingTask) {
         final ConfigurationContext configContext = reportingTask.getConfigurationContext();
-        try (final NarCloseable narCloseable = NarCloseable.withComponentNarLoader(flowController.getExtensionManager(), reportingTask.getReportingTask().getClass(), reportingTask.getIdentifier())) {
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(flowController.getExtensionManager(), reportingTask.getReportingTask().getClass(), reportingTask.getIdentifier())) {
             ReflectionUtils.quietlyInvokeMethodsWithAnnotation(OnShutdown.class, reportingTask.getReportingTask(), configContext);
         }
     }
@@ -235,7 +235,7 @@ public final class StandardProcessScheduler implements ProcessScheduler {
     @Override
     public void shutdownControllerService(final ControllerServiceNode serviceNode, final ControllerServiceProvider controllerServiceProvider) {
         final Class<?> serviceImplClass = serviceNode.getControllerServiceImplementation().getClass();
-        try (final NarCloseable narCloseable = NarCloseable.withComponentNarLoader(flowController.getExtensionManager(), serviceImplClass, serviceNode.getIdentifier())) {
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(flowController.getExtensionManager(), serviceImplClass, serviceNode.getIdentifier())) {
             final ConfigurationContext configContext = new StandardConfigurationContext(serviceNode, controllerServiceProvider, null);
             ReflectionUtils.quietlyInvokeMethodsWithAnnotation(OnShutdown.class, serviceNode.getControllerServiceImplementation(), configContext);
         }
@@ -283,7 +283,7 @@ public final class StandardProcessScheduler implements ProcessScheduler {
                             return;
                         }
 
-                        try (final NarCloseable x = NarCloseable.withComponentNarLoader(flowController.getExtensionManager(), reportingTask.getClass(), reportingTask.getIdentifier())) {
+                        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(flowController.getExtensionManager(), reportingTask.getClass(), reportingTask.getIdentifier())) {
                             ReflectionUtils.invokeMethodsWithAnnotation(OnScheduled.class, reportingTask, taskNode.getConfigurationContext());
                         }
 
@@ -299,7 +299,7 @@ public final class StandardProcessScheduler implements ProcessScheduler {
                             reportingTask, e.toString(), administrativeYieldDuration, e);
 
 
-                    try (final NarCloseable x = NarCloseable.withComponentNarLoader(flowController.getExtensionManager(), reportingTask.getClass(), reportingTask.getIdentifier())) {
+                    try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(flowController.getExtensionManager(), reportingTask.getClass(), reportingTask.getIdentifier())) {
                         ReflectionUtils.quietlyInvokeMethodsWithAnnotation(OnUnscheduled.class, reportingTask, taskNode.getConfigurationContext());
                         ReflectionUtils.quietlyInvokeMethodsWithAnnotation(OnStopped.class, reportingTask, taskNode.getConfigurationContext());
                     }
@@ -332,37 +332,34 @@ public final class StandardProcessScheduler implements ProcessScheduler {
 
         final CompletableFuture<Void> future = new CompletableFuture<>();
 
-        final Runnable unscheduleReportingTaskRunnable = new Runnable() {
-            @Override
-            public void run() {
-                final ConfigurationContext configurationContext = taskNode.getConfigurationContext();
+        final Runnable unscheduleReportingTaskRunnable = () -> {
+            final ConfigurationContext configurationContext = taskNode.getConfigurationContext();
 
-                synchronized (lifecycleState) {
-                    lifecycleState.setScheduled(false);
+            synchronized (lifecycleState) {
+                lifecycleState.setScheduled(false);
 
-                    try (final NarCloseable x = NarCloseable.withComponentNarLoader(flowController.getExtensionManager(), reportingTask.getClass(), reportingTask.getIdentifier())) {
-                        ReflectionUtils.invokeMethodsWithAnnotation(OnUnscheduled.class, reportingTask, configurationContext);
-                    } catch (final Exception e) {
-                        final Throwable cause = e instanceof InvocationTargetException ? e.getCause() : e;
-                        final ComponentLog componentLog = new SimpleProcessLogger(reportingTask.getIdentifier(), reportingTask, new StandardLoggingContext(null));
-                        componentLog.error("Failed to invoke @OnUnscheduled method due to {}", cause);
+                try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(flowController.getExtensionManager(), reportingTask.getClass(), reportingTask.getIdentifier())) {
+                    ReflectionUtils.invokeMethodsWithAnnotation(OnUnscheduled.class, reportingTask, configurationContext);
+                } catch (final Exception e) {
+                    final Throwable cause = e instanceof InvocationTargetException ? e.getCause() : e;
+                    final ComponentLog componentLog = new SimpleProcessLogger(reportingTask.getIdentifier(), reportingTask, new StandardLoggingContext(null));
+                    componentLog.error("Failed to invoke @OnUnscheduled method due to {}", cause);
 
-                        LOG.error("Failed to invoke the @OnUnscheduled methods of {} due to {}; administratively yielding this ReportingTask and will attempt to schedule it again after {}",
-                                reportingTask, cause.toString(), administrativeYieldDuration);
-                        LOG.error("", cause);
-                    }
-
-                    agent.unschedule(taskNode, lifecycleState);
-
-                    // If active thread count == 1, that indicates that all execution threads have completed. We use 1 here instead of 0 because
-                    // when the Reporting Task is unscheduled, we immediately increment the thread count to 1 as an indicator that we've not completely finished.
-                    if (lifecycleState.getActiveThreadCount() == 1 && lifecycleState.mustCallOnStoppedMethods()) {
-                        ReflectionUtils.quietlyInvokeMethodsWithAnnotation(OnStopped.class, reportingTask, configurationContext);
-                        future.complete(null);
-                    }
-
-                    lifecycleState.decrementActiveThreadCount();
+                    LOG.error("Failed to invoke the @OnUnscheduled methods of {} due to {}; administratively yielding this ReportingTask and will attempt to schedule it again after {}",
+                            reportingTask, cause.toString(), administrativeYieldDuration);
+                    LOG.error("", cause);
                 }
+
+                agent.unschedule(taskNode, lifecycleState);
+
+                // If active thread count == 1, that indicates that all execution threads have completed. We use 1 here instead of 0 because
+                // when the Reporting Task is unscheduled, we immediately increment the thread count to 1 as an indicator that we've not completely finished.
+                if (lifecycleState.getActiveThreadCount() == 1 && lifecycleState.mustCallOnStoppedMethods()) {
+                    ReflectionUtils.quietlyInvokeMethodsWithAnnotation(OnStopped.class, reportingTask, configurationContext);
+                    future.complete(null);
+                }
+
+                lifecycleState.decrementActiveThreadCount();
             }
         };
 
@@ -439,18 +436,32 @@ public final class StandardProcessScheduler implements ProcessScheduler {
 
                 // Start each Processor. This won't trigger the Processor to run because the Execution Engine will be Stateless.
                 // However, it will transition its scheduled state to the appropriate value.
+                LOG.debug("All Controller Services for {} have been enabled; starting Processors and ports.", groupNode);
                 groupNode.getProcessGroup().findAllProcessors().forEach(proc -> startProcessor(proc, false));
                 groupNode.getProcessGroup().findAllInputPorts().forEach(port -> startConnectable(port));
                 groupNode.getProcessGroup().findAllOutputPorts().forEach(port -> startConnectable(port));
-                groupNode.getProcessGroup().findAllControllerServices().forEach(service -> enableControllerService(service));
 
                 getSchedulingAgent(groupNode).schedule(groupNode, lifecycleState);
                 future.complete(null);
             }
         };
 
-        LOG.info("Starting {}", groupNode);
-        groupNode.start(componentMonitoringThreadPool, callback, lifecycleState);
+        // Enable all of the Controller Services. Once they have all become enabled, we will start the Process Group
+        // We have to enable the Controller Services first in case any of the Processors use a Controller Service in its
+        // @OnScheduled method. While a new copy of the Processor is created for each Concurrent Task in the stateless group,
+        // we do not use a separate copy of the Controller Service, because doing so would cause problems for services that
+        // perform functions such as caching or connection pooling.
+        final List<CompletableFuture<?>> serviceStartFutures = new ArrayList<>();
+        for (final ControllerServiceNode serviceNode : groupNode.getProcessGroup().findAllControllerServices()) {
+            serviceStartFutures.add(enableControllerService(serviceNode));
+        }
+
+        final CompletableFuture<?> allServiceStartFutures = CompletableFuture.allOf(serviceStartFutures.toArray(new CompletableFuture<?>[0]));
+        allServiceStartFutures.thenRun(() -> {
+            LOG.info("Starting {}", groupNode);
+            groupNode.start(componentMonitoringThreadPool, callback, lifecycleState);
+        });
+
         return future;
     }
 
@@ -685,7 +696,7 @@ public final class StandardProcessScheduler implements ProcessScheduler {
 
         if (!state.isScheduled() && state.getActiveThreadCount() == 0 && state.mustCallOnStoppedMethods()) {
             final ConnectableProcessContext processContext = new ConnectableProcessContext(connectable, getStateManager(connectable.getIdentifier()));
-            try (final NarCloseable x = NarCloseable.withComponentNarLoader(flowController.getExtensionManager(), connectable.getClass(), connectable.getIdentifier())) {
+            try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(flowController.getExtensionManager(), connectable.getClass(), connectable.getIdentifier())) {
                 ReflectionUtils.quietlyInvokeMethodsWithAnnotation(OnStopped.class, connectable, processContext);
             }
         }

@@ -16,16 +16,6 @@
  */
 package org.apache.nifi.processors.standard;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
-
 import org.apache.nifi.annotation.behavior.InputRequirement;
 import org.apache.nifi.annotation.behavior.InputRequirement.Requirement;
 import org.apache.nifi.annotation.behavior.SideEffectFree;
@@ -42,11 +32,13 @@ import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.exception.ProcessException;
-import org.apache.nifi.processor.io.OutputStreamCallback;
-import org.apache.nifi.processor.io.StreamCallback;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.stream.io.StreamUtils;
 import org.apache.nifi.util.StopWatch;
+
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 @SideEffectFree
 @SupportsBatching
@@ -60,7 +52,11 @@ public class ModifyBytes extends AbstractProcessor {
             .name("success")
             .description("Processed flowfiles.")
             .build();
-    private final Set<Relationship> relationships;
+
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS
+    );
+
     public static final PropertyDescriptor START_OFFSET = new PropertyDescriptor.Builder()
             .name("Start Offset")
             .displayName("Start Offset")
@@ -87,28 +83,21 @@ public class ModifyBytes extends AbstractProcessor {
             .allowableValues("true", "false")
             .defaultValue("false")
             .build();
-    private final List<PropertyDescriptor> propDescriptors;
 
-    public ModifyBytes() {
-        HashSet<Relationship> r = new HashSet<>();
-        r.add(REL_SUCCESS);
-        relationships = Collections.unmodifiableSet(r);
-
-        ArrayList<PropertyDescriptor> pds = new ArrayList<>();
-        pds.add(START_OFFSET);
-        pds.add(END_OFFSET);
-        pds.add(REMOVE_ALL);
-        propDescriptors = Collections.unmodifiableList(pds);
-    }
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+            START_OFFSET,
+            END_OFFSET,
+            REMOVE_ALL
+    );
 
     @Override
     public Set<Relationship> getRelationships() {
-        return relationships;
+        return RELATIONSHIPS;
     }
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return propDescriptors;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -127,19 +116,11 @@ public class ModifyBytes extends AbstractProcessor {
 
         final StopWatch stopWatch = new StopWatch(true);
         if (newFileSize <= 0) {
-            ff = session.write(ff, new OutputStreamCallback() {
-                @Override
-                public void process(final OutputStream out) throws IOException {
-                    out.write(new byte[0]);
-                }
-            });
+            ff = session.write(ff, out -> out.write(new byte[0]));
         } else {
-            ff = session.write(ff, new StreamCallback() {
-                @Override
-                public void process(final InputStream in, final OutputStream out) throws IOException {
-                    in.skip(startOffset);
-                    StreamUtils.copy(in, out, newFileSize);
-                }
+            ff = session.write(ff, (in, out) -> {
+                in.skipNBytes(startOffset);
+                StreamUtils.copy(in, out, newFileSize);
             });
         }
 

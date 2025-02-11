@@ -17,7 +17,7 @@
 
 <div class="controller-service-references">
     @if (serviceReferences == null || serviceReferences.length == 0) {
-        <div class="accent-color font-medium">No referencing components</div>
+        <div class="tertiary-color font-medium">No referencing components</div>
     } @else {
         <ng-container
             *ngTemplateOutlet="
@@ -82,7 +82,7 @@
             @if (references.length > 0) {
                 <li>
                     <h4 class="primary-color">
-                        <span class="accent-color font-medium">{{ referenceTypeLabel }}</span>
+                        <span class="tertiary-color font-medium">{{ referenceTypeLabel }}</span>
                         ({{ references.length }})
                     </h4>
                     <div class="references">
@@ -98,16 +98,20 @@
                                 } @else {
                                     <div [ngClass]="getNonServiceStateIcon(reference.component)"></div>
                                 }
-                                <a (click)="goToReferencingComponentClicked($event, reference.component)">{{
-                                    reference.component.name
-                                }}</a>
+                                @if (!disabledLinks) {
+                                    <a (click)="goToReferencingComponentClicked($event, reference.component)">{{
+                                        reference.component.name
+                                    }}</a>
+                                } @else {
+                                    <div>{{ reference.component.name }}</div>
+                                }
                                 @if (hasBulletins(reference)) {
                                     <div
                                         class="pointer fa fa-sticky-note-o primary-color"
                                         nifiTooltip
                                         [tooltipComponentType]="BulletinsTip"
                                         [tooltipInputData]="getBulletinsTipData(reference)"
-                                        [delayClose]="false"></div>
+                                        [delayClose]="true"></div>
                                 }
                                 @if (hasActiveThreads(reference.component)) {
                                     <div>({{ reference.component.activeThreadCount }})</div>
@@ -121,7 +125,7 @@
         <ng-template #service let-references>
             @if (references.length > 0) {
                 <li>
-                    <h4 class="accent-color">Controller Services ({{ references.length }})</h4>
+                    <h4 class="tertiary-color">Controller Services ({{ references.length }})</h4>
                     <div class="references">
                         @for (service of references; track service) {
                             <div class="flex flex-col">
@@ -135,20 +139,27 @@
                                     } @else {
                                         <div [ngClass]="getServiceStateIcon(service.component)"></div>
                                     }
-                                    <a (click)="goToReferencingComponentClicked($event, service.component)">{{
-                                        service.component.name
-                                    }}</a>
+
+                                    @if (!disabledLinks) {
+                                        <a (click)="goToReferencingComponentClicked($event, service.component)">{{
+                                            service.component.name
+                                        }}</a>
+                                    } @else {
+                                        <div>{{ service.component.name }}</div>
+                                    }
+
                                     @if (hasBulletins(service)) {
                                         <div
                                             class="pointer fa fa-sticky-note-o primary-color"
                                             nifiTooltip
+                                            [delayClose]="true"
                                             [tooltipComponentType]="BulletinsTip"
                                             [tooltipInputData]="getBulletinsTipData(service)"></div>
                                     }
                                 </div>
                                 <div>
                                     @if (service.component.referenceCycle) {
-                                        <div class="unset surface-color">Reference cycle detected</div>
+                                        <div class="unset neutral-color">Reference cycle detected</div>
                                     } @else {
                                         @if (service.component.referencingComponents.length > 0) {
                                             <ng-container
@@ -171,11 +182,11 @@
         <ng-template #unauthorized let-references>
             @if (references.length > 0) {
                 <li>
-                    <h4 class="accent-color">Unauthorized ({{ references.length }})</h4>
+                    <h4 class="tertiary-color">Unauthorized ({{ references.length }})</h4>
                     <div class="references">
                         @for (reference of references; track reference) {
                             <div class="flex">
-                                <div class="unset surface-color">{{ reference.id }}</div>
+                                <div class="unset neutral-color">{{ reference.id }}</div>
                             </div>
                         }
                     </div>

@@ -43,7 +43,8 @@ import {
     selectControllerService
 } from '../../state/controller-services/controller-services.actions';
 import { initialState } from '../../state/controller-services/controller-services.reducer';
-import { ControllerServiceEntity, isDefinedAndNotNull } from '../../../../state/shared';
+import { ComponentType, isDefinedAndNotNull } from '@nifi/shared';
+import { ControllerServiceEntity } from '../../../../state/shared';
 import { BreadcrumbEntity } from '../../state/shared';
 import { selectCurrentUser } from '../../../../state/current-user/current-user.selectors';
 import { selectFlowConfiguration } from '../../../../state/flow-configuration/flow-configuration.selectors';
@@ -56,7 +57,8 @@ import { DocumentationRequest } from '../../../../state/documentation';
 @Component({
     selector: 'controller-services',
     templateUrl: './controller-services.component.html',
-    styleUrls: ['./controller-services.component.scss']
+    styleUrls: ['./controller-services.component.scss'],
+    standalone: false
 })
 export class ControllerServices implements OnDestroy {
     serviceState$ = this.store.select(selectControllerServicesState);
@@ -167,7 +169,8 @@ export class ControllerServices implements OnDestroy {
     viewControllerServiceDocumentation(entity: ControllerServiceEntity): void {
         const request: DocumentationRequest = {
             parameters: {
-                select: entity.component.type,
+                componentType: ComponentType.ControllerService,
+                type: entity.component.type,
                 group: entity.component.bundle.group,
                 artifact: entity.component.bundle.artifact,
                 version: entity.component.bundle.version

@@ -21,16 +21,15 @@ import { FormsModule } from '@angular/forms';
 import { MatInputModule } from '@angular/material/input';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatButtonModule } from '@angular/material/button';
-import { AsyncPipe, NgForOf, NgIf, NgTemplateOutlet } from '@angular/common';
+import { NgForOf, NgIf, NgTemplateOutlet } from '@angular/common';
 import { MatDatepickerModule } from '@angular/material/datepicker';
-import { NiFiCommon } from '../../../service/nifi-common.service';
+import { CopyDirective, NiFiCommon } from '@nifi/shared';
 import { MatTabsModule } from '@angular/material/tabs';
 import { Attribute, ProvenanceEventDialogRequest } from '../../../state/shared';
 import { TabbedDialog } from '../tabbed-dialog/tabbed-dialog.component';
 
 @Component({
     selector: 'provenance-event-dialog',
-    standalone: true,
     templateUrl: './provenance-event-dialog.component.html',
     styleUrls: ['./provenance-event-dialog.component.scss'],
     imports: [
@@ -39,12 +38,12 @@ import { TabbedDialog } from '../tabbed-dialog/tabbed-dialog.component';
         MatCheckboxModule,
         MatButtonModule,
         NgIf,
-        AsyncPipe,
         NgForOf,
         MatDatepickerModule,
         MatTabsModule,
         NgTemplateOutlet,
-        FormsModule
+        FormsModule,
+        CopyDirective
     ]
 })
 export class ProvenanceEventDialog extends TabbedDialog {

@@ -16,20 +16,6 @@
  */
 package org.apache.nifi.processors.standard;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
-
 import org.apache.nifi.annotation.behavior.DynamicProperty;
 import org.apache.nifi.annotation.behavior.InputRequirement;
 import org.apache.nifi.annotation.behavior.InputRequirement.Requirement;
@@ -51,11 +37,19 @@ import org.apache.nifi.processor.AbstractProcessor;
 import org.apache.nifi.processor.DataUnit;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
-import org.apache.nifi.processor.ProcessorInitializationContext;
 import org.apache.nifi.processor.Relationship;
-import org.apache.nifi.processor.io.OutputStreamCallback;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.scheduling.SchedulingStrategy;
+
+import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 @SupportsBatching
 @Tags({"test", "random", "generate", "load"})
@@ -83,6 +77,7 @@ public class GenerateFlowFile extends AbstractProcessor {
             .required(true)
             .defaultValue("0B")
             .addValidator(StandardValidators.DATA_SIZE_VALIDATOR)
+            .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .build();
     public static final PropertyDescriptor BATCH_SIZE = new PropertyDescriptor.Builder()
             .name("Batch Size")
@@ -132,35 +127,29 @@ public class GenerateFlowFile extends AbstractProcessor {
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
             .build();
 
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+            FILE_SIZE,
+            BATCH_SIZE,
+            DATA_FORMAT,
+            UNIQUE_FLOWFILES,
+            CUSTOM_TEXT,
+            CHARSET,
+            MIME_TYPE
+    );
+
     public static final Relationship SUCCESS = new Relationship.Builder()
             .name("success")
             .build();
 
-    private List<PropertyDescriptor> descriptors;
-    private Set<Relationship> relationships;
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            SUCCESS
+    );
 
     private static final char[] TEXT_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890!@#$%^&*()-_=+/?.,';:\"?<>\n\t ".toCharArray();
 
     @Override
-    protected void init(final ProcessorInitializationContext context) {
-        final List<PropertyDescriptor> descriptors = new ArrayList<>();
-        descriptors.add(FILE_SIZE);
-        descriptors.add(BATCH_SIZE);
-        descriptors.add(DATA_FORMAT);
-        descriptors.add(UNIQUE_FLOWFILES);
-        descriptors.add(CUSTOM_TEXT);
-        descriptors.add(CHARSET);
-        descriptors.add(MIME_TYPE);
-        this.descriptors = Collections.unmodifiableList(descriptors);
-
-        final Set<Relationship> relationships = new HashSet<>();
-        relationships.add(SUCCESS);
-        this.relationships = Collections.unmodifiableSet(relationships);
-    }
-
-    @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return descriptors;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -177,7 +166,7 @@ public class GenerateFlowFile extends AbstractProcessor {
 
     @Override
     public Set<Relationship> getRelationships() {
-        return relationships;
+        return RELATIONSHIPS;
     }
 
     @OnScheduled
@@ -205,7 +194,7 @@ public class GenerateFlowFile extends AbstractProcessor {
     }
 
     private byte[] generateData(final ProcessContext context) {
-        final int byteCount = context.getProperty(FILE_SIZE).asDataSize(DataUnit.B).intValue();
+        final int byteCount = context.getProperty(FILE_SIZE).evaluateAttributeExpressions().asDataSize(DataUnit.B).intValue();
 
         final Random random = new Random();
         final byte[] array = new byte[byteCount];
@@ -237,7 +226,7 @@ public class GenerateFlowFile extends AbstractProcessor {
         }
 
         Map<PropertyDescriptor, String> processorProperties = context.getProperties();
-        Map<String, String> generatedAttributes = new HashMap<String, String>();
+        Map<String, String> generatedAttributes = new HashMap<>();
         for (final Map.Entry<PropertyDescriptor, String> entry : processorProperties.entrySet()) {
             PropertyDescriptor property = entry.getKey();
             if (property.isDynamic() && property.isExpressionLanguageSupported()) {
@@ -254,12 +243,7 @@ public class GenerateFlowFile extends AbstractProcessor {
         FlowFile flowFile = session.create();
             final byte[] writtenData = uniqueData ? generateData(context) : data;
             if (writtenData.length > 0) {
-                flowFile = session.write(flowFile, new OutputStreamCallback() {
-                    @Override
-                    public void process(final OutputStream out) throws IOException {
-                        out.write(writtenData);
-                    }
-                });
+                flowFile = session.write(flowFile, out -> out.write(writtenData));
             }
             flowFile = session.putAllAttributes(flowFile, generatedAttributes);
 

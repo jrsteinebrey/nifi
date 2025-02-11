@@ -208,7 +208,7 @@ public abstract class AbstractComponentNode implements ComponentNode {
      *         configured set of properties
      */
     protected boolean isClasspathDifferent(final Map<PropertyDescriptor, String> properties) {
-        // If any property in the given map modifies classpath and is different than the currently configured value,
+        // If any property in the given map modifies classpath and is different from the currently configured value,
         // the given properties will require a different classpath.
         for (final Map.Entry<PropertyDescriptor, String> entry : properties.entrySet()) {
             final PropertyDescriptor descriptor = entry.getKey();
@@ -261,18 +261,17 @@ public abstract class AbstractComponentNode implements ComponentNode {
      *
      * @param properties Property Names and Values to be updated
      * @param allowRemovalOfRequiredProperties Allow Removal of Required Properties
-     * @param updatedSensitiveDynamicPropertyNames Requested Sensitive Dynamic Property Names replaces current configuration
+     * @param requestedSensitiveDynamicPropertyNames Requested Sensitive Dynamic Property Names adds to current configuration
      */
     @Override
-    public void setProperties(final Map<String, String> properties, final boolean allowRemovalOfRequiredProperties, final Set<String> updatedSensitiveDynamicPropertyNames) {
+    public void setProperties(final Map<String, String> properties, final boolean allowRemovalOfRequiredProperties, final Set<String> requestedSensitiveDynamicPropertyNames) {
         if (properties == null) {
             return;
         }
 
         lock.lock();
         try {
-            Objects.requireNonNull(updatedSensitiveDynamicPropertyNames, "Sensitive Dynamic Property Names required");
-            sensitiveDynamicPropertyNames.getAndSet(updatedSensitiveDynamicPropertyNames);
+            Objects.requireNonNull(requestedSensitiveDynamicPropertyNames, "Sensitive Dynamic Property Names required");
 
             verifyCanUpdateProperties(properties);
 
@@ -282,14 +281,16 @@ public abstract class AbstractComponentNode implements ComponentNode {
             final PropertyConfigurationMapper configurationMapper = new PropertyConfigurationMapper();
             final Map<String, PropertyConfiguration> configurationMap = configurationMapper.mapRawPropertyValuesToPropertyConfiguration(this, properties);
 
-            try (final NarCloseable narCloseable = NarCloseable.withComponentNarLoader(extensionManager, getComponent().getClass(), id)) {
+            final Set<String> removedPropertyNames = new LinkedHashSet<>();
+
+            try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(extensionManager, getComponent().getClass(), id)) {
                 boolean classpathChanged = false;
                 for (final Map.Entry<String, String> entry : properties.entrySet()) {
                     final String propertyName = entry.getKey();
 
                     // Set sensitive status on dynamic properties after getting canonical representation of Property Descriptor
                     final PropertyDescriptor componentDescriptor = getComponent().getPropertyDescriptor(propertyName);
-                    final PropertyDescriptor descriptor = componentDescriptor.isDynamic() && updatedSensitiveDynamicPropertyNames.contains(propertyName)
+                    final PropertyDescriptor descriptor = componentDescriptor.isDynamic() && requestedSensitiveDynamicPropertyNames.contains(propertyName)
                             ? new PropertyDescriptor.Builder().fromPropertyDescriptor(componentDescriptor).sensitive(true).build()
                             : componentDescriptor;
 
@@ -306,9 +307,12 @@ public abstract class AbstractComponentNode implements ComponentNode {
                     }
 
                     if (propertyName != null && entry.getValue() == null) {
-                        removeProperty(propertyName, allowRemovalOfRequiredProperties);
+                        final boolean removed = removeProperty(propertyName, allowRemovalOfRequiredProperties);
+                        if (removed) {
+                            removedPropertyNames.add(propertyName);
+                        }
                     } else if (propertyName != null) {
-                        // Use the EL-Agnostic Parameter Parser to gather the list of referenced Parameters. We do this because we want to to keep track of which parameters
+                        // Use the EL-Agnostic Parameter Parser to gather the list of referenced Parameters. We do this because we want to keep track of which parameters
                         // are referenced, regardless of whether or not they are referenced from within an EL Expression. However, we also will need to derive a different ParameterTokenList
                         // that we can provide to the PropertyConfiguration, so that when compiling the Expression Language Expressions, we are able to keep the Parameter Reference within
                         // the Expression's text.
@@ -322,6 +326,13 @@ public abstract class AbstractComponentNode implements ComponentNode {
                         setProperty(descriptor, propertyConfiguration, this.properties::get);
                     }
                 }
+
+                // Update Sensitive Dynamic Property Names
+                final Set<String> updatedSensitiveDynamicPropertyNames = new LinkedHashSet<>(sensitiveDynamicPropertyNames.get());
+                updatedSensitiveDynamicPropertyNames.addAll(requestedSensitiveDynamicPropertyNames);
+                // Remove Sensitive Dynamic Property Names for removed properties
+                updatedSensitiveDynamicPropertyNames.removeAll(removedPropertyNames);
+                sensitiveDynamicPropertyNames.getAndSet(updatedSensitiveDynamicPropertyNames);
 
                 // Determine the updated Classloader Isolation Key, if applicable.
                 final String updatedIsolationKey = determineClasloaderIsolationKey();
@@ -544,10 +555,11 @@ public abstract class AbstractComponentNode implements ComponentNode {
 
     // Keep setProperty/removeProperty private so that all calls go through setProperties
     private void setProperty(final PropertyDescriptor descriptor, final PropertyConfiguration propertyConfiguration, final Function<PropertyDescriptor, PropertyConfiguration> valueToCompareFunction) {
+        final PropertyConfiguration propertyModComparisonValue = valueToCompareFunction.apply(descriptor);
+
         // Remove current PropertyDescriptor to force updated instance references
         final PropertyConfiguration removed = properties.remove(descriptor);
 
-        final PropertyConfiguration propertyModComparisonValue = valueToCompareFunction.apply(descriptor);
         properties.put(descriptor, propertyConfiguration);
         final String effectiveValue = propertyConfiguration.getEffectiveValue(getParameterContext());
         final String resolvedValue = resolveAllowableValue(effectiveValue, descriptor);
@@ -628,7 +640,7 @@ public abstract class AbstractComponentNode implements ComponentNode {
     }
 
     public Map<PropertyDescriptor, PropertyConfiguration> getProperties() {
-        try (final NarCloseable narCloseable = NarCloseable.withComponentNarLoader(extensionManager, getComponent().getClass(), getIdentifier())) {
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(extensionManager, getComponent().getClass(), getIdentifier())) {
             final List<PropertyDescriptor> supported = getComponent().getPropertyDescriptors();
             if (supported == null || supported.isEmpty()) {
                 return Collections.unmodifiableMap(properties);
@@ -657,20 +669,8 @@ public abstract class AbstractComponentNode implements ComponentNode {
         return getPropertyValues((descriptor, config) -> getConfigValue(config, isResolveParameter(descriptor, config)));
     }
 
-    /**
-     * Converts from a Map of PropertyDescriptor to value, to a Map of property name to value
-     *
-     * @param propertyValues the property values to convert
-     * @return a Map whose keys are the names of the properties instead of descriptors
-     */
-    public Map<String, String> toPropertyNameMap(final Map<PropertyDescriptor, String> propertyValues) {
-        final Map<String, String> converted = new HashMap<>();
-        propertyValues.forEach((key, value) -> converted.put(key.getName(), value));
-        return converted;
-    }
-
     private Map<PropertyDescriptor, String> getPropertyValues(final BiFunction<PropertyDescriptor, PropertyConfiguration, String> valueFunction) {
-        try (final NarCloseable narCloseable = NarCloseable.withComponentNarLoader(extensionManager, getComponent().getClass(), getIdentifier())) {
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(extensionManager, getComponent().getClass(), getIdentifier())) {
             final List<PropertyDescriptor> supported = getComponent().getPropertyDescriptors();
 
             final Map<PropertyDescriptor, String> props = new LinkedHashMap<>();
@@ -785,11 +785,12 @@ public abstract class AbstractComponentNode implements ComponentNode {
 
         final boolean dynamicallyModifiesClasspath = descriptors.stream()
                 .anyMatch(PropertyDescriptor::isDynamicClasspathModifier);
+        final String isolationKey = determineClasloaderIsolationKey();
 
-        if (dynamicallyModifiesClasspath) {
+        if (dynamicallyModifiesClasspath || isolationKey != null) {
             final Set<URL> additionalUrls = this.getAdditionalClasspathResources(descriptors, this::getEffectivePropertyValueWithDefault);
 
-            final String newFingerprint = ClassLoaderUtils.generateAdditionalUrlsFingerprint(additionalUrls, determineClasloaderIsolationKey());
+            final String newFingerprint = ClassLoaderUtils.generateAdditionalUrlsFingerprint(additionalUrls, isolationKey);
             if (!StringUtils.equals(additionalResourcesFingerprint, newFingerprint)) {
                 setAdditionalResourcesFingerprint(newFingerprint);
                 try {
@@ -826,7 +827,7 @@ public abstract class AbstractComponentNode implements ComponentNode {
 
     @Override
     public String toString() {
-        try (final NarCloseable narCloseable = NarCloseable.withComponentNarLoader(extensionManager, getComponent().getClass(), getComponent().getIdentifier())) {
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(extensionManager, getComponent().getClass(), getComponent().getIdentifier())) {
             return getComponent().toString();
         } catch (final Throwable t) {
             return getClass().getSimpleName() + "[id=" + getIdentifier() + "]";
@@ -842,7 +843,7 @@ public abstract class AbstractComponentNode implements ComponentNode {
     @Override
     public ValidationState performValidation(final ValidationContext validationContext) {
         final Collection<ValidationResult> results;
-        try (final NarCloseable narCloseable = NarCloseable.withComponentNarLoader(extensionManager, getComponent().getClass(), getIdentifier())) {
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(extensionManager, getComponent().getClass(), getIdentifier())) {
             results = computeValidationErrors(validationContext);
         }
 
@@ -1117,7 +1118,7 @@ public abstract class AbstractComponentNode implements ComponentNode {
         if (!matchesApiByBundleCoordinates) {
             final Class<? extends ControllerService> controllerServiceImplClass = controllerServiceNode.getControllerServiceImplementation().getClass();
             logger.debug("Comparing methods from service api '{}' against service implementation '{}'",
-                    new Object[]{controllerServiceApiClass.getCanonicalName(), controllerServiceImplClass.getCanonicalName()});
+                    controllerServiceApiClass.getCanonicalName(), controllerServiceImplClass.getCanonicalName());
 
             final ControllerServiceApiMatcher controllerServiceApiMatcher = new ControllerServiceApiMatcher();
             final boolean matchesApi = controllerServiceApiMatcher.matches(controllerServiceApiClass, controllerServiceImplClass);
@@ -1191,7 +1192,7 @@ public abstract class AbstractComponentNode implements ComponentNode {
 
     @Override
     public PropertyDescriptor getPropertyDescriptor(final String name) {
-        try (final NarCloseable narCloseable = NarCloseable.withComponentNarLoader(extensionManager, getComponent().getClass(), getComponent().getIdentifier())) {
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(extensionManager, getComponent().getClass(), getComponent().getIdentifier())) {
             final PropertyDescriptor propertyDescriptor = getComponent().getPropertyDescriptor(name);
             if (propertyDescriptor.isDynamic() && isSensitiveDynamicProperty(name)) {
                 return new PropertyDescriptor.Builder().fromPropertyDescriptor(propertyDescriptor).sensitive(true).build();
@@ -1203,14 +1204,14 @@ public abstract class AbstractComponentNode implements ComponentNode {
 
     @Override
     public List<PropertyDescriptor> getPropertyDescriptors() {
-        try (final NarCloseable narCloseable = NarCloseable.withComponentNarLoader(extensionManager, getComponent().getClass(), getComponent().getIdentifier())) {
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(extensionManager, getComponent().getClass(), getComponent().getIdentifier())) {
             return getComponent().getPropertyDescriptors();
         }
     }
 
 
     protected void onPropertyModified(final PropertyDescriptor descriptor, final String oldValue, final String newValue) {
-        try (final NarCloseable narCloseable = NarCloseable.withComponentNarLoader(extensionManager, getComponent().getClass(), getComponent().getIdentifier())) {
+        try (final NarCloseable ignored = NarCloseable.withComponentNarLoader(extensionManager, getComponent().getClass(), getComponent().getIdentifier())) {
             getComponent().onPropertyModified(descriptor, oldValue, newValue);
         }
     }
@@ -1318,7 +1319,12 @@ public abstract class AbstractComponentNode implements ComponentNode {
                     isProvided = false;
                 }
 
-                final Parameter updatedParameter = new Parameter(parameterDescriptor, parameterUpdate.getPreviousValue(), null, isProvided);
+                final Parameter updatedParameter = new Parameter.Builder()
+                    .descriptor(parameterDescriptor)
+                    .value(parameterUpdate.getPreviousValue())
+                    .provided(isProvided)
+                    .build();
+
                 return Optional.of(updatedParameter);
             }
 
@@ -1382,6 +1388,11 @@ public abstract class AbstractComponentNode implements ComponentNode {
     public void resetValidationState() {
         lock.lock();
         try {
+            if (!isValidationNecessary()) {
+                logger.debug("Triggered to reset validation state of {} but will leave validation state as {} because validation is not necessary in its current state", this, validationState.get());
+                return;
+            }
+
             validationContext = null;
             validationState.set(new ValidationState(ValidationStatus.VALIDATING, Collections.emptyList()));
 

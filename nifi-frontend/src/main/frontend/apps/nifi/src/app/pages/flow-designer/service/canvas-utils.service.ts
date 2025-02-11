@@ -24,7 +24,6 @@ import {
     selectBreadcrumbs,
     selectCanvasPermissions,
     selectConnections,
-    selectCopiedSnippet,
     selectCurrentParameterContext,
     selectCurrentProcessGroupId,
     selectParentProcessGroupId
@@ -33,8 +32,7 @@ import { initialState as initialFlowState } from '../state/flow/flow.reducer';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BulletinsTip } from '../../../ui/common/tooltips/bulletins-tip/bulletins-tip.component';
 import { BreadcrumbEntity, Position } from '../state/shared';
-import { ComponentType, ParameterContextReferenceEntity, Permissions } from '../../../state/shared';
-import { NiFiCommon } from '../../../service/nifi-common.service';
+import { BulletinEntity, ComponentType, NiFiCommon, ParameterContextReferenceEntity, Permissions } from '@nifi/shared';
 import { CurrentUser } from '../../../state/current-user';
 import { initialState as initialUserState } from '../../../state/current-user/current-user.reducer';
 import { selectCurrentUser } from '../../../state/current-user/current-user.selectors';
@@ -42,8 +40,10 @@ import { FlowConfiguration } from '../../../state/flow-configuration';
 import { initialState as initialFlowConfigurationState } from '../../../state/flow-configuration/flow-configuration.reducer';
 import { selectFlowConfiguration } from '../../../state/flow-configuration/flow-configuration.selectors';
 import { CopiedSnippet, VersionControlInformation } from '../state/flow';
-import { Overlay, OverlayRef } from '@angular/cdk/overlay';
+import { Overlay, OverlayRef, PositionStrategy } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
+import { initialState as initialTransformState } from '../state/transform/transform.reducer';
+import { selectScale } from '../state/transform/transform.selectors';
 
 @Injectable({
     providedIn: 'root'
@@ -61,6 +61,7 @@ export class CanvasUtils {
     private currentParameterContext: ParameterContextReferenceEntity | null =
         initialFlowState.flow.processGroupFlow.parameterContext;
     private flowConfiguration: FlowConfiguration | null = initialFlowConfigurationState.flowConfiguration;
+    private scale: number = initialTransformState.scale;
     private connections: any[] = [];
     private breadcrumbs: BreadcrumbEntity | null = null;
     private copiedSnippet: CopiedSnippet | null = null;
@@ -132,10 +133,10 @@ export class CanvasUtils {
             });
 
         this.store
-            .select(selectCopiedSnippet)
+            .select(selectScale)
             .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((copiedSnippet) => {
-                this.copiedSnippet = copiedSnippet;
+            .subscribe((scale) => {
+                this.scale = scale;
             });
     }
 
@@ -413,6 +414,19 @@ export class CanvasUtils {
     }
 
     /**
+     * Returns whether the user can write the parent process group, false otherwise.
+     */
+    public canModifyParentGroup(): boolean {
+        if (this.breadcrumbs) {
+            if (this.breadcrumbs.parentBreadcrumb) {
+                return this.breadcrumbs.parentBreadcrumb.permissions.canWrite;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Determines whether the specified selection is configurable.
      *
      * @param selection
@@ -682,6 +696,11 @@ export class CanvasUtils {
      * @param {selection} selection
      */
     public canViewStatusHistory(selection: any): boolean {
+        // no selection is treated as the current process group
+        if (selection.empty()) {
+            return true;
+        }
+
         if (selection.size() !== 1) {
             return false;
         }
@@ -982,7 +1001,7 @@ export class CanvasUtils {
     }
 
     public isPastable(): boolean {
-        return this.canvasPermissions.canWrite && this.copiedSnippet != null;
+        return this.canvasPermissions.canWrite;
     }
 
     /**
@@ -1168,8 +1187,10 @@ export class CanvasUtils {
      */
     public canvasTooltip<C>(type: Type<C>, selection: any, tooltipData: any): void {
         let closeTimer = -1;
+        let openTimer = -1;
         const overlay = this.overlay;
         let overlayRef: OverlayRef | null = null;
+        let positionStrategy: PositionStrategy | null = null;
 
         selection
             .on('mouseenter', function (this: any) {
@@ -1178,46 +1199,63 @@ export class CanvasUtils {
                 }
 
                 if (!overlayRef) {
-                    const positionStrategy = overlay
-                        .position()
-                        .flexibleConnectedTo(d3.select(this).node())
-                        .withPositions([
-                            {
-                                originX: 'end',
-                                originY: 'bottom',
-                                overlayX: 'start',
-                                overlayY: 'top',
-                                offsetX: 8,
-                                offsetY: 8
+                    openTimer = window.setTimeout(() => {
+                        positionStrategy = overlay
+                            .position()
+                            .flexibleConnectedTo(d3.select(this).node())
+                            .withPositions([
+                                {
+                                    originX: 'end',
+                                    originY: 'bottom',
+                                    overlayX: 'start',
+                                    overlayY: 'top',
+                                    offsetX: 8,
+                                    offsetY: 8
+                                }
+                            ])
+                            .withPush(true);
+
+                        overlayRef = overlay.create({ positionStrategy });
+                        const tooltipReference = overlayRef.attach(new ComponentPortal(type));
+                        tooltipReference.setInput('data', tooltipData);
+
+                        // register mouse events
+                        tooltipReference.location.nativeElement.addEventListener('mouseenter', () => {
+                            if (closeTimer > 0) {
+                                window.clearTimeout(closeTimer);
+                                closeTimer = -1;
                             }
-                        ])
-                        .withPush(true);
+                        });
+                        tooltipReference.location.nativeElement.addEventListener('mouseleave', () => {
+                            overlayRef?.detach();
+                            overlayRef?.dispose();
+                            overlayRef = null;
 
-                    overlayRef = overlay.create({ positionStrategy });
+                            if (positionStrategy?.detach) {
+                                positionStrategy.detach();
+                            }
+                            positionStrategy?.dispose();
+                            positionStrategy = null;
+                        });
+                    }, NiFiCommon.TOOLTIP_DELAY_OPEN_MILLIS);
                 }
-
-                const tooltipReference = overlayRef.attach(new ComponentPortal(type));
-                tooltipReference.setInput('data', tooltipData);
-
-                // register mouse events
-                tooltipReference.location.nativeElement.addEventListener('mouseenter', () => {
-                    if (closeTimer > 0) {
-                        window.clearTimeout(closeTimer);
-                        closeTimer = -1;
-                    }
-                });
-                tooltipReference.location.nativeElement.addEventListener('mouseleave', () => {
-                    overlayRef?.detach();
-                    overlayRef?.dispose();
-                    overlayRef = null;
-                });
             })
             .on('mouseleave', function () {
+                if (openTimer > 0) {
+                    window.clearTimeout(openTimer);
+                    openTimer = -1;
+                }
                 closeTimer = window.setTimeout(() => {
                     overlayRef?.detach();
                     overlayRef?.dispose();
                     overlayRef = null;
-                }, 400);
+
+                    if (positionStrategy?.detach) {
+                        positionStrategy.detach();
+                    }
+                    positionStrategy?.dispose();
+                    positionStrategy = null;
+                }, NiFiCommon.TOOLTIP_DELAY_OPEN_MILLIS);
             });
     }
 
@@ -1232,29 +1270,100 @@ export class CanvasUtils {
         selection.on('mouseenter', null).on('mouseleave', null);
     }
 
+    private getHigherSeverityBulletinLevel(left: BulletinEntity, right: BulletinEntity): BulletinEntity {
+        const bulletinSeverityMap: { [key: string]: number } = {
+            TRACE: 0,
+            DEBUG: 1,
+            INFO: 2,
+            WARNING: 3,
+            ERROR: 4
+        };
+        let mappedLeft = 0;
+        let mappedRight = 0;
+        if (left.bulletin) {
+            mappedLeft = bulletinSeverityMap[left.bulletin.level.toUpperCase()] || 0;
+        }
+        if (right.bulletin) {
+            mappedRight = bulletinSeverityMap[right.bulletin.level.toUpperCase()] || 0;
+        }
+        return mappedLeft >= mappedRight ? left : right;
+    }
+
+    public getMostSevereBulletin(bulletins: BulletinEntity[]): BulletinEntity | null {
+        if (bulletins && bulletins.length > 0) {
+            const mostSevere = bulletins.reduce((previous, current) => {
+                return this.getHigherSeverityBulletinLevel(previous, current);
+            });
+            if (mostSevere.bulletin) {
+                return mostSevere;
+            }
+        }
+        return null;
+    }
+
+    private resetBulletin(selection: any) {
+        // reset the bulletin icon/background
+        selection.select('text.bulletin-icon').style('visibility', 'hidden');
+        selection.select('rect.bulletin-background').style('visibility', 'hidden');
+
+        // reset the canvas tooltip
+        this.resetCanvasTooltip(selection);
+    }
+
     /**
      * Sets the bulletin visibility and applies a tooltip if necessary.
      *
      * @param selection
      * @param bulletins
      */
-    public bulletins(selection: any, bulletins: string[]): void {
-        if (this.nifiCommon.isEmpty(bulletins)) {
-            // reset the bulletin icon/background
-            selection.select('text.bulletin-icon').style('visibility', 'hidden');
-            selection.select('rect.bulletin-background').style('visibility', 'hidden');
+    public bulletins(selection: any, bulletins: BulletinEntity[]): void {
+        let filteredBulletins: BulletinEntity[] = [];
+        if (bulletins) {
+            filteredBulletins = bulletins.filter((bulletin) => bulletin.canRead && bulletin.bulletin);
+        }
 
-            // reset the canvas tooltip
-            this.resetCanvasTooltip(selection);
+        if (this.nifiCommon.isEmpty(filteredBulletins)) {
+            this.resetBulletin(selection);
         } else {
-            // show the bulletin icon/background
-            const bulletinIcon: any = selection.select('text.bulletin-icon').style('visibility', 'visible');
-            selection.select('rect.bulletin-background').style('visibility', 'visible');
+            // determine the most severe of the bulletins
+            const mostSevere = this.getMostSevereBulletin(filteredBulletins);
 
-            // add the tooltip
-            this.canvasTooltip(BulletinsTip, bulletinIcon, {
-                bulletins: bulletins
-            });
+            // add the proper class to indicate the most severe bulletin
+            if (mostSevere) {
+                // show the bulletin icon/background
+                const bulletinIcon: any = selection.select('text.bulletin-icon').style('visibility', 'visible');
+                selection.select('rect.bulletin-background').style('visibility', 'visible');
+
+                const bulletinBackground: any = selection
+                    .select('rect.bulletin-background')
+                    .style('visibility', 'visible');
+
+                // reset any level-specifying classes that might have been there before
+                bulletinIcon
+                    .classed('trace', false)
+                    .classed('debug', false)
+                    .classed('info', false)
+                    .classed('warning', false)
+                    .classed('error', false);
+                bulletinBackground
+                    .classed('trace', false)
+                    .classed('debug', false)
+                    .classed('info', false)
+                    .classed('warning', false)
+                    .classed('error', false);
+
+                bulletinIcon.classed(mostSevere.bulletin.level.toLowerCase(), true);
+                bulletinBackground.classed(mostSevere.bulletin.level.toLowerCase(), true);
+
+                // add the tooltip
+                this.canvasTooltip(BulletinsTip, bulletinIcon, {
+                    bulletins: filteredBulletins
+                });
+            } else {
+                // This could be a case where the component producing the previous bulletins has been deleted.
+                // There is no bulletin to display if there is not a most severe, so hide the bulletin icon.
+                this.resetBulletin(selection);
+            }
         }
     }
 
@@ -1292,9 +1401,18 @@ export class CanvasUtils {
         if (!trimLength) {
             // We haven't cached the length for this text yet. Determine whether we need
             // to trim & add ellipses or not
-            if (node.getSubStringLength(0, text.length - 1) > width) {
+            const textLength = node.getSubStringLength(0, text.length - 1);
+
+            if (textLength > width) {
+                // calculate the ellipsis length since it varies greatly based on the font size
+                selection.text(String.fromCharCode(8230));
+                const ellipsisLength = node.getSubStringLength(0, 1);
+
+                // restore the actual value
+                selection.text(text);
+
                 // make some room for the ellipsis
-                width -= 5;
+                width -= ellipsisLength * 1.5;
 
                 // determine the appropriate index
                 trimLength = this.binarySearch(text.length, function (x: number) {
@@ -1331,7 +1449,104 @@ export class CanvasUtils {
     }
 
     /**
-     * Applies multiline ellipsis to the component in the specified seleciton. Text will
+     * Applies multiline ellipsis to the component in the specified selection. Text will
+     * wrap for the specified number of lines. The last line will be ellipsis if necessary.
+     *
+     * @param {selection} selection
+     * @param {number} width
+     * @param {number} height
+     * @param {string[]} lines
+     * @param {string} cacheName
+     */
+    public boundedMultilineEllipsis(selection: any, width: number, height: number, lines: string[], cacheName: string) {
+        let i = 1;
+
+        // get the appropriate position
+        const x = parseInt(selection.attr('x'), 10);
+
+        let lineCountCalculated = false;
+        let lineCount = 1;
+        let lineHeight = height;
+
+        for (const fullLine of lines) {
+            const words: string[] = fullLine.split(/\s+/).reverse();
+
+            let newLine = true;
+            let line: string[] = [];
+            let tspan = selection.append('tspan').attr('x', x).attr('width', width);
+
+            // go through each word
+            let word = words.pop();
+
+            while (word) {
+                // add the current word
+                line.push(word);
+
+                // update the label text
+                tspan.text(line.join(' '));
+
+                if (!lineCountCalculated) {
+                    const bbox = tspan.node().getBoundingClientRect();
+                    lineHeight = bbox.height / this.scale;
+
+                    lineCount = Math.floor(height / lineHeight);
+                    lineCountCalculated = true;
+                }
+
+                if (newLine) {
+                    // set the label height
+                    tspan.attr('y', lineHeight * i++);
+                    newLine = false;
+                }
+
+                // if this word caused us to go too far
+                if (tspan.node().getComputedTextLength() > width) {
+                    // remove the current word
+                    line.pop();
+
+                    // update the label text
+                    tspan.text(line.join(' '));
+
+                    // create the tspan for the next line
+                    tspan = selection.append('tspan').attr('x', x).attr('dy', '1.2em').attr('width', width);
+
+                    // if we've reached the last line, use single line ellipsis
+                    if (i++ >= lineCount) {
+                        // get the remainder using the current word and
+                        // reversing whats left
+                        const remainder = [word].concat(words.reverse());
+
+                        // apply ellipsis to the last line
+                        this.ellipsis(tspan, remainder.join(' '), cacheName);
+
+                        // we've reached the line count
+                        return;
+                    } else {
+                        tspan.text(word);
+
+                        // prep the line for the next iteration
+                        line = [word];
+                    }
+                }
+
+                // get the next word
+                word = words.pop();
+            }
+
+            if (newLine) {
+                // set the label height
+                tspan.attr('y', lineHeight * i++);
+                newLine = false;
+            }
+
+            if (i >= lineCount) {
+                return;
+            }
+        }
+    }
+
+    /**
+     * Applies multiline ellipsis to the component in the specified selection. Text will
      * wrap for the specified number of lines. The last line will be ellipsis if necessary.
      *
      * @param {selection} selection
@@ -1427,6 +1642,16 @@ export class CanvasUtils {
                         return activeThreads;
                     }
                 })
+                .attr('class', function () {
+                    switch (d.type) {
+                        case ComponentType.Processor:
+                        case ComponentType.InputPort:
+                        case ComponentType.OutputPort:
+                            return `active-thread-count tertiary-color`;
+                        default:
+                            return `active-thread-count secondary-contrast`;
+                    }
+                })
                 .style('display', 'block')
                 .each(function (this: any) {
                     const activeThreadCountText = d3.select(this);
@@ -1451,10 +1676,17 @@ export class CanvasUtils {
                     return d.dimensions.width - bBox.width - 20;
                 })
                 .attr('class', function () {
-                    if (terminatedThreads > 0) {
-                        return `active-thread-count-icon warn-color-darker`;
-                    } else {
-                        return `active-thread-count-icon primary-color`;
+                    switch (d.type) {
+                        case ComponentType.Processor:
+                        case ComponentType.InputPort:
+                        case ComponentType.OutputPort:
+                            if (terminatedThreads > 0) {
+                                return `active-thread-count-icon error-color`;
+                            } else {
+                                return `active-thread-count-icon primary-color`;
+                            }
+                        default:
+                            return `active-thread-count-icon secondary-contrast`;
                     }
                 })
                 .style('display', 'block')

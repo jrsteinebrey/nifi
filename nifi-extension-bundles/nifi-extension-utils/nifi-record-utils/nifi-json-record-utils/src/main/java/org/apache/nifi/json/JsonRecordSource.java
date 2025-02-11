@@ -35,19 +35,17 @@ public class JsonRecordSource implements RecordSource<JsonNode> {
 
     private static final boolean ALLOW_COMMENTS_ENABLED = true;
 
+    private static final TokenParserFactory defaultTokenParserFactory = new JsonParserFactory(DEFAULT_STREAM_READ_CONSTRAINTS, ALLOW_COMMENTS_ENABLED);
+
     private final JsonParser jsonParser;
     private final StartingFieldStrategy strategy;
 
     public JsonRecordSource(final InputStream in) throws IOException {
-        this(in, null, null);
+        this(in, null, null, defaultTokenParserFactory);
     }
 
-    public JsonRecordSource(final InputStream in, final StartingFieldStrategy strategy, final String startingFieldName) throws IOException {
-        this(in, strategy, startingFieldName, new JsonParserFactory());
-    }
-
-    public JsonRecordSource(final InputStream in, final StartingFieldStrategy strategy, final String startingFieldName, TokenParserFactory tokenParserFactory) throws IOException {
-        jsonParser = tokenParserFactory.getJsonParser(in, DEFAULT_STREAM_READ_CONSTRAINTS, ALLOW_COMMENTS_ENABLED);
+    public JsonRecordSource(final InputStream in, final StartingFieldStrategy strategy, final String startingFieldName, final TokenParserFactory tokenParserFactory) throws IOException {
+        jsonParser = tokenParserFactory.getJsonParser(in);
         this.strategy = strategy;
 
         if (strategy == StartingFieldStrategy.NESTED_FIELD) {

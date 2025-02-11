@@ -16,7 +16,7 @@
  */
 
 import { Component, OnDestroy, OnInit } from '@angular/core';
-import { AsyncPipe, NgOptimizedImage } from '@angular/common';
+import { NgOptimizedImage } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatMenuModule } from '@angular/material/menu';
@@ -29,9 +29,8 @@ import { selectCurrentUser } from '../../../state/current-user/current-user.sele
 import { MatButtonModule } from '@angular/material/button';
 import { NiFiState } from '../../../state';
 import { selectFlowConfiguration } from '../../../state/flow-configuration/flow-configuration.selectors';
-import { Storage } from '../../../service/storage.service';
+import { Storage, DARK_THEME, LIGHT_THEME, OS_SETTING, ThemingService } from '@nifi/shared';
 import { MatCheckboxModule } from '@angular/material/checkbox';
-import { DARK_THEME, LIGHT_THEME, OS_SETTING, ThemingService } from '../../../service/theming.service';
 import { loadFlowConfiguration } from '../../../state/flow-configuration/flow-configuration.actions';
 import {
     logout,
@@ -50,11 +49,9 @@ import { selectBackNavigation } from '../../../state/navigation/navigation.selec
 
 @Component({
     selector: 'navigation',
-    standalone: true,
     providers: [Storage],
     imports: [
         NgOptimizedImage,
-        AsyncPipe,
         MatDividerModule,
         MatMenuModule,
         RouterLink,
@@ -71,6 +68,7 @@ export class Navigation implements OnInit, OnDestroy {
     LIGHT_THEME: string = LIGHT_THEME;
     DARK_THEME: string = DARK_THEME;
     OS_SETTING: string = OS_SETTING;
+    disableAnimations: string | null;
 
     currentUser = this.store.selectSignal(selectCurrentUser);
     flowConfiguration = this.store.selectSignal(selectFlowConfiguration);
@@ -85,14 +83,13 @@ export class Navigation implements OnInit, OnDestroy {
     ) {
         this.darkModeOn = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         this.theme = this.storage.getItem('theme');
+        this.disableAnimations = this.storage.getItem('disable-animations');
 
-        if (window.matchMedia) {
-            // Watch for changes of the preference
-            window.matchMedia('(prefers-color-scheme: dark)').addListener((e) => {
-                this.darkModeOn = e.matches;
-                this.theme = this.storage.getItem('theme');
-            });
-        }
+        // Watch for changes of the preference
+        window.matchMedia('(prefers-color-scheme: dark)').addListener((e) => {
+            this.darkModeOn = e.matches;
+            this.theme = this.storage.getItem('theme');
+        });
     }
 
     ngOnInit(): void {
@@ -154,5 +151,11 @@ export class Navigation implements OnInit, OnDestroy {
         this.theme = theme;
         this.storage.setItem('theme', theme);
         this.themingService.toggleTheme(!!this.darkModeOn, theme);
+    }
+
+    toggleAnimations(disableAnimations: string = '') {
+        this.disableAnimations = disableAnimations;
+        this.storage.setItem('disable-animations', this.disableAnimations.toString());
+        window.location.reload();
     }
 }

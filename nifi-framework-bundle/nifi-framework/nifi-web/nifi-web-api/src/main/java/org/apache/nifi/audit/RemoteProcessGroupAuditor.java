@@ -49,10 +49,12 @@ import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 
 /**
  * Audits remote process group creation/removal and configuration changes.
  */
+@Service
 @Aspect
 public class RemoteProcessGroupAuditor extends NiFiAuditor {
 
@@ -64,11 +66,11 @@ public class RemoteProcessGroupAuditor extends NiFiAuditor {
     private static final Function<RemoteProcessGroupDTO, Boolean> IS_TRANSPORT_PROTOCOL_SET = dto -> dto.getTransportProtocol() != null;
 
     private static final List<ConfigurationRecorder<RemoteProcessGroup, RemoteProcessGroupDTO>> CONFIG_RECORDERS = Arrays.asList(
-            new ConfigurationRecorder<RemoteProcessGroup, RemoteProcessGroupDTO>("Communications Timeout",
+            new ConfigurationRecorder<>("Communications Timeout",
                     dto -> dto.getCommunicationsTimeout() != null, RemoteProcessGroup::getCommunicationsTimeout),
-            new ConfigurationRecorder<RemoteProcessGroup, RemoteProcessGroupDTO>("Yield Duration",
+            new ConfigurationRecorder<>("Yield Duration",
                     dto -> dto.getYieldDuration() != null, RemoteProcessGroup::getYieldDuration),
-            new ConfigurationRecorder<RemoteProcessGroup, RemoteProcessGroupDTO>("Transport Protocol",
+            new ConfigurationRecorder<>("Transport Protocol",
                     IS_TRANSPORT_PROTOCOL_SET, rpg -> rpg.getTransportProtocol().name()),
             new ConfigurationRecorder<>("Proxy Host",
                     IS_TRANSPORT_PROTOCOL_SET, RemoteProcessGroup::getProxyHost),

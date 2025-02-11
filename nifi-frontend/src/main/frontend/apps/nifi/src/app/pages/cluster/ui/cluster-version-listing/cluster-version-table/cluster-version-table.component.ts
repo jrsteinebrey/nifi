@@ -21,14 +21,13 @@ import {
     ClusterTableFilterColumn
 } from '../../common/cluster-table-filter/cluster-table-filter.component';
 import { MatTableModule } from '@angular/material/table';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
+import { NiFiCommon } from '@nifi/shared';
 import { NodeSnapshot } from '../../../../../state/system-diagnostics';
 import { ClusterTable } from '../../common/cluster-table/cluster-table.component';
 import { MatSortModule, Sort } from '@angular/material/sort';
 
 @Component({
     selector: 'cluster-version-table',
-    standalone: true,
     imports: [ClusterTableFilter, MatTableModule, MatSortModule],
     templateUrl: './cluster-version-table.component.html',
     styleUrl: './cluster-version-table.component.scss'

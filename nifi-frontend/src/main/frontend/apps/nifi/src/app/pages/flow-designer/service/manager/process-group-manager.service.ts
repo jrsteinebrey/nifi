@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { DestroyRef, inject, Injectable } from '@angular/core';
+import { Injectable, OnDestroy } from '@angular/core';
 import { CanvasState } from '../../state';
 import { Store } from '@ngrx/store';
 import { PositionBehavior } from '../behavior/position-behavior.service';
@@ -26,23 +26,22 @@ import {
     selectFlowLoadingStatus,
     selectProcessGroups,
     selectAnySelectedComponentIds,
-    selectTransitionRequired
+    selectTransitionRequired,
+    selectRegistryClients
 } from '../../state/flow/flow.selectors';
 import { CanvasUtils } from '../canvas-utils.service';
 import { enterProcessGroup } from '../../state/flow/flow.actions';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TextTip } from '../../../../ui/common/tooltips/text-tip/text-tip.component';
 import { VersionControlTip } from '../../ui/common/tooltips/version-control-tip/version-control-tip.component';
 import { Dimension } from '../../state/shared';
-import { ComponentType } from '../../../../state/shared';
-import { filter, switchMap } from 'rxjs';
-import { NiFiCommon } from '../../../../service/nifi-common.service';
+import { filter, Subject, switchMap, takeUntil } from 'rxjs';
+import { ComponentType, NiFiCommon, TextTip } from '@nifi/shared';
 
 @Injectable({
     providedIn: 'root'
 })
-export class ProcessGroupManager {
-    private destroyRef = inject(DestroyRef);
+export class ProcessGroupManager implements OnDestroy {
+    private destroyed$: Subject<boolean> = new Subject();
+    private registryClients = this.store.selectSignal(selectRegistryClients);
 
     private dimensions: Dimension = {
         width: 384,
@@ -55,7 +54,7 @@ export class ProcessGroupManager {
     private static readonly PREVIEW_NAME_LENGTH: number = 30;
 
     private processGroups: [] = [];
-    private processGroupContainer: any;
+    private processGroupContainer: any = null;
     private transitionRequired = false;
 
     constructor(
@@ -132,7 +131,7 @@ export class ProcessGroupManager {
             .attr('y', 20)
             .attr('width', 300)
             .attr('height', 16)
-            .attr('class', 'process-group-name primary-contrast');
+            .attr('class', 'process-group-name secondary-contrast');
 
         // process group name
         processGroup.append('text').attr('x', 10).attr('y', 21).attr('class', 'version-control');
@@ -254,7 +253,7 @@ export class ProcessGroupManager {
                         .append('text')
                         .attr('x', 10)
                         .attr('y', 49)
-                        .attr('class', 'process-group-transmitting process-group-contents-icon primary-color-lighter')
+                        .attr('class', 'process-group-transmitting process-group-contents-icon secondary-color')
                         .attr('font-family', 'FontAwesome')
                         .text('\uf140')
                         .append('title')
@@ -270,10 +269,7 @@ export class ProcessGroupManager {
                     details
                         .append('text')
                         .attr('y', 49)
-                        .attr(
-                            'class',
-                            'process-group-not-transmitting process-group-contents-icon primary-color-lighter'
-                        )
+                        .attr('class', 'process-group-not-transmitting process-group-contents-icon secondary-color')
                         .attr('font-family', 'flowfont')
                         .text('\ue80a')
                         .append('title')
@@ -289,7 +285,7 @@ export class ProcessGroupManager {
                     details
                         .append('text')
                         .attr('y', 49)
-                        .attr('class', 'process-group-running process-group-contents-icon primary-color-lighter')
+                        .attr('class', 'process-group-running process-group-contents-icon secondary-color')
                         .attr('font-family', 'FontAwesome')
                         .text('\uf04b')
                         .append('title')
@@ -305,7 +301,7 @@ export class ProcessGroupManager {
                     details
                         .append('text')
                         .attr('y', 49)
-                        .attr('class', 'process-group-stopped process-group-contents-icon primary-color-lighter')
+                        .attr('class', 'process-group-stopped process-group-contents-icon secondary-color')
                         .attr('font-family', 'FontAwesome')
                         .text('\uf04d')
                         .append('title')
@@ -321,7 +317,7 @@ export class ProcessGroupManager {
                     details
                         .append('text')
                         .attr('y', 49)
-                        .attr('class', 'process-group-invalid process-group-contents-icon primary-color-lighter')
+                        .attr('class', 'process-group-invalid process-group-contents-icon secondary-color')
                         .attr('font-family', 'FontAwesome')
                         .text('\uf071')
                         .append('title')
@@ -337,7 +333,7 @@ export class ProcessGroupManager {
                     details
                         .append('text')
                         .attr('y', 49)
-                        .attr('class', 'process-group-disabled process-group-contents-icon primary-color-lighter')
+                        .attr('class', 'process-group-disabled process-group-contents-icon secondary-color')
                         .attr('font-family', 'flowfont')
                         .text('\ue802')
                         .append('title')
@@ -356,7 +352,7 @@ export class ProcessGroupManager {
                         .attr('y', function () {
                             return processGroupData.dimensions.height - 7;
                         })
-                        .attr('class', 'process-group-up-to-date process-group-contents-icon primary-color-lighter')
+                        .attr('class', 'process-group-up-to-date process-group-contents-icon secondary-color')
                         .attr('font-family', 'FontAwesome')
                         .text('\uf00c')
                         .append('title')
@@ -376,10 +372,7 @@ export class ProcessGroupManager {
                         .attr('y', function () {
                             return processGroupData.dimensions.height - 7;
                         })
-                        .attr(
-                            'class',
-                            'process-group-locally-modified process-group-contents-icon primary-color-lighter'
-                        )
+                        .attr('class', 'process-group-locally-modified process-group-contents-icon secondary-color')
                         .attr('font-family', 'FontAwesome')
                         .text('\uf069')
                         .append('title')
@@ -399,7 +392,7 @@ export class ProcessGroupManager {
                         .attr('y', function () {
                             return processGroupData.dimensions.height - 7;
                         })
-                        .attr('class', 'process-group-stale process-group-contents-icon primary-color-lighter')
+                        .attr('class', 'process-group-stale process-group-contents-icon secondary-color')
                         .attr('font-family', 'FontAwesome')
                         .text('\uf0aa')
                         .append('title')
@@ -421,7 +414,7 @@ export class ProcessGroupManager {
                         })
                         .attr(
                             'class',
-                            'process-group-locally-modified-and-stale process-group-contents-icon primary-color-lighter'
+                            'process-group-locally-modified-and-stale process-group-contents-icon secondary-color'
                         )
                         .attr('font-family', 'FontAwesome')
                         .text('\uf06a')
@@ -442,7 +435,7 @@ export class ProcessGroupManager {
                         .attr('y', function () {
                             return processGroupData.dimensions.height - 7;
                         })
-                        .attr('class', 'process-group-sync-failure process-group-contents-icon primary-color-lighter')
+                        .attr('class', 'process-group-sync-failure process-group-contents-icon secondary-color')
                         .attr('font-family', 'FontAwesome')
                         .text('\uf128')
                         .append('title')
@@ -742,7 +735,7 @@ export class ProcessGroupManager {
                 // update transmitting
                 const transmitting = details
                     .select('text.process-group-transmitting')
-                    .classed('success-color', function (d: any) {
+                    .classed('success-color-variant', function (d: any) {
                         return d.permissions.canRead && d.activeRemotePortCount > 0;
                     })
                     .classed('zero', function (d: any) {
@@ -766,7 +759,7 @@ export class ProcessGroupManager {
                 // update not transmitting
                 const notTransmitting = details
                     .select('text.process-group-not-transmitting')
-                    .classed('not-transmitting surface-color', function (d: any) {
+                    .classed('not-transmitting neutral-color', function (d: any) {
                         return d.permissions.canRead && d.inactiveRemotePortCount > 0;
                     })
                     .classed('zero', function (d: any) {
@@ -798,7 +791,7 @@ export class ProcessGroupManager {
                 // update running
                 const running = details
                     .select('text.process-group-running')
-                    .classed('success-color-lighter', function (d: any) {
+                    .classed('success-color-default', function (d: any) {
                         return d.permissions.canRead && d.component.runningCount > 0;
                     })
                     .classed('zero', function (d: any) {
@@ -830,7 +823,7 @@ export class ProcessGroupManager {
                 // update stopped
                 const stopped = details
                     .select('text.process-group-stopped')
-                    .classed('warn-color-lighter', function (d: any) {
+                    .classed('error-color-variant', function (d: any) {
                         return d.permissions.canRead && d.component.stoppedCount > 0;
                     })
                     .classed('zero', function (d: any) {
@@ -894,7 +887,7 @@ export class ProcessGroupManager {
                 // update disabled
                 const disabled = details
                     .select('text.process-group-disabled')
-                    .classed('disabled surface-color', function (d: any) {
+                    .classed('disabled neutral-color', function (d: any) {
                         return d.permissions.canRead && d.component.disabledCount > 0;
                     })
                     .classed('zero', function (d: any) {
@@ -926,7 +919,7 @@ export class ProcessGroupManager {
                 // up to date current
                 const upToDate = details
                     .select('text.process-group-up-to-date')
-                    .classed('success-color', function (d: any) {
+                    .classed('success-color-variant', function (d: any) {
                         return d.permissions.canRead && d.component.upToDateCount > 0;
                     })
                     .classed('zero', function (d: any) {
@@ -950,7 +943,7 @@ export class ProcessGroupManager {
                 // update locally modified
                 const locallyModified = details
                     .select('text.process-group-locally-modified')
-                    .classed('surface-color', function (d: any) {
+                    .classed('neutral-color', function (d: any) {
                         return d.permissions.canRead && d.component.locallyModifiedCount > 0;
                     })
                     .classed('zero', function (d: any) {
@@ -982,7 +975,7 @@ export class ProcessGroupManager {
                 // update stale
                 const stale = details
                     .select('text.process-group-stale')
-                    .classed('warn-color-lighter', function (d: any) {
+                    .classed('error-color-variant', function (d: any) {
                         return d.permissions.canRead && d.component.staleCount > 0;
                     })
                     .classed('zero', function (d: any) {
@@ -1014,7 +1007,7 @@ export class ProcessGroupManager {
                 // update locally modified and stale
                 const locallyModifiedAndStale = details
                     .select('text.process-group-locally-modified-and-stale')
-                    .classed('warn-color-lighter', function (d: any) {
+                    .classed('error-color-variant', function (d: any) {
                         return d.permissions.canRead && d.component.locallyModifiedAndStaleCount > 0;
                     })
                     .classed('zero', function (d: any) {
@@ -1048,7 +1041,7 @@ export class ProcessGroupManager {
                 // update sync failure
                 const syncFailure = details
                     .select('text.process-group-sync-failure')
-                    .classed('surface-color', function (d: any) {
+                    .classed('neutral-color', function (d: any) {
                         return d.permissions.canRead && d.component.syncFailureCount > 0;
                     })
                     .classed('zero', function (d: any) {
@@ -1086,19 +1079,19 @@ export class ProcessGroupManager {
                         if (self.isUnderVersionControl(processGroupData)) {
                             const vciState = processGroupData.versionedFlowState;
                             if (vciState === 'SYNC_FAILURE') {
-                                return `version-control surface-color`;
+                                return `version-control neutral-color`;
                             } else if (vciState === 'LOCALLY_MODIFIED_AND_STALE') {
-                                return `version-control warn-color-lighter`;
+                                return `version-control error-color-variant`;
                             } else if (vciState === 'STALE') {
-                                return `version-control warn-color-lighter`;
+                                return `version-control error-color-variant`;
                             } else if (vciState === 'LOCALLY_MODIFIED') {
-                                return `version-control surface-color`;
+                                return `version-control neutral-color`;
                             } else {
                                 // up to date
-                                return `version-control success-color`;
+                                return `version-control success-color-default`;
                             }
                         } else {
-                            return 'version-control surface-contrast';
+                            return 'version-control neutral-contrast';
                         }
                     })
                     .text(function () {
@@ -1125,7 +1118,8 @@ export class ProcessGroupManager {
                     versionControl.each(function (this: any) {
                         if (self.isUnderVersionControl(processGroupData)) {
                             self.canvasUtils.canvasTooltip(VersionControlTip, d3.select(this), {
-                                versionControlInformation: processGroupData.component.versionControlInformation
+                                versionControlInformation: processGroupData.component.versionControlInformation,
+                                registryClients: self.registryClients()
                             });
                         } else {
                             self.canvasUtils.resetCanvasTooltip(d3.select(this));
@@ -1328,7 +1322,10 @@ export class ProcessGroupManager {
 
         this.store
             .select(selectProcessGroups)
-            .pipe(takeUntilDestroyed(this.destroyRef))
+            .pipe(
+                filter(() => this.processGroupContainer !== null),
+                takeUntil(this.destroyed$)
+            )
             .subscribe((processGroups) => {
                 this.set(processGroups);
             });
@@ -1337,8 +1334,9 @@ export class ProcessGroupManager {
             .select(selectFlowLoadingStatus)
             .pipe(
                 filter((status) => status === 'success'),
+                filter(() => this.processGroupContainer !== null),
                 switchMap(() => this.store.select(selectAnySelectedComponentIds)),
-                takeUntilDestroyed(this.destroyRef)
+                takeUntil(this.destroyed$)
             )
             .subscribe((selected) => {
                 this.processGroupContainer.selectAll('g.process-group').classed('selected', function (d: any) {
@@ -1348,10 +1346,19 @@ export class ProcessGroupManager {
 
         this.store
             .select(selectTransitionRequired)
-            .pipe(takeUntilDestroyed(this.destroyRef))
+            .pipe(takeUntil(this.destroyed$))
             .subscribe((transitionRequired) => {
                 this.transitionRequired = transitionRequired;
             });
+    }
+
+    public destroy(): void {
+        this.processGroupContainer = null;
+        this.destroyed$.next(true);
+    }
+
+    ngOnDestroy(): void {
+        this.destroyed$.complete();
     }
 
     private set(processGroups: any): void {

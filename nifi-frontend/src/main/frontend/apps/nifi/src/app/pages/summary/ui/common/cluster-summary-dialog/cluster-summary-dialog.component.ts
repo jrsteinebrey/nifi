@@ -24,14 +24,12 @@ import {
     MatDialogTitle
 } from '@angular/material/dialog';
 import { MatButton, MatButtonModule } from '@angular/material/button';
-import { ComponentType, isDefinedAndNotNull } from '../../../../../state/shared';
-import { ComponentContext } from '../../../../../ui/common/component-context/component-context.component';
+import { ComponentType, isDefinedAndNotNull, ComponentContext, CloseOnEscapeDialog } from '@nifi/shared';
 import {
     ClusterStatusEntity,
     ComponentClusterStatusRequest,
     ComponentClusterStatusState
 } from '../../../state/component-cluster-status';
-import { MatPaginator } from '@angular/material/paginator';
 import { map, Observable } from 'rxjs';
 import { AsyncPipe } from '@angular/common';
 import {
@@ -47,7 +45,6 @@ import { PortClusterTable } from './port-cluster-table/port-cluster-table.compon
 import { RemoteProcessGroupClusterTable } from './remote-process-group-cluster-table/remote-process-group-cluster-table.component';
 import { ConnectionClusterTable } from './connection-cluster-table/connection-cluster-table.component';
 import { ProcessGroupClusterTable } from './process-group-cluster-table/process-group-cluster-table.component';
-import { CloseOnEscapeDialog } from '../../../../../ui/common/close-on-escape-dialog/close-on-escape-dialog.component';
 
 interface Helper {
     getName: () => string;
@@ -55,7 +52,6 @@ interface Helper {
 
 @Component({
     selector: 'cluster-summary-dialog',
-    standalone: true,
     imports: [
         MatDialogTitle,
         MatDialogContent,
@@ -63,7 +59,6 @@ interface Helper {
         MatDialogActions,
         MatDialogClose,
         ComponentContext,
-        MatPaginator,
         AsyncPipe,
         ProcessorClusterTable,
         PortClusterTable,
@@ -76,7 +71,6 @@ interface Helper {
     styleUrl: './cluster-summary-dialog.component.scss'
 })
 export class ClusterSummaryDialog extends CloseOnEscapeDialog {
-    private _componentType: ComponentType = ComponentType.Processor;
     loading$: Observable<boolean> = this.store
         .select(selectComponentClusterStatusLoadingStatus)
         .pipe(map((status) => status === 'loading'));

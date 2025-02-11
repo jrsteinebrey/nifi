@@ -18,10 +18,9 @@
 import { AfterViewInit, Component, DestroyRef, EventEmitter, inject, Input, Output, ViewChild } from '@angular/core';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatSortModule, Sort } from '@angular/material/sort';
-import { TextTip } from '../../../../../ui/common/tooltips/text-tip/text-tip.component';
+import { TextTip, NiFiCommon } from '@nifi/shared';
 import { BulletinsTip } from '../../../../../ui/common/tooltips/bulletins-tip/bulletins-tip.component';
 import { ValidationErrorsTip } from '../../../../../ui/common/tooltips/validation-errors-tip/validation-errors-tip.component';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatOptionModule } from '@angular/material/core';
@@ -30,7 +29,6 @@ import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { AsyncPipe } from '@angular/common';
 import { debounceTime, Observable, tap } from 'rxjs';
 import { ProvenanceEventSummary } from '../../../../../state/shared';
-import { RouterLink } from '@angular/router';
 import { NgxSkeletonLoaderModule } from 'ngx-skeleton-loader';
 import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
 import { Lineage, LineageRequest } from '../../../state/lineage';
@@ -38,14 +36,14 @@ import { LineageComponent } from './lineage/lineage.component';
 import { GoToProvenanceEventSourceRequest, ProvenanceEventRequest } from '../../../state/provenance-event-listing';
 import { MatSliderModule } from '@angular/material/slider';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ErrorBanner } from '../../../../../ui/common/error-banner/error-banner.component';
 import { ClusterSummary } from '../../../../../state/cluster-summary';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenu, MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
+import { ContextErrorBanner } from '../../../../../ui/common/context-error-banner/context-error-banner.component';
+import { ErrorContextKey } from '../../../../../state/error';
 
 @Component({
     selector: 'provenance-event-table',
-    standalone: true,
     templateUrl: './provenance-event-table.component.html',
     imports: [
         MatTableModule,
@@ -55,17 +53,16 @@ import { MatMenu, MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
         MatOptionModule,
         MatSelectModule,
         ReactiveFormsModule,
-        RouterLink,
         NgxSkeletonLoaderModule,
         AsyncPipe,
         MatPaginatorModule,
         LineageComponent,
         MatSliderModule,
-        ErrorBanner,
         MatButtonModule,
         MatMenu,
         MatMenuItem,
-        MatMenuTrigger
+        MatMenuTrigger,
+        ContextErrorBanner
     ],
     styleUrls: ['./provenance-event-table.component.scss']
 })
@@ -403,4 +400,6 @@ export class ProvenanceEventTable implements AfterViewInit {
     refreshClicked(): void {
         this.resubmitProvenanceQuery.next();
     }
+
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

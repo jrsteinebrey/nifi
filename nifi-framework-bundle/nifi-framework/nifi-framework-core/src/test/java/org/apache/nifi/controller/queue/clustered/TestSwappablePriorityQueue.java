@@ -29,11 +29,14 @@ import org.apache.nifi.controller.repository.FlowFileRecord;
 import org.apache.nifi.events.EventReporter;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.flowfile.FlowFilePrioritizer;
+import org.apache.nifi.processor.FlowFileFilter;
 import org.apache.nifi.util.StringUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.mockito.Mockito;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -54,6 +57,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 public class TestSwappablePriorityQueue {
+    private static final Logger logger = LoggerFactory.getLogger(TestSwappablePriorityQueue.class);
 
     private MockSwapManager swapManager;
     private final List<String> events = new ArrayList<>();
@@ -79,13 +83,10 @@ public class TestSwappablePriorityQueue {
 
     @Test
     public void testPrioritizersBigQueue() {
-        final FlowFilePrioritizer iAttributePrioritizer = new FlowFilePrioritizer() {
-            @Override
-            public int compare(final FlowFile o1, final FlowFile o2) {
-                final int i1 = Integer.parseInt(o1.getAttribute("i"));
-                final int i2 = Integer.parseInt(o2.getAttribute("i"));
-                return Integer.compare(i1, i2);
-            }
+        final FlowFilePrioritizer iAttributePrioritizer = (o1, o2) -> {
+            final int i1 = Integer.parseInt(o1.getAttribute("i"));
+            final int i2 = Integer.parseInt(o2.getAttribute("i"));
+            return Integer.compare(i1, i2);
         };
 
         queue.setPriorities(Collections.singletonList(iAttributePrioritizer));
@@ -124,19 +125,16 @@ public class TestSwappablePriorityQueue {
 
     @Test
     public void testOrderingWithCornerCases() {
-        final FlowFilePrioritizer iAttributePrioritizer = new FlowFilePrioritizer() {
-            @Override
-            public int compare(final FlowFile o1, final FlowFile o2) {
-                final int i1 = Integer.parseInt(o1.getAttribute("i"));
-                final int i2 = Integer.parseInt(o2.getAttribute("i"));
-                return Integer.compare(i1, i2);
-            }
+        final FlowFilePrioritizer iAttributePrioritizer = (o1, o2) -> {
+            final int i1 = Integer.parseInt(o1.getAttribute("i"));
+            final int i2 = Integer.parseInt(o2.getAttribute("i"));
+            return Integer.compare(i1, i2);
         };
 
         queue.setPriorities(Collections.singletonList(iAttributePrioritizer));
 
         for (final int queueSize : new int[] {1, 9999, 10_000, 10_001, 19_999, 20_000, 20_001}) {
-            System.out.println("Queue Size: " + queueSize);
+            logger.info("Queue Size: {}", queueSize);
 
             for (int i = 0; i < queueSize; i++) {
                 final MockFlowFileRecord flowFile = new MockFlowFileRecord(Map.of("i", String.valueOf(i)), i);
@@ -154,13 +152,10 @@ public class TestSwappablePriorityQueue {
 
     @Test
     public void testPrioritizerWhenOutOfOrderDataEntersSwapQueue() {
-        final FlowFilePrioritizer iAttributePrioritizer = new FlowFilePrioritizer() {
-            @Override
-            public int compare(final FlowFile o1, final FlowFile o2) {
-                final int i1 = Integer.parseInt(o1.getAttribute("i"));
-                final int i2 = Integer.parseInt(o2.getAttribute("i"));
-                return Integer.compare(i1, i2);
-            }
+        final FlowFilePrioritizer iAttributePrioritizer = (o1, o2) -> {
+            final int i1 = Integer.parseInt(o1.getAttribute("i"));
+            final int i2 = Integer.parseInt(o2.getAttribute("i"));
+            return Integer.compare(i1, i2);
         };
 
         queue.setPriorities(Collections.singletonList(iAttributePrioritizer));
@@ -191,14 +186,43 @@ public class TestSwappablePriorityQueue {
     }
 
     @Test
+    public void testExceptionInPollAllowsReprocessing() {
+        for (int i = 0; i < 3; i++) {
+            final MockFlowFileRecord flowFile = new MockFlowFileRecord(Map.of("i", String.valueOf(i)), i);
+            queue.put(flowFile);
+        }
+
+        assertThrows(RuntimeException.class, () -> {
+            queue.poll(new FlowFileFilter() {
+                private int count = 0;
+
+                @Override
+                public FlowFileFilterResult filter(final FlowFile flowFile) {
+                    if (count == 0) {
+                        count++;
+                        return FlowFileFilterResult.ACCEPT_AND_CONTINUE;
+                    }
+                    throw new RuntimeException("Intentional Unit Test Exception");
+                }
+            }, Set.of(), 0L);
+        });
+
+        // Ensure that all FlowFiles are still accessible and are in the proper order.
+        for (int i = 0; i < 3; i++) {
+            final FlowFileRecord flowFile = queue.poll(Set.of(), 0L);
+            assertNotNull(flowFile, "FlowFile was null at iteration " + i);
+            assertEquals(String.valueOf(i), flowFile.getAttribute("i"));
+        }
+
+        assertNull(queue.poll(Set.of(), 0L));
+    }
+
+    @Test
     public void testPrioritizersDataAddedAfterSwapOccurs() {
-        final FlowFilePrioritizer iAttributePrioritizer = new FlowFilePrioritizer() {
-            @Override
-            public int compare(final FlowFile o1, final FlowFile o2) {
-                final int i1 = Integer.parseInt(o1.getAttribute("i"));
-                final int i2 = Integer.parseInt(o2.getAttribute("i"));
-                return Integer.compare(i1, i2);
-            }
+        final FlowFilePrioritizer iAttributePrioritizer = (o1, o2) -> {
+            final int i1 = Integer.parseInt(o1.getAttribute("i"));
+            final int i2 = Integer.parseInt(o2.getAttribute("i"));
+            return Integer.compare(i1, i2);
         };
 
         queue.setPriorities(Collections.singletonList(iAttributePrioritizer));
@@ -253,7 +277,7 @@ public class TestSwappablePriorityQueue {
         }
 
         ffs.forEach(queue::put);
-        System.out.println(StringUtils.join(attrs, ", "));
+        logger.info(StringUtils.join(attrs, ", "));
     }
 
 

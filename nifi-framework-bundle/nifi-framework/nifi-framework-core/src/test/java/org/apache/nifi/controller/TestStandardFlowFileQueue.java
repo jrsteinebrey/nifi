@@ -27,7 +27,6 @@ import org.apache.nifi.controller.queue.QueueSize;
 import org.apache.nifi.controller.queue.StandardFlowFileQueue;
 import org.apache.nifi.controller.repository.FlowFileRecord;
 import org.apache.nifi.controller.repository.FlowFileRepository;
-import org.apache.nifi.controller.repository.claim.ResourceClaimManager;
 import org.apache.nifi.processor.FlowFileFilter;
 import org.apache.nifi.processor.FlowFileFilter.FlowFileFilterResult;
 import org.apache.nifi.provenance.ProvenanceEventRecord;
@@ -38,7 +37,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.mockito.Mockito;
-import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
 import java.util.ArrayList;
@@ -63,7 +61,6 @@ public class TestStandardFlowFileQueue {
     private Connection connection = null;
     private FlowFileRepository flowFileRepo = null;
     private ProvenanceEventRepository provRepo = null;
-    private ResourceClaimManager claimManager = null;
     private ProcessScheduler scheduler = null;
 
     private List<ProvenanceEventRecord> provRecords = new ArrayList<>();
@@ -82,21 +79,17 @@ public class TestStandardFlowFileQueue {
 
         flowFileRepo = Mockito.mock(FlowFileRepository.class);
         provRepo = Mockito.mock(ProvenanceEventRepository.class);
-        claimManager = Mockito.mock(ResourceClaimManager.class);
 
         Mockito.when(provRepo.eventBuilder()).thenReturn(new StandardProvenanceEventRecord.Builder());
-        Mockito.doAnswer(new Answer<Object>() {
-            @Override
-            public Object answer(final InvocationOnMock invocation) throws Throwable {
-                final Iterable<ProvenanceEventRecord> iterable = (Iterable<ProvenanceEventRecord>) invocation.getArguments()[0];
-                for (final ProvenanceEventRecord record : iterable) {
-                    provRecords.add(record);
-                }
-                return null;
+        Mockito.doAnswer((Answer<Object>) invocation -> {
+            final Iterable<ProvenanceEventRecord> iterable = (Iterable<ProvenanceEventRecord>) invocation.getArguments()[0];
+            for (final ProvenanceEventRecord record : iterable) {
+                provRecords.add(record);
             }
+            return null;
         }).when(provRepo).registerEvents(Mockito.any(Iterable.class));
 
-        queue = new StandardFlowFileQueue("id", flowFileRepo, provRepo, claimManager, scheduler, swapManager, null, 10000, "0 sec", 0L, "0 B");
+        queue = new StandardFlowFileQueue("id", flowFileRepo, provRepo, scheduler, swapManager, null, 10000, "0 sec", 0L, "0 B");
         MockFlowFileRecord.resetIdGenerator();
     }
 
@@ -111,7 +104,7 @@ public class TestStandardFlowFileQueue {
         // just make sure that the flowfiles have time to expire.
         try {
             Thread.sleep(100L);
-        } catch (final InterruptedException ie) {
+        } catch (final InterruptedException ignored) {
         }
 
         final Set<FlowFileRecord> expiredRecords = new HashSet<>(100);
@@ -345,7 +338,7 @@ public class TestStandardFlowFileQueue {
     @Test
     public void testSwapInWhenThresholdIsLessThanSwapSize() {
         // create a queue where the swap threshold is less than 10k
-        queue = new StandardFlowFileQueue("id", flowFileRepo, provRepo, claimManager, scheduler, swapManager, null, 1000, "0 sec", 0L, "0 B");
+        queue = new StandardFlowFileQueue("id", flowFileRepo, provRepo, scheduler, swapManager, null, 1000, "0 sec", 0L, "0 B");
 
         for (int i = 1; i <= 20000; i++) {
             queue.put(new MockFlowFileRecord());
@@ -464,7 +457,7 @@ public class TestStandardFlowFileQueue {
         while (status.getState() != DropFlowFileState.COMPLETE) {
             try {
                 Thread.sleep(100L);
-            } catch (final Exception e) {
+            } catch (final Exception ignored) {
             }
         }
 

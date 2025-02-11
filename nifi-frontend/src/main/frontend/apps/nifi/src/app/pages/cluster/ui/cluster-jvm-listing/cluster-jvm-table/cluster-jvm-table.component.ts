@@ -22,17 +22,15 @@ import {
     ClusterTableFilter,
     ClusterTableFilterColumn
 } from '../../common/cluster-table-filter/cluster-table-filter.component';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
 import { MatSortModule, Sort } from '@angular/material/sort';
 import { MatTableModule } from '@angular/material/table';
-import { NifiTooltipDirective } from '../../../../../ui/common/tooltips/nifi-tooltip.directive';
+import { NifiTooltipDirective, NiFiCommon } from '@nifi/shared';
 import { GarbageCollectionTipInput } from '../../../../../state/shared';
 import { GarbageCollectionTip } from '../../../../../ui/common/tooltips/garbage-collection-tip/garbage-collection-tip.component';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 
 @Component({
     selector: 'cluster-jvm-table',
-    standalone: true,
     imports: [ClusterTableFilter, MatTableModule, MatSortModule, NifiTooltipDirective],
     templateUrl: './cluster-jvm-table.component.html',
     styleUrl: './cluster-jvm-table.component.scss'

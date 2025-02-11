@@ -32,11 +32,11 @@ import { ManageRemotePortService } from '../../service/manage-remote-port.servic
 import { PortSummary } from './index';
 import { EditRemotePortComponent } from '../../ui/manage-remote-ports/edit-remote-port/edit-remote-port.component';
 import { EditRemotePortDialogRequest } from '../flow';
-import { ComponentType, isDefinedAndNotNull } from '../../../../state/shared';
+import { ComponentType, isDefinedAndNotNull, MEDIUM_DIALOG } from '@nifi/shared';
 import { selectTimeOffset } from '../../../../state/flow-configuration/flow-configuration.selectors';
 import { selectAbout } from '../../../../state/about/about.selectors';
-import { MEDIUM_DIALOG } from '../../../../index';
 import { ClusterConnectionService } from '../../../../service/cluster-connection.service';
+import { ErrorContextKey } from '../../../../state/error';
 
 @Injectable()
 export class ManageRemotePortsEffects {
@@ -126,7 +126,13 @@ export class ManageRemotePortsEffects {
         this.actions$.pipe(
             ofType(ManageRemotePortsActions.remotePortsBannerApiError),
             map((action) => action.error),
-            switchMap((error) => of(ErrorActions.addBannerError({ error })))
+            switchMap((error) =>
+                of(
+                    ErrorActions.addBannerError({
+                        errorContext: { errors: [error], context: ErrorContextKey.MANAGE_REMOTE_PORTS }
+                    })
+                )
+            )
         )
     );
 
@@ -220,8 +226,6 @@ export class ManageRemotePortsEffects {
                     });
 
                     editDialogReference.afterClosed().subscribe((response) => {
-                        this.store.dispatch(ErrorActions.clearBannerErrors());
-
                         if (response != 'ROUTED') {
                             this.store.dispatch(
                                 ManageRemotePortsActions.selectRemotePort({

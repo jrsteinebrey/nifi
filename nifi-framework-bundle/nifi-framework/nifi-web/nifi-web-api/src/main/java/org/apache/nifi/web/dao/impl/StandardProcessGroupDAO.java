@@ -31,10 +31,12 @@ import org.apache.nifi.controller.service.ControllerServiceState;
 import org.apache.nifi.flow.ExecutionEngine;
 import org.apache.nifi.flow.VersionedExternalFlow;
 import org.apache.nifi.flow.VersionedProcessGroup;
+import org.apache.nifi.groups.ComponentAdditions;
 import org.apache.nifi.groups.FlowFileConcurrency;
 import org.apache.nifi.groups.FlowFileOutboundPolicy;
 import org.apache.nifi.groups.ProcessGroup;
 import org.apache.nifi.groups.RemoteProcessGroup;
+import org.apache.nifi.groups.VersionedComponentAdditions;
 import org.apache.nifi.parameter.ParameterContext;
 import org.apache.nifi.registry.flow.FlowRegistryClientNode;
 import org.apache.nifi.registry.flow.StandardVersionControlInformation;
@@ -51,6 +53,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import jakarta.ws.rs.WebApplicationException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Repository;
+
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -60,6 +65,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+@Repository
 public class StandardProcessGroupDAO extends ComponentDAO implements ProcessGroupDAO {
     private static final Logger logger = LoggerFactory.getLogger(StandardProcessGroupDAO.class);
 
@@ -507,6 +513,17 @@ public class StandardProcessGroupDAO extends ComponentDAO implements ProcessGrou
     }
 
     @Override
+    public ComponentAdditions addVersionedComponents(final String groupId, final VersionedComponentAdditions additions, final String componentIdSeed) {
+        final ProcessGroup group = locateProcessGroup(flowController, groupId);
+        final ComponentAdditions componentAdditions = group.addVersionedComponents(additions, componentIdSeed);
+        group.findAllRemoteProcessGroups().forEach(RemoteProcessGroup::initialize);
+
+        group.onComponentModified();
+
+        return componentAdditions;
+    }
+
+    @Override
     public ProcessGroup updateProcessGroupFlow(final String groupId, final VersionedExternalFlow proposedSnapshot, final VersionControlInformationDTO versionControlInformation,
                                                final String componentIdSeed, final boolean verifyNotModified, final boolean updateSettings, final boolean updateDescendantVersionedFlows) {
 
@@ -594,6 +611,7 @@ public class StandardProcessGroupDAO extends ComponentDAO implements ProcessGrou
         parentGroup.removeProcessGroup(group);
     }
 
+    @Autowired
     public void setFlowController(FlowController flowController) {
         this.flowController = flowController;
     }

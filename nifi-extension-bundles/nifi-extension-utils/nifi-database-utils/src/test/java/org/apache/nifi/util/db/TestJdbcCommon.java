@@ -81,6 +81,7 @@ import org.slf4j.LoggerFactory;
 import static org.apache.nifi.util.db.JdbcCommon.MASKED_LOG_VALUE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -240,24 +241,8 @@ public class TestJdbcCommon {
 
         final byte[] serializedBytes = outStream.toByteArray();
         assertNotNull(serializedBytes);
-        System.out.println("Avro serialized result size in bytes: " + serializedBytes.length);
 
         st.close();
-
-        // Deserialize bytes to records
-        final InputStream instream = new ByteArrayInputStream(serializedBytes);
-
-        final DatumReader<GenericRecord> datumReader = new GenericDatumReader<>();
-        try (final DataFileStream<GenericRecord> dataFileReader = new DataFileStream<>(instream, datumReader)) {
-            GenericRecord record = null;
-            while (dataFileReader.hasNext()) {
-                // Reuse record object by passing it to next(). This saves us from
-                // allocating and garbage collecting many objects for files with
-                // many items.
-                record = dataFileReader.next(record);
-                System.out.println(record);
-            }
-        }
     }
 
 
@@ -434,7 +419,7 @@ public class TestJdbcCommon {
 
     @Test
     public void testConvertToAvroStreamForBigDecimal() throws SQLException, IOException {
-        final BigDecimal bigDecimal = new BigDecimal(12345D);
+        final BigDecimal bigDecimal = new BigDecimal("12345");
         // If db returns a precision, it should be used.
         testConvertToAvroStreamForBigDecimal(bigDecimal, 38, 10, 38, 0);
     }
@@ -469,7 +454,7 @@ public class TestJdbcCommon {
         final int defaultScale = 15;
 
         final BigDecimal bigDecimal = new BigDecimal("1.123", new MathContext(dbPrecision));
-        final BigDecimal expectedValue = new BigDecimal("1");
+        final BigDecimal expectedValue = BigDecimal.ONE;
         testConvertToAvroStreamForBigDecimal(bigDecimal, expectedValue, dbPrecision, dbScale, defaultPrecision, defaultScale, expectedPrecision, expectedScale);
     }
 
@@ -625,7 +610,7 @@ public class TestJdbcCommon {
                         assertNull(o);
                     } else {
                         assertNotNull(o);
-                        assertTrue(o instanceof ByteBuffer);
+                        assertInstanceOf(ByteBuffer.class, o);
                         final byte[] blob = ((ByteBuffer) o).array();
                         assertEquals(4002, blob.length);
                         // Third byte should be 67 ('C')
@@ -663,7 +648,7 @@ public class TestJdbcCommon {
             while (dataFileReader.hasNext()) {
                 record = dataFileReader.next(record);
                 Object o = record.get("t_clob");
-                assertTrue(o instanceof Utf8);
+                assertInstanceOf(Utf8.class, o);
                 assertEquals("test clob", o.toString());
             }
         }
@@ -697,7 +682,7 @@ public class TestJdbcCommon {
             while (dataFileReader.hasNext()) {
                 record = dataFileReader.next(record);
                 Object o = record.get("t_blob");
-                assertTrue(o instanceof ByteBuffer);
+                assertInstanceOf(ByteBuffer.class, o);
                 ByteBuffer bb = (ByteBuffer) o;
                 assertEquals("test blob", new String(bb.array(), StandardCharsets.UTF_8));
             }

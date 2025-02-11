@@ -47,7 +47,6 @@ import {
 } from './parameter-providers.selectors';
 import { selectParameterProviderTypes } from '../../../../state/extension-types/extension-types.selectors';
 import { CreateParameterProvider } from '../../ui/parameter-providers/create-parameter-provider/create-parameter-provider.component';
-import { YesNoDialog } from '../../../../ui/common/yes-no-dialog/yes-no-dialog.component';
 import { EditParameterProvider } from '../../ui/parameter-providers/edit-parameter-provider/edit-parameter-provider.component';
 import { PropertyTableHelperService } from '../../../../service/property-table-helper.service';
 import { EditParameterProviderRequest, ParameterProviderEntity, UpdateParameterProviderRequest } from './index';
@@ -56,7 +55,7 @@ import { FetchParameterProviderParameters } from '../../ui/parameter-providers/f
 import * as ErrorActions from '../../../../state/error/error.actions';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ErrorHelper } from '../../../../service/error-helper.service';
-import { LARGE_DIALOG, SMALL_DIALOG, XL_DIALOG } from '../../../../index';
+import { LARGE_DIALOG, SMALL_DIALOG, XL_DIALOG, YesNoDialog } from '@nifi/shared';
 import {
     resetPropertyVerificationState,
     verifyProperties
@@ -67,6 +66,7 @@ import {
 } from '../../../../state/property-verification/property-verification.selectors';
 import { VerifyPropertiesRequestContext } from '../../../../state/property-verification';
 import { BackNavigation } from '../../../../state/navigation';
+import { ErrorContextKey } from '../../../../state/error';
 
 @Injectable()
 export class ParameterProvidersEffects {
@@ -442,7 +442,6 @@ export class ParameterProvidersEffects {
                         });
 
                     editDialogReference.afterClosed().subscribe((response) => {
-                        this.store.dispatch(ErrorActions.clearBannerErrors());
                         this.store.dispatch(resetPropertyVerificationState());
 
                         if (response !== 'ROUTED') {
@@ -613,7 +612,6 @@ export class ParameterProvidersEffects {
 
                     dialogRef.afterClosed().subscribe((response) => {
                         this.store.dispatch(ParameterProviderActions.resetFetchedParameterProvider());
-                        this.store.dispatch(ErrorActions.clearBannerErrors());
 
                         if (response !== 'ROUTED') {
                             this.store.dispatch(
@@ -640,7 +638,13 @@ export class ParameterProvidersEffects {
             tap(() =>
                 this.store.dispatch(ParameterProviderActions.stopPollingParameterProviderParametersUpdateRequest())
             ),
-            switchMap((error) => of(ErrorActions.addBannerError({ error })))
+            switchMap((error) =>
+                of(
+                    ErrorActions.addBannerError({
+                        errorContext: { errors: [error], context: ErrorContextKey.PARAMETER_PROVIDERS }
+                    })
+                )
+            )
         )
     );
 

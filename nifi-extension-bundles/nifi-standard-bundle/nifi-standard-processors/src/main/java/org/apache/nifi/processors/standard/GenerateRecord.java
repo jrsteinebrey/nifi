@@ -59,13 +59,11 @@ import org.apache.nifi.serialization.record.type.MapDataType;
 import org.apache.nifi.serialization.record.type.RecordDataType;
 import org.apache.nifi.util.StringUtils;
 
-import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -153,25 +151,28 @@ public class GenerateRecord extends AbstractProcessor {
             .required(false)
             .build();
 
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+            RECORD_WRITER,
+            NUM_RECORDS,
+            NULLABLE_FIELDS,
+            NULL_PERCENTAGE,
+            SCHEMA_TEXT
+    );
 
     static final Relationship REL_SUCCESS = new Relationship.Builder()
             .name("success")
             .description("FlowFiles that are successfully created will be routed to this relationship")
             .build();
 
-    static final Set<Relationship> RELATIONSHIPS = Collections.singleton(REL_SUCCESS);
+    static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS
+    );
 
     private volatile Faker faker = new Faker();
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        final List<PropertyDescriptor> properties = new ArrayList<>();
-        properties.add(RECORD_WRITER);
-        properties.add(NUM_RECORDS);
-        properties.add(NULLABLE_FIELDS);
-        properties.add(NULL_PERCENTAGE);
-        properties.add(SCHEMA_TEXT);
-        return properties;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -315,8 +316,7 @@ public class GenerateRecord extends AbstractProcessor {
                 return faker.number().randomDouble(6, Long.MIN_VALUE, Long.MAX_VALUE);
             case FLOAT:
                 final double randomDouble = faker.number().randomDouble(6, Long.MIN_VALUE, Long.MAX_VALUE);
-                final BigDecimal asBigDecimal = new BigDecimal(randomDouble);
-                return asBigDecimal.floatValue();
+                return (float) randomDouble;
             case DECIMAL:
                 return faker.number().randomDouble(((DecimalDataType) recordField.getDataType()).getScale(), Long.MIN_VALUE, Long.MAX_VALUE);
             case INT:
@@ -382,28 +382,18 @@ public class GenerateRecord extends AbstractProcessor {
 
     private String generateRandomString() {
         final int categoryChoice = faker.number().numberBetween(0, 10);
-        switch (categoryChoice) {
-            case 0:
-                return faker.name().fullName();
-            case 1:
-                return faker.lorem().word();
-            case 2:
-                return faker.shakespeare().romeoAndJulietQuote();
-            case 3:
-                return faker.educator().university();
-            case 4:
-                return faker.zelda().game();
-            case 5:
-                return faker.company().name();
-            case 6:
-                return faker.chuckNorris().fact();
-            case 7:
-                return faker.book().title();
-            case 8:
-                return faker.dog().breed();
-            default:
-                return faker.animal().name();
-        }
+        return switch (categoryChoice) {
+            case 0 -> faker.name().fullName();
+            case 1 -> faker.lorem().word();
+            case 2 -> faker.shakespeare().romeoAndJulietQuote();
+            case 3 -> faker.educator().university();
+            case 4 -> faker.zelda().game();
+            case 5 -> faker.company().name();
+            case 6 -> faker.chuckNorris().fact();
+            case 7 -> faker.book().title();
+            case 8 -> faker.dog().breed();
+            default -> faker.animal().name();
+        };
     }
 
     protected RecordSchema generateRecordSchema(final Map<String, String> fields, final boolean nullable) {

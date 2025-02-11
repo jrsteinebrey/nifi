@@ -16,7 +16,6 @@
  */
 package org.apache.nifi.processors.elasticsearch;
 
-import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.nifi.elasticsearch.IndexOperationRequest;
 import org.apache.nifi.elasticsearch.IndexOperationResponse;
 import org.apache.nifi.processor.exception.ProcessException;
@@ -112,8 +111,12 @@ public class PutElasticsearchJsonTest extends AbstractPutElasticsearchTest {
     }
 
     void basicTest(final int failure, final int retry, final int successful, final Consumer<List<IndexOperationRequest>> consumer) {
+        basicTest(failure, retry, successful, consumer, Collections.emptyMap());
+    }
+
+    void basicTest(final int failure, final int retry, final int successful, final Consumer<List<IndexOperationRequest>> consumer, final Map<String, String> attr) {
         clientService.setEvalConsumer(consumer);
-        basicTest(failure, retry, successful, Collections.emptyMap());
+        basicTest(failure, retry, successful, attr);
     }
 
     void basicTest(final int failure, final int retry, final int successful, final Map<String, String> attr) {
@@ -288,6 +291,24 @@ public class PutElasticsearchJsonTest extends AbstractPutElasticsearchTest {
             assertEquals(1L, dynamicTemplatesCount);
         };
         basicTest(0, 0, 1, consumer);
+    }
+
+    @Test
+    void simpleTestWithScriptedUpsertEL() {
+        runner.setProperty(PutElasticsearchJson.SCRIPT, script);
+        runner.setProperty(PutElasticsearchJson.DYNAMIC_TEMPLATES, dynamicTemplates);
+        runner.setProperty(PutElasticsearchJson.INDEX_OP, IndexOperationRequest.Operation.Upsert.getValue().toLowerCase());
+        runner.setProperty(PutElasticsearchJson.SCRIPTED_UPSERT, "${scripted}");
+        final Consumer<List<IndexOperationRequest>> consumer = (final List<IndexOperationRequest> items) -> {
+            final long scriptCount = items.stream().filter(item -> item.getScript().equals(expectedScript)).count();
+            final long trueScriptedUpsertCount = items.stream().filter(IndexOperationRequest::isScriptedUpsert).count();
+            final long dynamicTemplatesCount = items.stream().filter(item -> item.getDynamicTemplates().equals(expectedDynamicTemplate)).count();
+
+            assertEquals(1L, scriptCount);
+            assertEquals(1L, trueScriptedUpsertCount);
+            assertEquals(1L, dynamicTemplatesCount);
+        };
+        basicTest(0, 0, 1, consumer, Map.of("scripted", "true"));
     }
 
     @Test
@@ -468,7 +489,7 @@ public class PutElasticsearchJsonTest extends AbstractPutElasticsearchTest {
         runner.setProperty(ElasticsearchRestProcessor.MAX_JSON_FIELD_STRING_LENGTH, "1KB");
         runner.assertValid();
 
-        final String val = String.format("{\"large\": \"%s\"}", RandomStringUtils.randomAlphanumeric(10000));
+        final String val = String.format("{\"large\": \"%s\"}", "a".repeat(10000));
         runner.enqueue(val);
         runner.run();
 

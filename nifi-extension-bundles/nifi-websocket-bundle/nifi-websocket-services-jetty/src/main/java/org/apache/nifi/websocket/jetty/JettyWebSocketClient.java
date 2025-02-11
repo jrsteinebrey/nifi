@@ -30,7 +30,7 @@ import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.DataUnit;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
-import org.apache.nifi.ssl.SSLContextService;
+import org.apache.nifi.ssl.SSLContextProvider;
 import org.apache.nifi.util.StringUtils;
 import org.apache.nifi.websocket.WebSocketClientService;
 import org.apache.nifi.websocket.WebSocketConfigurationException;
@@ -66,6 +66,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Stream;
 
 @Tags({"WebSocket", "Jetty", "client"})
 @CapabilityDescription("Implementation of WebSocketClientService." +
@@ -193,24 +194,23 @@ public class JettyWebSocketClient extends AbstractJettyWebSocketService implemen
 
     private static final int INITIAL_BACKOFF_MILLIS = 100;
     private static final int MAXIMUM_BACKOFF_MILLIS = 3200;
-    private static final List<PropertyDescriptor> properties;
 
-    static {
-        final List<PropertyDescriptor> props = new ArrayList<>(getAbstractPropertyDescriptors());
-        props.add(WS_URI);
-        props.add(SSL_CONTEXT);
-        props.add(CONNECTION_TIMEOUT);
-        props.add(CONNECTION_ATTEMPT_COUNT);
-        props.add(SESSION_MAINTENANCE_INTERVAL);
-        props.add(USER_NAME);
-        props.add(USER_PASSWORD);
-        props.add(AUTH_CHARSET);
-        props.add(CUSTOM_AUTH);
-        props.add(PROXY_HOST);
-        props.add(PROXY_PORT);
-
-        properties = Collections.unmodifiableList(props);
-    }
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = Stream.concat(
+            getAbstractPropertyDescriptors().stream(),
+            Stream.of(
+                    WS_URI,
+                    SSL_CONTEXT,
+                    CONNECTION_TIMEOUT,
+                    CONNECTION_ATTEMPT_COUNT,
+                    SESSION_MAINTENANCE_INTERVAL,
+                    USER_NAME,
+                    USER_PASSWORD,
+                    AUTH_CHARSET,
+                    CUSTOM_AUTH,
+                    PROXY_HOST,
+                    PROXY_PORT
+            )
+    ).toList();
 
     private final Map<String, SessionInfo> activeSessions = new ConcurrentHashMap<>();
     private final ReentrantLock connectionLock = new ReentrantLock();
@@ -224,7 +224,7 @@ public class JettyWebSocketClient extends AbstractJettyWebSocketService implemen
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return properties;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @OnEnabled
@@ -235,12 +235,12 @@ public class JettyWebSocketClient extends AbstractJettyWebSocketService implemen
         connectCount = configurationContext.getProperty(CONNECTION_ATTEMPT_COUNT).evaluateAttributeExpressions().asInteger();
 
         final HttpClient httpClient;
-        final SSLContextService sslContextService = context.getProperty(SSL_CONTEXT).asControllerService(SSLContextService.class);
-        if (sslContextService == null) {
+        final SSLContextProvider sslContextProvider = context.getProperty(SSL_CONTEXT).asControllerService(SSLContextProvider.class);
+        if (sslContextProvider == null) {
             httpClient = new HttpClient();
         } else {
             final SslContextFactory.Client sslContextFactory = new SslContextFactory.Client();
-            final SSLContext sslContext = sslContextService.createContext();
+            final SSLContext sslContext = sslContextProvider.createContext();
             sslContextFactory.setSslContext(sslContext);
             final ClientConnector clientConnector = new ClientConnector();
             clientConnector.setSslContextFactory(sslContextFactory);

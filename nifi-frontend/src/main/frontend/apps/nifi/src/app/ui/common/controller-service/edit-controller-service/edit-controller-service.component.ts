@@ -34,7 +34,7 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatButtonModule } from '@angular/material/button';
 import { AsyncPipe } from '@angular/common';
 import { MatTabsModule } from '@angular/material/tabs';
-import { NiFiCommon } from '../../../../service/nifi-common.service';
+import { NiFiCommon, TextTip, NifiTooltipDirective, CopyDirective } from '@nifi/shared';
 import { MatOptionModule } from '@angular/material/core';
 import { MatSelectModule } from '@angular/material/select';
 import { PropertyTable } from '../../property-table/property-table.component';
@@ -42,10 +42,7 @@ import { ControllerServiceApi } from '../controller-service-api/controller-servi
 import { Observable, of } from 'rxjs';
 import { ControllerServiceReferences } from '../controller-service-references/controller-service-references.component';
 import { NifiSpinnerDirective } from '../../spinner/nifi-spinner.directive';
-import { ErrorBanner } from '../../error-banner/error-banner.component';
 import { ClusterConnectionService } from '../../../../service/cluster-connection.service';
-import { TextTip } from '../../tooltips/text-tip/text-tip.component';
-import { NifiTooltipDirective } from '../../tooltips/nifi-tooltip.directive';
 import { ConvertToParameterResponse } from '../../../../pages/flow-designer/service/parameter-helper.service';
 import { PropertyVerification } from '../../property-verification/property-verification.component';
 import {
@@ -54,10 +51,11 @@ import {
     VerifyPropertiesRequestContext
 } from '../../../../state/property-verification';
 import { TabbedDialog } from '../../tabbed-dialog/tabbed-dialog.component';
+import { ErrorContextKey } from '../../../../state/error';
+import { ContextErrorBanner } from '../../context-error-banner/context-error-banner.component';
 
 @Component({
     selector: 'edit-controller-service',
-    standalone: true,
     templateUrl: './edit-controller-service.component.html',
     imports: [
         ReactiveFormsModule,
@@ -73,9 +71,10 @@ import { TabbedDialog } from '../../tabbed-dialog/tabbed-dialog.component';
         ControllerServiceReferences,
         AsyncPipe,
         NifiSpinnerDirective,
-        ErrorBanner,
         NifiTooltipDirective,
-        PropertyVerification
+        PropertyVerification,
+        ContextErrorBanner,
+        CopyDirective
     ],
     styleUrls: ['./edit-controller-service.component.scss']
 })
@@ -216,4 +215,6 @@ export class EditControllerService extends TabbedDialog {
             properties: this.getModifiedProperties()
         });
     }
+
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

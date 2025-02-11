@@ -26,7 +26,7 @@ import {
     selectClusterStorageRepositoryIdFromRoute
 } from '../../state/cluster-listing/cluster-listing.selectors';
 import { selectSystemNodeSnapshots } from '../../../../state/system-diagnostics/system-diagnostics.selectors';
-import { isDefinedAndNotNull } from '../../../../state/shared';
+import { isDefinedAndNotNull } from '@nifi/shared';
 import { map } from 'rxjs';
 import { ClusterNodeRepositoryStorageUsage } from '../../../../state/system-diagnostics';
 import { Store } from '@ngrx/store';
@@ -40,7 +40,6 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
     selector: 'cluster-content-storage-listing',
-    standalone: true,
     imports: [AsyncPipe, NgxSkeletonLoaderModule, RepositoryStorageTable],
     templateUrl: './cluster-content-storage-listing.component.html',
     styleUrl: './cluster-content-storage-listing.component.scss'

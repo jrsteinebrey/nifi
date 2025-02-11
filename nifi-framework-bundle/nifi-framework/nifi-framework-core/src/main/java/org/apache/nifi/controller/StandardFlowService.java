@@ -16,7 +16,7 @@
  */
 package org.apache.nifi.controller;
 
-import org.apache.commons.lang3.StringUtils;
+import org.apache.nifi.asset.AssetSynchronizer;
 import org.apache.nifi.authorization.Authorizer;
 import org.apache.nifi.authorization.AuthorizerCapabilityDetection;
 import org.apache.nifi.authorization.ManagedAuthorizer;
@@ -52,7 +52,6 @@ import org.apache.nifi.connectable.Connection;
 import org.apache.nifi.controller.flow.FlowManager;
 import org.apache.nifi.controller.serialization.FlowSerializationException;
 import org.apache.nifi.controller.serialization.FlowSynchronizationException;
-import org.apache.nifi.controller.serialization.VersionedFlowSynchronizer;
 import org.apache.nifi.controller.status.ProcessGroupStatus;
 import org.apache.nifi.engine.FlowEngine;
 import org.apache.nifi.events.BulletinFactory;
@@ -62,6 +61,7 @@ import org.apache.nifi.groups.RemoteProcessGroup;
 import org.apache.nifi.lifecycle.LifeCycleStartException;
 import org.apache.nifi.logging.LogLevel;
 import org.apache.nifi.nar.NarClassLoadersHolder;
+import org.apache.nifi.nar.NarManager;
 import org.apache.nifi.persistence.FlowConfigurationDAO;
 import org.apache.nifi.persistence.StandardFlowConfigurationDAO;
 import org.apache.nifi.reporting.Bulletin;
@@ -121,6 +121,8 @@ public class StandardFlowService implements FlowService, ProtocolHandler {
     private final AtomicReference<SaveHolder> saveHolder = new AtomicReference<>(null);
     private final ClusterCoordinator clusterCoordinator;
     private final RevisionManager revisionManager;
+    private final NarManager narManager;
+    private final AssetSynchronizer assetSynchronizer;
     private volatile SaveReportingTask saveReportingTask;
 
     /**
@@ -150,9 +152,11 @@ public class StandardFlowService implements FlowService, ProtocolHandler {
             final FlowController controller,
             final NiFiProperties nifiProperties,
             final RevisionManager revisionManager,
+            final NarManager narManager,
+            final AssetSynchronizer assetSynchronizer,
             final Authorizer authorizer) throws IOException {
 
-        return new StandardFlowService(controller, nifiProperties, null, false, null, revisionManager, authorizer);
+        return new StandardFlowService(controller, nifiProperties, null, false, null, revisionManager, narManager, assetSynchronizer, authorizer);
     }
 
     public static StandardFlowService createClusteredInstance(
@@ -161,9 +165,11 @@ public class StandardFlowService implements FlowService, ProtocolHandler {
             final NodeProtocolSenderListener senderListener,
             final ClusterCoordinator coordinator,
             final RevisionManager revisionManager,
+            final NarManager narManager,
+            final AssetSynchronizer assetSynchronizer,
             final Authorizer authorizer) throws IOException {
 
-        return new StandardFlowService(controller, nifiProperties, senderListener, true, coordinator, revisionManager, authorizer);
+        return new StandardFlowService(controller, nifiProperties, senderListener, true, coordinator, revisionManager, narManager, assetSynchronizer, authorizer);
     }
 
     private StandardFlowService(
@@ -173,6 +179,8 @@ public class StandardFlowService implements FlowService, ProtocolHandler {
             final boolean configuredForClustering,
             final ClusterCoordinator clusterCoordinator,
             final RevisionManager revisionManager,
+            final NarManager narManager,
+            final AssetSynchronizer assetSynchronizer,
             final Authorizer authorizer) throws IOException {
 
         this.nifiProperties = nifiProperties;
@@ -187,6 +195,8 @@ public class StandardFlowService implements FlowService, ProtocolHandler {
             clusterCoordinator.setFlowService(this);
         }
         this.revisionManager = revisionManager;
+        this.narManager = narManager;
+        this.assetSynchronizer = assetSynchronizer;
         this.authorizer = authorizer;
 
         if (configuredForClustering) {
@@ -283,7 +293,7 @@ public class StandardFlowService implements FlowService, ProtocolHandler {
         } catch (final IOException ioe) {
             try {
                 stop(/* force */true);
-            } catch (final Exception e) {
+            } catch (final Exception ignored) {
             }
 
             throw new LifeCycleStartException("Failed to start Flow Service due to: " + ioe, ioe);
@@ -352,15 +362,10 @@ public class StandardFlowService implements FlowService, ProtocolHandler {
 
     @Override
     public boolean canHandle(final ProtocolMessage msg) {
-        switch (msg.getType()) {
-            case RECONNECTION_REQUEST:
-            case OFFLOAD_REQUEST:
-            case DISCONNECTION_REQUEST:
-            case FLOW_REQUEST:
-                return true;
-            default:
-                return false;
-        }
+        return switch (msg.getType()) {
+            case RECONNECTION_REQUEST, OFFLOAD_REQUEST, DISCONNECTION_REQUEST, FLOW_REQUEST -> true;
+            default -> false;
+        };
     }
 
     @Override
@@ -378,26 +383,18 @@ public class StandardFlowService implements FlowService, ProtocolHandler {
                     // may still be held, causing this node to take a long time to respond to requests.
                     controller.suspendHeartbeats();
 
-                    final Thread t = new Thread(new Runnable() {
-                        @Override
-                        public void run() {
-                            handleReconnectionRequest((ReconnectionRequestMessage) request);
-                        }
-                    }, "Reconnect to Cluster");
+                    final Thread t = new Thread(() -> handleReconnectionRequest((ReconnectionRequestMessage) request), "Reconnect to Cluster");
                     t.setDaemon(true);
                     t.start();
 
                     return new ReconnectionResponseMessage();
                 }
                 case OFFLOAD_REQUEST: {
-                    final Thread t = new Thread(new Runnable() {
-                        @Override
-                        public void run() {
-                            try {
-                                handleOffloadRequest((OffloadMessage) request);
-                            } catch (InterruptedException e) {
-                                throw new ProtocolException("Could not complete offload request", e);
-                            }
+                    final Thread t = new Thread(() -> {
+                        try {
+                            handleOffloadRequest((OffloadMessage) request);
+                        } catch (InterruptedException e) {
+                            throw new ProtocolException("Could not complete offload request", e);
                         }
                     }, "Offload Flow Files from Node");
                     t.setDaemon(true);
@@ -406,12 +403,7 @@ public class StandardFlowService implements FlowService, ProtocolHandler {
                     return null;
                 }
                 case DISCONNECTION_REQUEST: {
-                    final Thread t = new Thread(new Runnable() {
-                        @Override
-                        public void run() {
-                            handleDisconnectionRequest((DisconnectMessage) request);
-                        }
-                    }, "Disconnect from Cluster");
+                    final Thread t = new Thread(() -> handleDisconnectionRequest((DisconnectMessage) request), "Disconnect from Cluster");
                     t.setDaemon(true);
                     t.start();
 
@@ -438,30 +430,7 @@ public class StandardFlowService implements FlowService, ProtocolHandler {
                 logger.trace("InitialFlow = {}", new String(initialFlow.getFlow(), StandardCharsets.UTF_8));
             }
 
-            // Sync the initial flow into the flow controller so that if the flow came from disk we loaded the
-            // whole flow into the flow controller and applied any bundle upgrades
-            writeLock.lock();
-            try {
-                loadFromBytes(initialFlow, true, BundleUpdateStrategy.USE_SPECIFIED_OR_COMPATIBLE_OR_GHOST);
-            } finally {
-                writeLock.unlock();
-            }
-
-            // Get the proposed flow by serializing the flow controller which now has the synced version from above
-            final DataFlow proposedFlow = createDataFlowFromController();
-            if (logger.isTraceEnabled()) {
-                logger.trace("ProposedFlow = {}", new String(proposedFlow.getFlow(), StandardCharsets.UTF_8));
-            }
-
-            /*
-             * Attempt to connect to the cluster. If the manager is able to
-             * provide a data flow, then the manager will send a connection
-             * response. If the manager was unable to be located, then
-             * the response will be null and we should load the local dataflow
-             * and heartbeat until a manager is located.
-             */
-            final boolean localFlowEmpty = VersionedFlowSynchronizer.isFlowEmpty(proposedFlow);
-            final ConnectionResponse response = connect(true, localFlowEmpty, proposedFlow);
+            final ConnectionResponse response = connect(true, true, initialFlow);
 
             // obtain write lock while we are updating the controller. We need to ensure that we don't
             // obtain the lock before calling connect(), though, or we will end up getting a deadlock
@@ -491,30 +460,16 @@ public class StandardFlowService implements FlowService, ProtocolHandler {
                      */
                     controller.startHeartbeating();
 
-                    // Initialize the controller after the flow is loaded so we don't take any actions on repos until everything is good
-                    initializeController();
-
-                    // notify controller that flow is initialized
-                    try {
-                        controller.onFlowInitialized(autoResumeState);
-                    } catch (final Exception ex) {
-                        logger.warn("Unable to start all processors due to invalid flow configuration.");
-                        if (logger.isDebugEnabled()) {
-                            logger.warn(StringUtils.EMPTY, ex);
-                        }
-                    }
                 } else {
                     try {
                         loadFromConnectionResponse(response);
+                        dao.save(controller, true);
                     } catch (final Exception e) {
                         logger.error("Failed to load flow from cluster", e);
                         handleConnectionFailure(e);
                         throw new IOException(e);
                     }
                 }
-
-                // save the flow in the controller so we write out the latest flow with any updated bundles to disk
-                dao.save(controller, true);
 
             } finally {
                 writeLock.unlock();
@@ -915,7 +870,7 @@ public class StandardFlowService implements FlowService, ProtocolHandler {
                 return null;
             } else {
                 // cluster manager provided a successful response with a current dataflow
-                // persist node uuid and index returned by NCM and return the response to the caller
+                // persist node uuid and index returned by coordinator and return the response to the caller
                 try {
                     // Ensure that we have registered our 'cluster node configuration' state key
                     final Map<String, String> map = Collections.singletonMap(NODE_UUID, response.getNodeIdentifier().getId());
@@ -950,8 +905,14 @@ public class StandardFlowService implements FlowService, ProtocolHandler {
             nodeId = response.getNodeIdentifier();
             controller.setNodeId(nodeId);
 
+            // sync NARs before loading flow, otherwise components could be ghosted and fail to join the cluster
+            narManager.syncWithClusterCoordinator();
+
             // load new controller state
             loadFromBytes(dataFlow, true, BundleUpdateStrategy.USE_SPECIFIED_OR_COMPATIBLE_OR_GHOST);
+
+            // sync assets after loading the flow so that parameter contexts exist first
+            assetSynchronizer.synchronize();
 
             // set node ID on controller before we start heartbeating because heartbeat needs node ID
             clusterCoordinator.setLocalNodeIdentifier(nodeId);
@@ -975,6 +936,7 @@ public class StandardFlowService implements FlowService, ProtocolHandler {
             loadSnippets(dataFlow.getSnippets());
 
             controller.startHeartbeating();
+
         } catch (final UninheritableFlowException ufe) {
             throw new UninheritableFlowException(CONNECTION_EXCEPTION_MSG_PREFIX, ufe);
         } catch (final MissingBundleException mbe) {

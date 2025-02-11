@@ -30,22 +30,20 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
-import { NiFiCommon } from '../../../service/nifi-common.service';
-import { AsyncPipe, NgTemplateOutlet } from '@angular/common';
+import { NiFiCommon, NifiTooltipDirective, Parameter, TextTip } from '@nifi/shared';
+import { NgTemplateOutlet } from '@angular/common';
 import {
     AllowableValueEntity,
     ComponentHistory,
     InlineServiceCreationRequest,
     InlineServiceCreationResponse,
-    Parameter,
+    ParameterConfig,
     ParameterContextEntity,
     Property,
     PropertyDependency,
     PropertyDescriptor,
     PropertyTipInput
 } from '../../../state/shared';
-import { NifiTooltipDirective } from '../tooltips/nifi-tooltip.directive';
-import { TextTip } from '../tooltips/text-tip/text-tip.component';
 import { PropertyTip } from '../tooltips/property-tip/property-tip.component';
 import { NfEditor } from './editors/nf-editor/nf-editor.component';
 import {
@@ -58,7 +56,6 @@ import {
 import { ComboEditor } from './editors/combo-editor/combo-editor.component';
 import { Observable, take } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { RouterLink } from '@angular/router';
 import { ConvertToParameterResponse } from '../../../pages/flow-designer/service/parameter-helper.service';
 import { MatMenu, MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
 
@@ -69,12 +66,12 @@ export interface PropertyItem extends Property {
     dirty: boolean;
     added: boolean;
     type: 'required' | 'userDefined' | 'optional';
+    savedValue: string | null;
     serviceLink?: string[];
 }
 
 @Component({
     selector: 'property-table',
-    standalone: true,
     templateUrl: './property-table.component.html',
     imports: [
         MatButtonModule,
@@ -86,8 +83,6 @@ export interface PropertyItem extends Property {
         CdkOverlayOrigin,
         CdkConnectedOverlay,
         ComboEditor,
-        RouterLink,
-        AsyncPipe,
         MatMenu,
         MatMenuItem,
         MatMenuTrigger
@@ -116,7 +111,7 @@ export class PropertyTable implements AfterViewInit, ControlValueAccessor {
     @Input() propertyHistory: ComponentHistory | undefined;
     @Input() supportsParameters: boolean = true;
 
-    private static readonly PARAM_REF_REGEX: RegExp = /#{[a-zA-Z0-9-_. ]+}/;
+    private static readonly PARAM_REF_REGEX: RegExp = /#{(['"]?)[a-zA-Z0-9-_. ]+\1}/;
 
     private destroyRef = inject(DestroyRef);
 
@@ -138,7 +133,7 @@ export class PropertyTable implements AfterViewInit, ControlValueAccessor {
     editorOpen = false;
     editorTrigger: any = null;
     editorItem!: PropertyItem;
-    editorParameters: Parameter[] | null = [];
+    editorParameterConfig!: ParameterConfig;
     editorWidth = 0;
     editorOffsetX = 0;
     editorOffsetY = 0;
@@ -239,7 +234,7 @@ export class PropertyTable implements AfterViewInit, ControlValueAccessor {
                 // the dependent value contains parameter reference, if the user can view
                 // the parameter context resolve the parameter value to see if it
                 // satisfies the dependent values
-                if (this.parameterContext?.permissions.canRead) {
+                if (this.parameterContext?.permissions.canRead && this.parameterContext.component) {
                     const referencedParameter = this.parameterContext.component.parameters
                         .map((parameterEntity) => parameterEntity.parameter)
                         .find((parameter: Parameter) => dependentValue == `#{${parameter.name}}`);
@@ -300,6 +295,7 @@ export class PropertyTable implements AfterViewInit, ControlValueAccessor {
                 deleted: false,
                 added: false,
                 dirty: false,
+                savedValue: property.value,
                 type: property.descriptor.required
                     ? 'required'
                     : property.descriptor.dynamic
@@ -320,11 +316,18 @@ export class PropertyTable implements AfterViewInit, ControlValueAccessor {
         this.initFilter();
     }
 
+    private getParameterConfig(propertyItem: PropertyItem): ParameterConfig {
+        return {
+            supportsParameters: this.supportsParameters,
+            parameters: this.getParametersForItem(propertyItem)
+        };
+    }
+
     private getParametersForItem(propertyItem: PropertyItem): Parameter[] | null {
-        if (!this.supportsParameters) {
+        if (!this.supportsParameters || !this.parameterContext) {
             return null;
         }
-        if (this.parameterContext?.permissions.canRead) {
+        if (this.parameterContext.permissions.canRead && this.parameterContext.component) {
             return this.parameterContext.component.parameters
                 .map((parameterEntity) => parameterEntity.parameter)
                 .filter((parameter: Parameter) => parameter.sensitive == propertyItem.descriptor.sensitive);
@@ -377,6 +380,7 @@ export class PropertyTable implements AfterViewInit, ControlValueAccessor {
                         deleted: false,
                         added: true,
                         dirty: true,
+                        savedValue: property.value,
                         type: property.descriptor.required
                             ? 'required'
                             : property.descriptor.dynamic
@@ -452,7 +456,7 @@ export class PropertyTable implements AfterViewInit, ControlValueAccessor {
 
                 this.editorPositions.pop();
                 this.editorItem = item;
-                this.editorParameters = this.getParametersForItem(this.editorItem);
+                this.editorParameterConfig = this.getParameterConfig(this.editorItem);
                 this.editorTrigger = editorTrigger;
                 this.editorOpen = true;
 
@@ -473,6 +477,7 @@ export class PropertyTable implements AfterViewInit, ControlValueAccessor {
                         this.editorOffsetY
                     )
                 );
+                this.changeDetector.detectChanges();
             }
         }
     }
@@ -564,6 +569,10 @@ export class PropertyTable implements AfterViewInit, ControlValueAccessor {
 
     savePropertyValue(item: PropertyItem, newValue: string | null): void {
         if (item.value != newValue) {
+            if (!item.savedValue) {
+                item.savedValue = item.value;
+            }
+
             item.value = newValue;
             item.dirty = true;
 

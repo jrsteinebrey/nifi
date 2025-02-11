@@ -22,13 +22,12 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { HttpParams } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Navigation } from '../navigation/navigation.component';
-import { selectRouteData } from '../../../state/router/router.selectors';
-import { AdvancedUiParams, isDefinedAndNotNull } from '../../../state/shared';
+import { isDefinedAndNotNull, selectRouteData } from '@nifi/shared';
+import { AdvancedUiParams } from '../../../state/shared';
 import { selectDisconnectionAcknowledged } from '../../../state/cluster-summary/cluster-summary.selectors';
 
 @Component({
     selector: 'advanced-ui',
-    standalone: true,
     templateUrl: './advanced-ui.component.html',
     imports: [Navigation],
     styleUrls: ['./advanced-ui.component.scss']
@@ -80,7 +79,7 @@ export class AdvancedUi {
             .set('editable', params.editable)
             .set('disconnectedNodeAcknowledged', params.disconnectedNodeAcknowledged)
             .toString();
-        const url = `${params.url}?${queryParams}`;
+        const url = `${params.url}/?${queryParams}`;
 
         const sanitizedUrl = this.domSanitizer.sanitize(SecurityContext.URL, url);
 

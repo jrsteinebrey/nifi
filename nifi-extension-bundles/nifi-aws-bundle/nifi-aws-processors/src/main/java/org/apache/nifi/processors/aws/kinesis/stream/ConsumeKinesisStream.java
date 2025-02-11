@@ -75,6 +75,7 @@ import software.amazon.kinesis.metrics.MetricsConfig;
 import software.amazon.kinesis.metrics.NullMetricsFactory;
 import software.amazon.kinesis.processor.ProcessorConfig;
 import software.amazon.kinesis.processor.ShardRecordProcessorFactory;
+import software.amazon.kinesis.processor.SingleStreamTracker;
 import software.amazon.kinesis.retrieval.RetrievalConfig;
 import software.amazon.kinesis.retrieval.polling.PollingConfig;
 
@@ -85,9 +86,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -349,8 +348,14 @@ public class ConsumeKinesisStream extends AbstractAwsAsyncProcessor<KinesisAsync
     private static final Object WORKER_LOCK = new Object();
     private static final String SCHEDULER_THREAD_NAME_TEMPLATE = ConsumeKinesisStream.class.getSimpleName() + "-" + Scheduler.class.getSimpleName() + "-";
 
-    private static final Set<Relationship> RELATIONSHIPS = Collections.singleton(REL_SUCCESS);
-    private static final Set<Relationship> RECORD_RELATIONSHIPS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(REL_SUCCESS, REL_PARSE_FAILURE)));
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS
+    );
+
+    private static final Set<Relationship> RECORD_RELATIONSHIPS = Set.of(
+            REL_SUCCESS,
+            REL_PARSE_FAILURE
+    );
 
     private static final PropertyUtilsBean PROPERTY_UTILS_BEAN;
     private static final BeanUtilsBean BEAN_UTILS_BEAN;
@@ -611,7 +616,6 @@ public class ConsumeKinesisStream extends AbstractAwsAsyncProcessor<KinesisAsync
     synchronized Scheduler prepareScheduler(final ProcessContext context, final ProcessSessionFactory sessionFactory, final String schedulerId) {
         final KinesisAsyncClient kinesisClient = getClient(context);
         final ConfigsBuilder configsBuilder = prepareConfigsBuilder(context, schedulerId, sessionFactory);
-
         final MetricsConfig metricsConfig = configsBuilder.metricsConfig();
         if (!isReportCloudWatchMetrics(context)) {
             metricsConfig.metricsFactory(new NullMetricsFactory());
@@ -623,17 +627,12 @@ public class ConsumeKinesisStream extends AbstractAwsAsyncProcessor<KinesisAsync
                 .streamName(streamName);
         final CoordinatorConfig coordinatorConfig = configsBuilder.coordinatorConfig().workerStateChangeListener(workerState::set);
 
-        final InitialPositionInStream initialPositionInStream = getInitialPositionInStream(context);
-        final InitialPositionInStreamExtended initialPositionInStreamValue = (InitialPositionInStream.AT_TIMESTAMP == initialPositionInStream)
-                ? InitialPositionInStreamExtended.newInitialPositionAtTimestamp(getStartStreamTimestamp(context))
-                : InitialPositionInStreamExtended.newInitialPosition(initialPositionInStream);
-        leaseManagementConfig.initialPositionInStream(initialPositionInStreamValue);
-
         final List<PropertyDescriptor> dynamicProperties = context.getProperties()
                 .keySet()
                 .stream()
                 .filter(PropertyDescriptor::isDynamic)
                 .collect(Collectors.toList());
+
 
         final RetrievalConfig retrievalConfig = configsBuilder.retrievalConfig()
                 .retrievalSpecificConfig(new PollingConfig(streamName, kinesisClient));
@@ -715,8 +714,13 @@ public class ConsumeKinesisStream extends AbstractAwsAsyncProcessor<KinesisAsync
      */
     @VisibleForTesting
     ConfigsBuilder prepareConfigsBuilder(final ProcessContext context, final String workerId, final ProcessSessionFactory sessionFactory) {
+        final InitialPositionInStream initialPositionInStream = getInitialPositionInStream(context);
+        final InitialPositionInStreamExtended initialPositionInStreamValue = (InitialPositionInStream.AT_TIMESTAMP == initialPositionInStream)
+                ? InitialPositionInStreamExtended.newInitialPositionAtTimestamp(getStartStreamTimestamp(context))
+                : InitialPositionInStreamExtended.newInitialPosition(initialPositionInStream);
+
         return new ConfigsBuilder(
-                getStreamName(context),
+                new SingleStreamTracker(getStreamName(context), initialPositionInStreamValue),
                 getApplicationName(context),
                 getClient(context),
                 getDynamoClient(context),

@@ -26,21 +26,15 @@ import {
 } from '@angular/material/dialog';
 import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatButton } from '@angular/material/button';
-import { NifiSpinnerDirective } from '../../../../../ui/common/spinner/nifi-spinner.directive';
 import { ChangeColorRequest } from '../../../state/flow';
 import { MatFormField, MatLabel } from '@angular/material/form-field';
 import { MatInput } from '@angular/material/input';
-import { ComponentContext } from '../../../../../ui/common/component-context/component-context.component';
-import { ComponentType } from '../../../../../state/shared';
-import { CloseOnEscapeDialog } from '../../../../../ui/common/close-on-escape-dialog/close-on-escape-dialog.component';
-import { ComponentTypeNamePipe } from '../../../../../pipes/component-type-name.pipe';
 import { CanvasUtils } from '../../../service/canvas-utils.service';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
+import { ComponentType, NiFiCommon, CloseOnEscapeDialog } from '@nifi/shared';
 import { MatCheckbox } from '@angular/material/checkbox';
 
 @Component({
     selector: 'change-component-dialog',
-    standalone: true,
     imports: [
         CommonModule,
         MatDialogTitle,
@@ -49,12 +43,9 @@ import { MatCheckbox } from '@angular/material/checkbox';
         MatButton,
         MatDialogActions,
         MatDialogClose,
-        NifiSpinnerDirective,
         MatFormField,
         MatLabel,
         MatInput,
-        ComponentContext,
-        ComponentTypeNamePipe,
         MatCheckbox
     ],
     templateUrl: './change-color-dialog.component.html',

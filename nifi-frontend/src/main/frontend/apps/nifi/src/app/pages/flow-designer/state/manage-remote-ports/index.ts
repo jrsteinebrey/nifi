@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { ComponentType } from '../../../../state/shared';
+import { ComponentType } from '@nifi/shared';
 
 export const remotePortsFeatureKey = 'remotePortListing';
 

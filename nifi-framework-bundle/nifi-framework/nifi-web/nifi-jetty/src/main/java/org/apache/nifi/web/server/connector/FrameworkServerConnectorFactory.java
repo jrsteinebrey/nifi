@@ -21,48 +21,40 @@ import org.apache.commons.lang3.ObjectUtils;
 import org.apache.nifi.jetty.configuration.connector.ApplicationLayerProtocol;
 import org.apache.nifi.jetty.configuration.connector.StandardServerConnectorFactory;
 import org.apache.nifi.processor.DataUnit;
-import org.apache.nifi.security.util.StandardTlsConfiguration;
-import org.apache.nifi.security.util.TlsConfiguration;
-import org.apache.nifi.security.util.TlsException;
 import org.apache.nifi.security.util.TlsPlatform;
-import org.apache.nifi.util.FormatUtils;
 import org.apache.nifi.util.NiFiProperties;
-import org.apache.nifi.web.server.util.StoreScanner;
 import org.eclipse.jetty.server.HostHeaderCustomizer;
 import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 
-import javax.net.ssl.SSLContext;
-
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-
-import static org.apache.nifi.security.util.SslContextFactory.createSslContext;
 
 /**
  * Framework extension of Server Connector Factory configures additional settings based on application properties
  */
 public class FrameworkServerConnectorFactory extends StandardServerConnectorFactory {
-    private static final String DEFAULT_AUTO_REFRESH_INTERVAL = "30 s";
-
-    private static final int IDLE_TIMEOUT_MULTIPLIER = 2;
+    private static final int IDLE_TIMEOUT = 60000;
 
     private static final String CIPHER_SUITE_SEPARATOR_PATTERN = ",\\s*";
 
+    private static final Pattern HOST_PORT_PATTERN = Pattern.compile(".+?:(\\d+)$");
+
+    private static final int PORT_GROUP = 1;
+
     private final int headerSize;
-
-    private final int idleTimeout;
-
-    private final Integer storeScanInterval;
 
     private final String includeCipherSuites;
 
     private final String excludeCipherSuites;
 
-    private TlsConfiguration tlsConfiguration;
+    private final Set<Integer> validPorts;
 
     private SslContextFactory.Server sslContextFactory;
 
@@ -78,37 +70,19 @@ public class FrameworkServerConnectorFactory extends StandardServerConnectorFact
         includeCipherSuites = properties.getProperty(NiFiProperties.WEB_HTTPS_CIPHERSUITES_INCLUDE);
         excludeCipherSuites = properties.getProperty(NiFiProperties.WEB_HTTPS_CIPHERSUITES_EXCLUDE);
         headerSize = DataUnit.parseDataSize(properties.getWebMaxHeaderSize(), DataUnit.B).intValue();
-        idleTimeout = getIdleTimeout();
+        validPorts = getValidPorts(properties);
 
         if (properties.isHTTPSConfigured()) {
-            tlsConfiguration = StandardTlsConfiguration.fromNiFiProperties(properties);
-            try {
-                final SSLContext sslContext = createSslContext(tlsConfiguration);
-                setSslContext(sslContext);
-            } catch (final TlsException e) {
-                throw new IllegalStateException("Invalid nifi.web.https configuration in nifi.properties", e);
-            }
-
             if (properties.isClientAuthRequiredForRestApi()) {
                 setNeedClientAuth(true);
             } else {
                 setWantClientAuth(true);
             }
 
-            if (properties.isSecurityAutoReloadEnabled()) {
-                final String securityAutoReloadInterval = properties.getSecurityAutoReloadInterval();
-                final double reloadIntervalSeconds = FormatUtils.getPreciseTimeDuration(securityAutoReloadInterval, TimeUnit.SECONDS);
-                storeScanInterval = (int) reloadIntervalSeconds;
-            } else {
-                storeScanInterval = null;
-            }
-
             setApplicationLayerProtocols(properties);
 
             // Set Transport Layer Security Protocols based on platform configuration
             setIncludeSecurityProtocols(TlsPlatform.getPreferredProtocols().toArray(new String[0]));
-        } else {
-            storeScanInterval = null;
         }
     }
 
@@ -123,10 +97,13 @@ public class FrameworkServerConnectorFactory extends StandardServerConnectorFact
 
         httpConfiguration.setRequestHeaderSize(headerSize);
         httpConfiguration.setResponseHeaderSize(headerSize);
-        httpConfiguration.setIdleTimeout(idleTimeout);
+        httpConfiguration.setIdleTimeout(IDLE_TIMEOUT);
 
         // Add HostHeaderCustomizer to set Host Header for HTTP/2 and HostHeaderHandler
         httpConfiguration.addCustomizer(new HostHeaderCustomizer());
+
+        final HostPortValidatorCustomizer hostPortValidatorCustomizer = new HostPortValidatorCustomizer(validPorts);
+        httpConfiguration.addCustomizer(hostPortValidatorCustomizer);
 
         return httpConfiguration;
     }
@@ -149,18 +126,6 @@ public class FrameworkServerConnectorFactory extends StandardServerConnectorFact
                 final String[] cipherSuites = getCipherSuites(excludeCipherSuites);
                 sslContextFactory.setExcludeCipherSuites(cipherSuites);
             }
-
-            if (storeScanInterval != null) {
-                sslContextFactory.setKeyStorePath(tlsConfiguration.getKeystorePath());
-                final StoreScanner keyStoreScanner = new StoreScanner(sslContextFactory, tlsConfiguration, sslContextFactory.getKeyStoreResource());
-                keyStoreScanner.setScanInterval(storeScanInterval);
-                getServer().addBean(keyStoreScanner);
-
-                sslContextFactory.setTrustStorePath(tlsConfiguration.getTruststorePath());
-                final StoreScanner trustStoreScanner = new StoreScanner(sslContextFactory, tlsConfiguration, sslContextFactory.getTrustStoreResource());
-                trustStoreScanner.setScanInterval(storeScanInterval);
-                getServer().addBean(trustStoreScanner);
-            }
         }
 
         return sslContextFactory;
@@ -175,12 +140,6 @@ public class FrameworkServerConnectorFactory extends StandardServerConnectorFact
                 )
                 .collect(Collectors.toSet());
         setApplicationLayerProtocols(applicationLayerProtocols);
-    }
-
-    private int getIdleTimeout() {
-        final String autoRefreshInterval = DEFAULT_AUTO_REFRESH_INTERVAL;
-        final double autoRefreshMilliseconds = FormatUtils.getPreciseTimeDuration(autoRefreshInterval, TimeUnit.MILLISECONDS);
-        return Math.multiplyExact((int) autoRefreshMilliseconds, IDLE_TIMEOUT_MULTIPLIER);
     }
 
     private String[] getCipherSuites(final String cipherSuitesProperty) {
@@ -198,5 +157,24 @@ public class FrameworkServerConnectorFactory extends StandardServerConnectorFact
         }
 
         return ObjectUtils.defaultIfNull(httpsPort, httpPort);
+    }
+
+    private static Set<Integer> getValidPorts(final NiFiProperties properties) {
+        final Set<Integer> validPorts = new HashSet<>();
+
+        final int serverPort = getPort(properties);
+        validPorts.add(serverPort);
+
+        final List<String> allowedHosts = properties.getAllowedHostsAsList();
+        for (final String allowedHost : allowedHosts) {
+            final Matcher portMatcher = HOST_PORT_PATTERN.matcher(allowedHost);
+            if (portMatcher.matches()) {
+                final String portGroup = portMatcher.group(PORT_GROUP);
+                final int allowedPort = Integer.parseInt(portGroup);
+                validPorts.add(allowedPort);
+            }
+        }
+
+        return validPorts;
     }
 }

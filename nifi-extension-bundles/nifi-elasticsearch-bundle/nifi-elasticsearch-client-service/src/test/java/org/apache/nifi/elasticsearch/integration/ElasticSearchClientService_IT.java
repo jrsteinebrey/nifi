@@ -36,9 +36,6 @@ import org.apache.nifi.elasticsearch.IndexOperationResponse;
 import org.apache.nifi.elasticsearch.MapBuilder;
 import org.apache.nifi.elasticsearch.SearchResponse;
 import org.apache.nifi.elasticsearch.UpdateOperationResponse;
-import org.apache.nifi.ssl.SSLContextService;
-import org.apache.nifi.ssl.StandardRestrictedSSLContextService;
-import org.apache.nifi.ssl.StandardSSLContextService;
 import org.apache.nifi.util.MockConfigurationContext;
 import org.apache.nifi.util.MockControllerServiceLookup;
 import org.apache.nifi.util.StringUtils;
@@ -176,35 +173,6 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
     }
 
     @Test
-    void testVerifyFailedSSL() throws Exception {
-        runner.disableControllerService(service);
-        final SSLContextService sslContextService = new StandardRestrictedSSLContextService();
-        runner.addControllerService("SSL Context", sslContextService);
-        runner.setProperty(service, ElasticSearchClientService.PROP_SSL_CONTEXT_SERVICE, "SSL Context");
-        runner.setProperty(sslContextService, StandardSSLContextService.TRUSTSTORE, "not/a/file");
-        runner.setProperty(sslContextService, StandardSSLContextService.TRUSTSTORE_PASSWORD, "ignored");
-        try {
-            runner.enableControllerService(sslContextService);
-        } catch (final Exception ignored) {
-            // expected, ignore
-        }
-
-        final List<ConfigVerificationResult> results = service.verify(
-                new MockConfigurationContext(service, getClientServiceProperties(), runner.getProcessContext().getControllerServiceLookup(), null),
-                runner.getLogger(),
-                Collections.emptyMap()
-        );
-        assertEquals(4, results.size());
-        assertEquals(3, results.stream().filter(result -> result.getOutcome() == ConfigVerificationResult.Outcome.SKIPPED).count(), results.toString());
-        assertEquals(1, results.stream().filter(
-                result -> Objects.equals(result.getVerificationStepName(), ElasticSearchClientServiceImpl.VERIFICATION_STEP_CLIENT_SETUP)
-                        && Objects.equals(result.getExplanation(), "Incorrect/invalid " + ElasticSearchClientService.PROP_SSL_CONTEXT_SERVICE.getDisplayName())
-                        && result.getOutcome() == ConfigVerificationResult.Outcome.FAILED).count(),
-                results.toString()
-        );
-    }
-
-    @Test
     void testVerifyFailedAuth() {
         runner.disableControllerService(service);
         runner.setProperty(service, ElasticSearchClientService.USERNAME, "invalid");
@@ -295,7 +263,7 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
                         "four", 4, "five", 5)
                 .build();
 
-        buckets.forEach( (aggRes) -> {
+        buckets.forEach(aggRes -> {
             final String key = (String) aggRes.get("key");
             final Integer docCount = (Integer) aggRes.get("doc_count");
             assertEquals(expected.get(key), docCount, String.format("%s did not match.", key));
@@ -427,12 +395,10 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
         // delete the scroll
         DeleteOperationResponse deleteResponse = service.deleteScroll(scrollResponse.getScrollId());
         assertNotNull(deleteResponse, "Delete Response was null");
-        assertTrue(deleteResponse.getTook() > 0);
 
         // delete scroll again (should now be unknown but the 404 caught and ignored)
         deleteResponse = service.deleteScroll(scrollResponse.getScrollId());
         assertNotNull(deleteResponse, "Delete Response was null");
-        assertEquals(0L, deleteResponse.getTook());
     }
 
     @Test
@@ -559,12 +525,10 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
         // delete pitId
         DeleteOperationResponse deleteResponse = service.deletePointInTime(pitId);
         assertNotNull(deleteResponse, "Delete Response was null");
-        assertTrue(deleteResponse.getTook() > 0);
 
         // delete pitId again (should now be unknown but the 404 caught and ignored)
         deleteResponse = service.deletePointInTime(pitId);
         assertNotNull(deleteResponse, "Delete Response was null");
-        assertEquals(0L, deleteResponse.getTook());
     }
 
     @Test
@@ -575,7 +539,6 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
                                 .build()).build());
         final DeleteOperationResponse response = service.deleteByQuery(query, INDEX, type, null);
         assertNotNull(response);
-        assertTrue(response.getTook() > 0);
     }
 
     @Test
@@ -588,7 +551,6 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
         parameters.put("refresh", "true");
         final DeleteOperationResponse response = service.deleteByQuery(query, INDEX, type, parameters);
         assertNotNull(response);
-        assertTrue(response.getTook() > 0);
     }
 
     @Test
@@ -599,7 +561,6 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
                         .build()).build());
         final UpdateOperationResponse response = service.updateByQuery(query, INDEX, type, null);
         assertNotNull(response);
-        assertTrue(response.getTook() > 0);
     }
 
     @Test
@@ -613,7 +574,6 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
         parameters.put("slices", "1");
         final UpdateOperationResponse response = service.updateByQuery(query, INDEX, type, parameters);
         assertNotNull(response);
-        assertTrue(response.getTook() > 0);
     }
 
     @Test
@@ -623,7 +583,6 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
         try {
             final DeleteOperationResponse response = service.deleteById(INDEX, type, ID, null);
             assertNotNull(response);
-            assertTrue(response.getTook() > 0);
             final ElasticsearchException ee = assertThrows(ElasticsearchException.class, () ->
                 service.get(INDEX, type, ID, null));
             assertTrue(ee.isNotFound());
@@ -755,7 +714,6 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
                 null
         );
         assertNotNull(response);
-        assertTrue(response.getTook() > 0);
         waitForIndexRefresh();
 
         Map<String, Object> result = service.get("nulls", type, "1", null);
@@ -765,7 +723,6 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
         suppressNulls(true);
         response = service.bulk(Collections.singletonList(new IndexOperationRequest("nulls", type, "2", doc, IndexOperationRequest.Operation.Index, null, false, null, null)), null);
         assertNotNull(response);
-        assertTrue(response.getTook() > 0);
         waitForIndexRefresh();
 
         result = service.get("nulls", type, "2", null);
@@ -801,7 +758,6 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
         }
         final IndexOperationResponse response = service.bulk(payload, createParameters("refresh", "true"));
         assertNotNull(response);
-        assertTrue(response.getTook() > 0);
         waitForIndexRefresh();
 
         /*
@@ -839,7 +795,6 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
         }
         final IndexOperationResponse response = service.bulk(payload, createParameters("refresh", "true"));
         assertNotNull(response);
-        assertTrue(response.getTook() > 0);
 
         /*
          * Now, check to ensure that all indices got populated and refreshed appropriately.
@@ -882,7 +837,6 @@ class ElasticSearchClientService_IT extends AbstractElasticsearch_IT {
 
         final IndexOperationResponse response = service.bulk(payload, createParameters("refresh", "true"));
         assertNotNull(response);
-        assertTrue(response.getTook() > 0);
 
         /*
          * Now, check the dynamic_template was applied

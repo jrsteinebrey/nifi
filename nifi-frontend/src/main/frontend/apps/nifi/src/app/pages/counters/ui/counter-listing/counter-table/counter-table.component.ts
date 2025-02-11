@@ -21,13 +21,14 @@ import { MatTableDataSource } from '@angular/material/table';
 import { Sort } from '@angular/material/sort';
 import { FormBuilder, FormGroup } from '@angular/forms';
 import { debounceTime } from 'rxjs';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
+import { NiFiCommon } from '@nifi/shared';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
     selector: 'counter-table',
     templateUrl: './counter-table.component.html',
-    styleUrls: ['./counter-table.component.scss']
+    styleUrls: ['./counter-table.component.scss'],
+    standalone: false
 })
 export class CounterTable implements AfterViewInit {
     private _canModifyCounters = false;

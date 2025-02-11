@@ -19,7 +19,6 @@ import { createReducer, on } from '@ngrx/store';
 import {
     changeVersionComplete,
     changeVersionSuccess,
-    copySuccess,
     createComponentComplete,
     createComponentSuccess,
     createConnection,
@@ -39,16 +38,19 @@ import {
     flowSnackbarError,
     groupComponents,
     groupComponentsSuccess,
+    importFromRegistry,
     loadChildProcessGroupSuccess,
     loadConnectionSuccess,
     loadInputPortSuccess,
     loadProcessGroup,
+    loadProcessGroupComplete,
     loadProcessGroupSuccess,
     loadProcessorSuccess,
     loadRemoteProcessGroupSuccess,
     navigateWithoutTransform,
     pasteSuccess,
     pollChangeVersionSuccess,
+    pollProcessorUntilStoppedSuccess,
     pollRevertChangesSuccess,
     requestRefreshRemoteProcessGroup,
     resetFlowState,
@@ -60,16 +62,20 @@ import {
     saveToFlowRegistrySuccess,
     setAllowTransition,
     setDragging,
+    setFlowAnalysisOpen,
     setNavigationCollapsed,
     setOperationCollapsed,
+    setRegistryClients,
     setSkipTransform,
     setTransitionRequired,
     startComponent,
     startComponentSuccess,
+    startPollingProcessorUntilStopped,
     startProcessGroupSuccess,
     startRemoteProcessGroupPolling,
     stopComponent,
     stopComponentSuccess,
+    stopPollingProcessor,
     stopProcessGroupSuccess,
     stopRemoteProcessGroupPolling,
     stopVersionControl,
@@ -84,13 +90,17 @@ import {
     uploadProcessGroup
 } from './flow.actions';
 import { ComponentEntity, FlowState } from './index';
-import { ComponentType } from '../../../../state/shared';
+import { ComponentType } from '@nifi/shared';
 import { produce } from 'immer';
 
 export const initialState: FlowState = {
     id: 'root',
     changeVersionRequest: null,
+    pollingProcessor: null,
     flow: {
+        revision: {
+            version: 0
+        },
         permissions: {
             canRead: false,
             canWrite: false
@@ -155,7 +165,7 @@ export const initialState: FlowState = {
         parameterProviderBulletins: [],
         reportingTaskBulletins: []
     },
-    copiedSnippet: null,
+    registryClients: [],
     dragging: false,
     saving: false,
     versionSaving: false,
@@ -164,6 +174,7 @@ export const initialState: FlowState = {
     allowTransition: false,
     navigationCollapsed: false,
     operationCollapsed: false,
+    flowAnalysisOpen: false,
     status: 'pending'
 };
 
@@ -266,11 +277,20 @@ export const flowReducer = createReducer(
             };
             draftState.flowStatus = response.flowStatus;
             draftState.controllerBulletins = response.controllerBulletins;
+            draftState.registryClients = response.registryClients;
             draftState.addedCache = [];
             draftState.removedCache = [];
             draftState.status = 'success' as const;
         });
     }),
+    on(setRegistryClients, (state, { request }) => ({
+        ...state,
+        registryClients: request
+    })),
+    on(loadProcessGroupComplete, (state) => ({
+        ...state,
+        status: 'complete' as const
+    })),
     on(loadConnectionSuccess, (state, { response }) => {
         return produce(state, (draftState) => {
             const proposedConnection = response.connection;
@@ -288,7 +308,7 @@ export const flowReducer = createReducer(
             }
         });
     }),
-    on(loadProcessorSuccess, (state, { response }) => {
+    on(loadProcessorSuccess, pollProcessorUntilStoppedSuccess, (state, { response }) => {
         return produce(state, (draftState) => {
             const proposedProcessor = response.processor;
             const componentIndex: number = draftState.flow.processGroupFlow.flow.processors.findIndex(
@@ -364,6 +384,14 @@ export const flowReducer = createReducer(
         saving: false,
         versionSaving: false
     })),
+    on(startPollingProcessorUntilStopped, (state, { request }) => ({
+        ...state,
+        pollingProcessor: request
+    })),
+    on(stopPollingProcessor, (state) => ({
+        ...state,
+        pollingProcessor: null
+    })),
     on(
         createProcessor,
         createProcessGroup,
@@ -373,6 +401,7 @@ export const flowReducer = createReducer(
         createPort,
         createFunnel,
         createLabel,
+        importFromRegistry,
         (state) => ({
             ...state,
             saving: true
@@ -468,10 +497,6 @@ export const flowReducer = createReducer(
             });
         });
     }),
-    on(copySuccess, (state, { copiedSnippet }) => ({
-        ...state,
-        copiedSnippet
-    })),
     on(pasteSuccess, (state, { response }) => {
         return produce(state, (draftState) => {
             const labels: any[] | null = getComponentCollection(draftState, ComponentType.Label);
@@ -509,8 +534,7 @@ export const flowReducer = createReducer(
             if (connections) {
                 connections.push(...response.flow.connections);
             }
-
-            draftState.copiedSnippet = null;
+            draftState.flow.revision = response.revision;
         });
     }),
     on(setDragging, (state, { dragging }) => ({
@@ -540,6 +564,10 @@ export const flowReducer = createReducer(
     on(setOperationCollapsed, (state, { operationCollapsed }) => ({
         ...state,
         operationCollapsed
+    })),
+    on(setFlowAnalysisOpen, (state, { flowAnalysisOpen }) => ({
+        ...state,
+        flowAnalysisOpen
     })),
     on(
         startComponentSuccess,

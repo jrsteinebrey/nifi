@@ -25,7 +25,7 @@ import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.schema.access.SchemaNotFoundException;
 import org.apache.nifi.serialization.record.RecordSchema;
 import org.apache.nifi.serialization.record.SchemaIdentifier;
-import org.apache.nifi.web.util.WebUtils;
+import org.apache.nifi.web.util.WebClientUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 
@@ -41,8 +41,8 @@ import jakarta.ws.rs.client.WebTarget;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -86,7 +86,7 @@ public class RestSchemaRegistryClient implements SchemaRegistryClient {
         final ClientConfig clientConfig = new ClientConfig();
         clientConfig.property(ClientProperties.CONNECT_TIMEOUT, timeoutMillis);
         clientConfig.property(ClientProperties.READ_TIMEOUT, timeoutMillis);
-        client = WebUtils.createClient(clientConfig, sslContext);
+        client = WebClientUtils.createClient(clientConfig, sslContext);
 
         if (StringUtils.isNoneBlank(username, password)) {
             client.register(HttpAuthenticationFeature.basic(username, password));
@@ -238,13 +238,13 @@ public class RestSchemaRegistryClient implements SchemaRegistryClient {
         }
     }
 
-    private String getSubjectPath(final String schemaName, final Integer schemaVersion) throws UnsupportedEncodingException {
-        return "/subjects/" + URLEncoder.encode(schemaName, "UTF-8") + "/versions/" +
-                (schemaVersion == null ? "latest" : URLEncoder.encode(String.valueOf(schemaVersion), "UTF-8"));
+    private String getSubjectPath(final String schemaName, final Integer schemaVersion) {
+        return "/subjects/" + URLEncoder.encode(schemaName, StandardCharsets.UTF_8) + "/versions/" +
+                (schemaVersion == null ? "latest" : URLEncoder.encode(String.valueOf(schemaVersion), StandardCharsets.UTF_8));
     }
 
-    private String getSchemaPath(final int schemaId) throws UnsupportedEncodingException {
-        return "/schemas/ids/" + URLEncoder.encode(String.valueOf(schemaId), "UTF-8");
+    private String getSchemaPath(final int schemaId) {
+        return "/schemas/ids/" + URLEncoder.encode(String.valueOf(schemaId), StandardCharsets.UTF_8);
     }
 
     private JsonNode postJsonResponse(final String pathSuffix, final JsonNode schema, final String schemaDescription) throws SchemaNotFoundException {

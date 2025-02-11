@@ -24,7 +24,6 @@ import { Title } from '@angular/platform-browser';
 
 @Component({
     selector: 'breadcrumbs',
-    standalone: true,
     templateUrl: './breadcrumbs.component.html',
     imports: [RouterLink],
     styleUrls: ['./breadcrumbs.component.scss']
@@ -77,16 +76,16 @@ export class Breadcrumbs {
         const vciState: string = breadcrumbEntity.versionedFlowState;
         if (vciState) {
             if (vciState === 'SYNC_FAILURE') {
-                return 'sync-failure surface-color fa fa-question';
+                return 'sync-failure neutral-color fa fa-question';
             } else if (vciState === 'LOCALLY_MODIFIED_AND_STALE') {
-                return 'locally-modified-and-stale warn-color-lighter fa fa-exclamation-circle';
+                return 'locally-modified-and-stale error-color-variant fa fa-exclamation-circle';
             } else if (vciState === 'STALE') {
-                return 'stale warn-color-lighter fa fa-arrow-circle-up';
+                return 'stale error-color-variant fa fa-arrow-circle-up';
             } else if (vciState === 'LOCALLY_MODIFIED') {
-                return 'locally-modified surface-color fa fa-asterisk';
+                return 'locally-modified neutral-color fa fa-asterisk';
             } else {
                 // up to date
-                return 'up-to-date success-color fa fa-check';
+                return 'up-to-date success-color-default fa fa-check';
             }
         } else {
             return '';

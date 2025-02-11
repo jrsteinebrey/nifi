@@ -16,7 +16,7 @@
  */
 package org.apache.nifi.web.security.oidc.client.web;
 
-import org.apache.nifi.web.util.WebUtils;
+import org.apache.nifi.web.servlet.shared.ProxyHeader;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,9 +46,11 @@ import static org.mockito.Mockito.when;
 class StandardOAuth2AuthorizationRequestResolverTest {
     private static final String REDIRECT_URI = "https://localhost:8443/nifi-api/callback";
 
+    private static final int FORWARDED_HTTPS_PORT = 443;
+
     private static final String FORWARDED_PATH = "/forwarded";
 
-    private static final String FORWARDED_REDIRECT_URI = String.format("https://localhost.localdomain%s/nifi-api/callback", FORWARDED_PATH);
+    private static final String FORWARDED_REDIRECT_URI = String.format("https://localhost.localdomain:%d%s/nifi-api/callback", FORWARDED_HTTPS_PORT, FORWARDED_PATH);
 
     private static final String ALLOWED_CONTEXT_PATHS_PARAMETER = "allowedContextPaths";
 
@@ -59,6 +61,8 @@ class StandardOAuth2AuthorizationRequestResolverTest {
     private static final String CLIENT_ID = "client-id";
 
     private static final String REGISTRATION_ID = OidcRegistrationProperty.REGISTRATION_ID.getProperty();
+
+    private static final int STANDARD_SERVER_PORT = 8443;
 
     MockHttpServletRequest httpServletRequest;
 
@@ -115,10 +119,11 @@ class StandardOAuth2AuthorizationRequestResolverTest {
         servletContext.setInitParameter(ALLOWED_CONTEXT_PATHS_PARAMETER, FORWARDED_PATH);
 
         final URI forwardedRedirectUri = URI.create(FORWARDED_REDIRECT_URI);
-        httpServletRequest.addHeader(WebUtils.PROXY_SCHEME_HTTP_HEADER, forwardedRedirectUri.getScheme());
-        httpServletRequest.addHeader(WebUtils.PROXY_HOST_HTTP_HEADER, forwardedRedirectUri.getHost());
-        httpServletRequest.addHeader(WebUtils.PROXY_PORT_HTTP_HEADER, forwardedRedirectUri.getPort());
-        httpServletRequest.addHeader(WebUtils.PROXY_CONTEXT_PATH_HTTP_HEADER, FORWARDED_PATH);
+        httpServletRequest.setServerPort(STANDARD_SERVER_PORT);
+        httpServletRequest.addHeader(ProxyHeader.PROXY_SCHEME.getHeader(), forwardedRedirectUri.getScheme());
+        httpServletRequest.addHeader(ProxyHeader.PROXY_HOST.getHeader(), forwardedRedirectUri.getHost());
+        httpServletRequest.addHeader(ProxyHeader.PROXY_PORT.getHeader(), FORWARDED_HTTPS_PORT);
+        httpServletRequest.addHeader(ProxyHeader.PROXY_CONTEXT_PATH.getHeader(), FORWARDED_PATH);
 
         final OAuth2AuthorizationRequest authorizationRequest = resolver.resolve(httpServletRequest, REGISTRATION_ID);
 

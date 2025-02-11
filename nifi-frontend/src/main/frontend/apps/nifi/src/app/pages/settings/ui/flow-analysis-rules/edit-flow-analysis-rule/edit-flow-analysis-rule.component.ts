@@ -17,7 +17,6 @@
 
 import { Component, EventEmitter, Inject, Input, Output } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
-import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { AsyncPipe } from '@angular/common';
@@ -27,24 +26,15 @@ import { MatSelectModule } from '@angular/material/select';
 import { AbstractControl, FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Observable, of } from 'rxjs';
 import { Client } from '../../../../../service/client.service';
-import {
-    InlineServiceCreationRequest,
-    InlineServiceCreationResponse,
-    Property,
-    SelectOption
-} from '../../../../../state/shared';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
+import { InlineServiceCreationRequest, InlineServiceCreationResponse, Property } from '../../../../../state/shared';
+import { CopyDirective, NiFiCommon, NifiTooltipDirective, TextTip, SelectOption } from '@nifi/shared';
 import { PropertyTable } from '../../../../../ui/common/property-table/property-table.component';
 import { NifiSpinnerDirective } from '../../../../../ui/common/spinner/nifi-spinner.directive';
-import { NifiTooltipDirective } from '../../../../../ui/common/tooltips/nifi-tooltip.directive';
-import { TextTip } from '../../../../../ui/common/tooltips/text-tip/text-tip.component';
 import {
     EditFlowAnalysisRuleDialogRequest,
     FlowAnalysisRuleEntity,
     UpdateFlowAnalysisRuleRequest
 } from '../../../state/flow-analysis-rules';
-import { FlowAnalysisRuleTable } from '../flow-analysis-rule-table/flow-analysis-rule-table.component';
-import { ErrorBanner } from '../../../../../ui/common/error-banner/error-banner.component';
 import { ClusterConnectionService } from '../../../../../service/cluster-connection.service';
 import {
     ConfigVerificationResult,
@@ -53,10 +43,11 @@ import {
 } from '../../../../../state/property-verification';
 import { PropertyVerification } from '../../../../../ui/common/property-verification/property-verification.component';
 import { TabbedDialog } from '../../../../../ui/common/tabbed-dialog/tabbed-dialog.component';
+import { ErrorContextKey } from '../../../../../state/error';
+import { ContextErrorBanner } from '../../../../../ui/common/context-error-banner/context-error-banner.component';
 
 @Component({
     selector: 'edit-flow-analysis-rule',
-    standalone: true,
     templateUrl: './edit-flow-analysis-rule.component.html',
     imports: [
         ReactiveFormsModule,
@@ -69,11 +60,10 @@ import { TabbedDialog } from '../../../../../ui/common/tabbed-dialog/tabbed-dial
         PropertyTable,
         AsyncPipe,
         NifiSpinnerDirective,
-        MatTooltipModule,
         NifiTooltipDirective,
-        FlowAnalysisRuleTable,
-        ErrorBanner,
-        PropertyVerification
+        PropertyVerification,
+        ContextErrorBanner,
+        CopyDirective
     ],
     styleUrls: ['./edit-flow-analysis-rule.component.scss']
 })
@@ -97,6 +87,11 @@ export class EditFlowAnalysisRule extends TabbedDialog {
             text: 'Enforce',
             value: 'ENFORCE',
             description: 'Treat violations of this rule as errors the correction of which is mandatory.'
+        },
+        {
+            text: 'Warn',
+            value: 'WARN',
+            description: 'Treat violations of this rule as warnings the correction of which is optional.'
         }
     ];
 
@@ -126,7 +121,10 @@ export class EditFlowAnalysisRule extends TabbedDialog {
         this.editFlowAnalysisRuleForm = this.formBuilder.group({
             name: new FormControl(request.flowAnalysisRule.component.name, Validators.required),
             state: new FormControl(request.flowAnalysisRule.component.state === 'STOPPED', Validators.required),
-            enforcementPolicy: new FormControl('ENFORCE', Validators.required),
+            enforcementPolicy: new FormControl(
+                request.flowAnalysisRule.component.enforcementPolicy,
+                Validators.required
+            ),
             properties: new FormControl({ value: properties, disabled: this.readonly }),
             comments: new FormControl(request.flowAnalysisRule.component.comments)
         });
@@ -192,4 +190,6 @@ export class EditFlowAnalysisRule extends TabbedDialog {
             properties: this.getModifiedProperties()
         });
     }
+
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

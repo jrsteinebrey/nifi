@@ -33,7 +33,7 @@ import {
 import { filter, map, switchMap, take } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { getStatusHistoryAndOpenDialog } from '../../../../state/status-history/status-history.actions';
-import { ComponentType, isDefinedAndNotNull } from '../../../../state/shared';
+import { ComponentType, isDefinedAndNotNull } from '@nifi/shared';
 import { selectCurrentUser } from '../../../../state/current-user/current-user.selectors';
 import { loadClusterSummary } from '../../../../state/cluster-summary/cluster-summary.actions';
 import { ProcessGroupStatusSnapshotEntity } from '../../state';
@@ -47,7 +47,8 @@ import {
 @Component({
     selector: 'process-group-status-listing',
     templateUrl: './process-group-status-listing.component.html',
-    styleUrls: ['./process-group-status-listing.component.scss']
+    styleUrls: ['./process-group-status-listing.component.scss'],
+    standalone: false
 })
 export class ProcessGroupStatusListing {
     processGroupStatusSnapshots$ = this.store.select(selectProcessGroupStatusSnapshots);

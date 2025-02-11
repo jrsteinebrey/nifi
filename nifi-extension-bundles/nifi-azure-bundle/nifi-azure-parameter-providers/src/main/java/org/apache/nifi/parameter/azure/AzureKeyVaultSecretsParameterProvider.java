@@ -28,7 +28,6 @@ import org.apache.nifi.controller.ConfigurationContext;
 import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.parameter.AbstractParameterProvider;
 import org.apache.nifi.parameter.Parameter;
-import org.apache.nifi.parameter.ParameterDescriptor;
 import org.apache.nifi.parameter.ParameterGroup;
 import org.apache.nifi.parameter.VerifiableParameterProvider;
 import org.apache.nifi.processor.util.StandardValidators;
@@ -76,7 +75,7 @@ public class AzureKeyVaultSecretsParameterProvider extends AbstractParameterProv
 
     static final String GROUP_NAME_TAG = "group-name";
 
-    private static final List<PropertyDescriptor> PROPERTIES = List.of(
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
             AZURE_CREDENTIALS_SERVICE,
             KEY_VAULT_URI,
             GROUP_NAME_PATTERN
@@ -84,7 +83,7 @@ public class AzureKeyVaultSecretsParameterProvider extends AbstractParameterProv
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return PROPERTIES;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -180,8 +179,11 @@ public class AzureKeyVaultSecretsParameterProvider extends AbstractParameterProv
     }
 
     private Parameter createParameter(final String parameterName, final String parameterValue) {
-        final ParameterDescriptor parameterDescriptor = new ParameterDescriptor.Builder().name(parameterName).build();
-        return new Parameter(parameterDescriptor, parameterValue, null, true);
+        return new Parameter.Builder()
+            .name(parameterName)
+            .value(parameterValue)
+            .provided(true)
+            .build();
     }
 
     SecretClient configureSecretClient(final ConfigurationContext context) {

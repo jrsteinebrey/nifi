@@ -45,7 +45,6 @@ import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
 import org.apache.nifi.processor.Relationship;
 import org.apache.nifi.processor.exception.ProcessException;
-import org.apache.nifi.processor.io.InputStreamCallback;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.record.path.FieldValue;
 import org.apache.nifi.record.path.RecordPath;
@@ -222,6 +221,18 @@ public class LookupRecord extends AbstractProcessor {
         .required(true)
         .build();
 
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+            RECORD_READER,
+            RECORD_WRITER,
+            LOOKUP_SERVICE,
+            ROOT_RECORD_PATH,
+            ROUTING_STRATEGY,
+            RESULT_CONTENTS,
+            REPLACEMENT_STRATEGY,
+            RESULT_RECORD_PATH,
+            CACHE_SIZE
+    );
+
     static final Relationship REL_MATCHED = new Relationship.Builder()
         .name("matched")
         .description("All records for which the lookup returns a value will be routed to this relationship")
@@ -239,11 +250,14 @@ public class LookupRecord extends AbstractProcessor {
         .description("If a FlowFile cannot be enriched, the unchanged FlowFile will be routed to this relationship")
         .build();
 
-    private static final Set<Relationship> MATCHED_COLLECTION = Collections.singleton(REL_MATCHED);
-    private static final Set<Relationship> UNMATCHED_COLLECTION = Collections.singleton(REL_UNMATCHED);
-    private static final Set<Relationship> SUCCESS_COLLECTION = Collections.singleton(REL_SUCCESS);
+    private static final Set<Relationship> MATCHED_COLLECTION = Set.of(REL_MATCHED);
+    private static final Set<Relationship> UNMATCHED_COLLECTION = Set.of(REL_UNMATCHED);
+    private static final Set<Relationship> SUCCESS_COLLECTION = Set.of(REL_SUCCESS);
 
-    private volatile Set<Relationship> relationships = new HashSet<>(Arrays.asList(REL_SUCCESS, REL_FAILURE));
+    private volatile Set<Relationship> relationships = Set.of(
+            REL_SUCCESS,
+            REL_FAILURE
+    );
     private volatile boolean routeToMatchedUnmatched = false;
 
     @OnScheduled
@@ -258,17 +272,7 @@ public class LookupRecord extends AbstractProcessor {
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        final List<PropertyDescriptor> properties = new ArrayList<>();
-        properties.add(RECORD_READER);
-        properties.add(RECORD_WRITER);
-        properties.add(LOOKUP_SERVICE);
-        properties.add(ROOT_RECORD_PATH);
-        properties.add(ROUTING_STRATEGY);
-        properties.add(RESULT_CONTENTS);
-        properties.add(REPLACEMENT_STRATEGY);
-        properties.add(RESULT_RECORD_PATH);
-        properties.add(CACHE_SIZE);
-        return properties;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -292,7 +296,7 @@ public class LookupRecord extends AbstractProcessor {
             .collect(Collectors.toSet());
 
         if (dynamicPropNames.isEmpty()) {
-            return Collections.singleton(new ValidationResult.Builder()
+            return Set.of(new ValidationResult.Builder()
                 .subject("User-Defined Properties")
                 .valid(false)
                 .explanation("At least one user-defined property must be specified.")
@@ -304,7 +308,7 @@ public class LookupRecord extends AbstractProcessor {
         if (validationContext.getProperty(REPLACEMENT_STRATEGY).getValue().equals(REPLACE_EXISTING_VALUES.getValue())) {
             // it must be a single key lookup service
             if (requiredKeys.size() != 1) {
-                return Collections.singleton(new ValidationResult.Builder()
+                return Set.of(new ValidationResult.Builder()
                         .subject(LOOKUP_SERVICE.getDisplayName())
                         .valid(false)
                         .explanation("When using \"" + REPLACE_EXISTING_VALUES.getDisplayName() + "\" as Record Update Strategy, "
@@ -340,18 +344,11 @@ public class LookupRecord extends AbstractProcessor {
     public void onPropertyModified(final PropertyDescriptor descriptor, final String oldValue, final String newValue) {
         if (ROUTING_STRATEGY.equals(descriptor)) {
             if (ROUTE_TO_MATCHED_UNMATCHED.getValue().equalsIgnoreCase(newValue)) {
-                final Set<Relationship> matchedUnmatchedRels = new HashSet<>();
-                matchedUnmatchedRels.add(REL_MATCHED);
-                matchedUnmatchedRels.add(REL_UNMATCHED);
-                matchedUnmatchedRels.add(REL_FAILURE);
-                this.relationships = matchedUnmatchedRels;
+                this.relationships = Set.of(REL_MATCHED, REL_UNMATCHED, REL_FAILURE);
 
                 this.routeToMatchedUnmatched = true;
             } else {
-                final Set<Relationship> successRels = new HashSet<>();
-                successRels.add(REL_SUCCESS);
-                successRels.add(REL_FAILURE);
-                this.relationships = successRels;
+                this.relationships = Set.of(REL_SUCCESS, REL_FAILURE);
 
                 this.routeToMatchedUnmatched = false;
             }
@@ -388,41 +385,38 @@ public class LookupRecord extends AbstractProcessor {
         }
 
         try {
-            session.read(flowFile, new InputStreamCallback() {
-                @Override
-                public void process(final InputStream in) throws IOException {
-                    try (final RecordReader reader = readerFactory.createRecordReader(originalAttributes, in, original.getSize(), getLogger())) {
+            session.read(flowFile, in -> {
+                try (final RecordReader reader = readerFactory.createRecordReader(originalAttributes, in, original.getSize(), getLogger())) {
 
-                        final Map<Relationship, RecordSchema> writeSchemas = new HashMap<>();
+                    final Map<Relationship, RecordSchema> writeSchemas = new HashMap<>();
 
-                        Record record;
-                        while ((record = reader.nextRecord()) != null) {
-                            final List<Record> subRecords = getSubRecords(record, rootRecordPath);
-                            final Set<MatchResult> matchResults = new HashSet<>();
-                            for (final Record subRecord : subRecords) {
-                                final MatchResult matchResult = replacementStrategy.lookup(subRecord, context, lookupContext);
-                                matchResults.add(matchResult);
-                            }
-                            record.incorporateInactiveFields();
-
-                            final Set<Relationship> relationships = getRelationships(matchResults);
-
-                            for (final Relationship relationship : relationships) {
-                                // Determine the Write Schema to use for each relationship
-                                RecordSchema writeSchema = writeSchemas.get(relationship);
-                                if (writeSchema == null) {
-                                    final RecordSchema outputSchema = enrichedSchema == null ? record.getSchema() : enrichedSchema;
-                                    writeSchema = writerFactory.getSchema(originalAttributes, outputSchema);
-                                    writeSchemas.put(relationship, writeSchema);
-                                }
-
-                                final RecordSetWriter writer = lookupContext.getRecordWriterForRelationship(relationship, writeSchema);
-                                writer.write(record);
-                            }
+                    Record record;
+                    while ((record = reader.nextRecord()) != null) {
+                        final List<Record> subRecords = getSubRecords(record, rootRecordPath);
+                        final Set<MatchResult> matchResults = new HashSet<>();
+                        for (final Record subRecord : subRecords) {
+                            final MatchResult matchResult = replacementStrategy.lookup(subRecord, context, lookupContext);
+                            matchResults.add(matchResult);
                         }
-                    } catch (final SchemaNotFoundException | MalformedRecordException e) {
-                        throw new ProcessException("Could not parse incoming data", e);
+                        record.incorporateInactiveFields();
+
+                        final Set<Relationship> relationships = getRelationships(matchResults);
+
+                        for (final Relationship relationship : relationships) {
+                            // Determine the Write Schema to use for each relationship
+                            RecordSchema writeSchema = writeSchemas.get(relationship);
+                            if (writeSchema == null) {
+                                final RecordSchema outputSchema = enrichedSchema == null ? record.getSchema() : enrichedSchema;
+                                writeSchema = writerFactory.getSchema(originalAttributes, outputSchema);
+                                writeSchemas.put(relationship, writeSchema);
+                            }
+
+                            final RecordSetWriter writer = lookupContext.getRecordWriterForRelationship(relationship, writeSchema);
+                            writer.write(record);
+                        }
                     }
+                } catch (final SchemaNotFoundException | MalformedRecordException e) {
+                    throw new ProcessException("Could not parse incoming data", e);
                 }
             });
 
@@ -674,9 +668,7 @@ public class LookupRecord extends AbstractProcessor {
                 final RecordPathResult resultPathResult = resultPath.evaluate(record);
 
                 final String resultContentsValue = context.getProperty(RESULT_CONTENTS).getValue();
-                if (RESULT_RECORD_FIELDS.getValue().equals(resultContentsValue) && lookupValue instanceof Record) {
-                    final Record lookupRecord = (Record) lookupValue;
-
+                if (RESULT_RECORD_FIELDS.getValue().equals(resultContentsValue) && lookupValue instanceof Record lookupRecord) {
                     // User wants to add all fields of the resultant Record to the specified Record Path.
                     // If the destination Record Path returns to us a Record, then we will add all field values of
                     // the Lookup Record to the destination Record. However, if the destination Record Path returns

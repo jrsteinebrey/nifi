@@ -41,6 +41,7 @@ import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 import org.w3c.dom.Document;
 import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
@@ -63,6 +64,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Audits processor creation/removal and configuration changes.
  */
+@Service
 @Aspect
 public class ProcessorAuditor extends NiFiAuditor {
 
@@ -216,7 +218,7 @@ public class ProcessorAuditor extends NiFiAuditor {
                                 newValue = newReference.get();
                                 oldValue = oldReference.get();
 
-                            } catch (Exception ignore) { //Not valid XML, so treat as String, no change
+                            } catch (Exception ignored) { //Not valid XML, so treat as String, no change
                             }
                         }
                     }

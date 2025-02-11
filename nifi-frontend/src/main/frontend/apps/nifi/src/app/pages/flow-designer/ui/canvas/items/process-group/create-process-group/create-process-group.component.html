@@ -17,7 +17,7 @@
 
 <h2 mat-dialog-title>Create Process Group</h2>
 <form class="create-process-group-form" [formGroup]="createProcessGroupForm">
-    <error-banner></error-banner>
+    <context-error-banner [context]="ErrorContextKey.PROCESS_GROUP"></context-error-banner>
     <mat-dialog-content>
         <mat-form-field>
             <mat-label>Name</mat-label>
@@ -25,46 +25,71 @@
             <button
                 matSuffix
                 type="button"
-                class="upload-flow-definition accent-color icon icon-template-import mr-2.5 pointer"
+                class="upload-flow-definition tertiary-color icon icon-template-import mr-2.5 pointer"
                 title="Browse"
                 (click)="flowUploadControl.click()">
                 <input type="file" #flowUploadControl class="hidden" (change)="attachFlow($event)" />
             </button>
         </mat-form-field>
         @if (!flowDefinition) {
-            <mat-form-field>
-                <mat-label>Parameter Context</mat-label>
-                <mat-select formControlName="newProcessGroupParameterContext">
-                    @for (option of parameterContextsOptions; track option) {
-                        @if (option.description) {
-                            <mat-option
-                                [value]="option.value"
-                                nifiTooltip
-                                [tooltipComponentType]="TextTip"
-                                [tooltipInputData]="option.description"
-                                [delayClose]="false"
-                                >{{ option.text }}</mat-option
-                            >
-                        } @else {
-                            <mat-option [value]="option.value">{{ option.text }}</mat-option>
+            <div class="flex flew-row w-full justify-start items-start">
+                <mat-form-field>
+                    <mat-label>Parameter Context</mat-label>
+                    <mat-select formControlName="newProcessGroupParameterContext">
+                        <mat-option
+                            [value]="null"
+                            nifiTooltip
+                            [tooltipComponentType]="TextTip"
+                            [tooltipInputData]="'No parameter context'"
+                            [delayClose]="false"
+                            >No parameter context
+                        </mat-option>
+                        @for (option of parameterContextsOptions | sortObjectByProperty: 'text'; track option.value) {
+                            @if (option.description) {
+                                <mat-option
+                                    [value]="option.value"
+                                    nifiTooltip
+                                    [disabled]="option.disabled"
+                                    [tooltipComponentType]="TextTip"
+                                    [tooltipInputData]="option.description"
+                                    [delayClose]="false"
+                                    >{{ option.text }}</mat-option
+                                >
+                            } @else {
+                                <mat-option [value]="option.value" [disabled]="option.disabled">{{
+                                    option.text
+                                }}</mat-option>
+                            }
                         }
+                    </mat-select>
+                </mat-form-field>
+                @if (currentUser$ | async; as currentUser) {
+                    @if (currentUser.parameterContextPermissions.canWrite) {
+                        <button
+                            mat-icon-button
+                            type="button"
+                            class="primary-icon-button mt-1 ml-1"
+                            (click)="openNewParameterContextDialog()"
+                            title="Create parameter context">
+                            <i class="fa fa-plus"></i>
+                        </button>
                     }
-                </mat-select>
-            </mat-form-field>
+                }
+            </div>
         }
         @if (flowDefinition) {
             <div>
                 <div class="flex flex-col gap-y-3 mb-3">
                     <div class="flex flex-col">
                         <div>Parameter Context</div>
-                        <div class="unset surface-color">
+                        <div class="unset neutral-color">
                             Parameters will be imported from the uploaded Flow Definition.
                         </div>
                     </div>
                     <div class="flex flex-col">
                         <div>File to upload</div>
                         <div class="flex justify-between items-center">
-                            <div class="accent-color font-medium">{{ flowNameAttached }}</div>
+                            <div class="tertiary-color font-medium">{{ flowNameAttached }}</div>
                             <div (click)="removeAttachedFlow()">X</div>
                         </div>
                     </div>
@@ -77,10 +102,9 @@
             <button mat-button mat-dialog-close>Cancel</button>
             <button
                 [disabled]="!createProcessGroupForm.dirty || createProcessGroupForm.invalid || saving.value"
-                type="button"
-                color="primary"
+                type="submit"
                 (click)="createProcessGroup()"
-                mat-button>
+                mat-flat-button>
                 <span *nifiSpinner="saving.value">Add</span>
             </button>
         </mat-dialog-actions>

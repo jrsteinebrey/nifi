@@ -20,7 +20,7 @@
         <div class="font-bold">Required field</div>
         @if (!isDisabled) {
             <div>
-                <button mat-icon-button color="primary" type="button" (click)="newPropertyClicked()">
+                <button mat-icon-button class="primary-icon-button" type="button" (click)="newPropertyClicked()">
                     <i class="fa fa-plus"></i>
                 </button>
             </div>
@@ -35,7 +35,7 @@
                     <td mat-cell *matCellDef="let item" [class.font-bold]="item.descriptor.required">
                         <div class="flex justify-between items-center">
                             <div
-                                class="whitespace-nowrap overflow-hidden text-ellipsis leading-normal"
+                                class="whitespace-nowrap overflow-hidden text-ellipsis"
                                 [title]="item.descriptor.displayName">
                                 {{ item.descriptor.displayName }}
                             </div>
@@ -55,12 +55,12 @@
                     <td mat-cell *matCellDef="let item">
                         <div
                             [id]="formatId(item)"
-                            class="pointer"
+                            class="pointer min-h-[21px]"
                             cdkOverlayOrigin
                             #trigger="cdkOverlayOrigin"
                             (click)="openEditor(trigger, item, $event)">
                             @if (isNull(item.value)) {
-                                <div class="unset surface-color">No value set</div>
+                                <div class="unset neutral-color">No value set</div>
                             } @else {
                                 <ng-container
                                     *ngTemplateOutlet="
@@ -68,7 +68,7 @@
                                         context: { $implicit: resolvePropertyValue(item) }
                                     "></ng-container>
                                 <ng-template #sensitive>
-                                    <div class="sensitive surface-color">Sensitive value set</div>
+                                    <div class="sensitive neutral-color">Sensitive value set</div>
                                 </ng-template>
                                 <ng-template #nonSensitive let-resolvedValue>
                                     <ng-container
@@ -78,18 +78,18 @@
                                         "></ng-container>
                                 </ng-template>
                                 <ng-template #blank>
-                                    <div class="empty surface-color">Empty string set</div>
+                                    <div class="empty neutral-color">Empty string set</div>
                                 </ng-template>
                                 <ng-template #nonBlank let-resolvedValue>
                                     <div class="flex justify-between items-center">
                                         <div
-                                            class="whitespace-nowrap overflow-hidden text-ellipsis leading-normal"
+                                            class="whitespace-nowrap overflow-hidden text-ellipsis"
                                             [title]="resolvedValue">
                                             {{ resolvedValue }}
                                         </div>
                                         @if (hasExtraWhitespace(resolvedValue)) {
                                             <div
-                                                class="fa fa-info primary-color"
+                                                class="fa fa-info-circle primary-color"
                                                 nifiTooltip
                                                 [tooltipComponentType]="TextTip"
                                                 tooltipInputData="The specified value contains leading and/or trailing whitespace character(s). This could produce unexpected results if it was not intentional."></div>
@@ -173,6 +173,7 @@
                 cdkConnectedOverlay
                 [cdkConnectedOverlayOrigin]="editorTrigger"
                 [cdkConnectedOverlayPositions]="editorPositions"
+                [cdkConnectedOverlayPush]="true"
                 [cdkConnectedOverlayHasBackdrop]="true"
                 [cdkConnectedOverlayBackdropClass]="'cdk-overlay-transparent-backdrop'"
                 [cdkConnectedOverlayOpen]="editorOpen"
@@ -180,19 +181,19 @@
                 @if (hasAllowableValues(editorItem)) {
                     <combo-editor
                         [item]="editorItem"
-                        [parameters]="editorParameters || []"
+                        [parameterConfig]="editorParameterConfig"
                         [width]="editorWidth"
                         [readonly]="isDisabled"
                         (ok)="savePropertyValue(editorItem, $event)"
-                        (cancel)="closeEditor()"></combo-editor>
+                        (close)="closeEditor()"></combo-editor>
                 } @else {
                     <nf-editor
                         [item]="editorItem"
-                        [parameters]="editorParameters"
+                        [parameterConfig]="editorParameterConfig"
                         [width]="editorWidth"
                         [readonly]="isDisabled"
                         (ok)="savePropertyValue(editorItem, $event)"
-                        (cancel)="closeEditor()"></nf-editor>
+                        (close)="closeEditor()"></nf-editor>
                 }
             </ng-template>
         </div>

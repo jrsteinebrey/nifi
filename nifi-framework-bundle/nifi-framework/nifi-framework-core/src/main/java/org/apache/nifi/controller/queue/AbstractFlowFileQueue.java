@@ -23,7 +23,6 @@ import org.apache.nifi.controller.repository.FlowFileRepository;
 import org.apache.nifi.controller.repository.RepositoryRecord;
 import org.apache.nifi.controller.repository.claim.ContentClaim;
 import org.apache.nifi.controller.repository.claim.ResourceClaim;
-import org.apache.nifi.controller.repository.claim.ResourceClaimManager;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.flowfile.attributes.CoreAttributes;
 import org.apache.nifi.processor.DataUnit;
@@ -55,7 +54,6 @@ public abstract class AbstractFlowFileQueue implements FlowFileQueue {
     private final String identifier;
     private final FlowFileRepository flowFileRepository;
     private final ProvenanceEventRepository provRepository;
-    private final ResourceClaimManager resourceClaimManager;
     private final ProcessScheduler scheduler;
 
     private final AtomicReference<TimePeriod> expirationPeriod = new AtomicReference<>(new TimePeriod("0 sec", 0L));
@@ -75,12 +73,11 @@ public abstract class AbstractFlowFileQueue implements FlowFileQueue {
 
 
     public AbstractFlowFileQueue(final String identifier, final ProcessScheduler scheduler,
-            final FlowFileRepository flowFileRepo, final ProvenanceEventRepository provRepo, final ResourceClaimManager resourceClaimManager) {
+            final FlowFileRepository flowFileRepo, final ProvenanceEventRepository provRepo) {
         this.identifier = identifier;
         this.scheduler = scheduler;
         this.flowFileRepository = flowFileRepo;
         this.provRepository = provRepo;
-        this.resourceClaimManager = resourceClaimManager;
     }
 
     @Override
@@ -292,12 +289,7 @@ public abstract class AbstractFlowFileQueue implements FlowFileQueue {
             return dropRequest;
         }
 
-        final Thread t = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                dropFlowFiles(dropRequest, requestor);
-            }
-        }, "Drop FlowFiles for Connection " + getIdentifier());
+        final Thread t = new Thread(() -> dropFlowFiles(dropRequest, requestor), "Drop FlowFiles for Connection " + getIdentifier());
         t.setDaemon(true);
         t.start();
 
@@ -344,6 +336,7 @@ public abstract class AbstractFlowFileQueue implements FlowFileQueue {
         // which can be problematic if we expect them to be swapped out.
         final String uuid = flowFile.getAttribute(CoreAttributes.UUID.key());
         final String filename = flowFile.getAttribute(CoreAttributes.FILENAME.key());
+        final String mimeType = flowFile.getAttribute(CoreAttributes.MIME_TYPE.key());
         final long size = flowFile.getSize();
         final Long lastQueuedTime = flowFile.getLastQueueDate();
         final long lineageStart = flowFile.getLineageStartDate();
@@ -359,6 +352,11 @@ public abstract class AbstractFlowFileQueue implements FlowFileQueue {
             @Override
             public String getFilename() {
                 return filename;
+            }
+
+            @Override
+            public String getMimeType() {
+                return mimeType;
             }
 
             @Override

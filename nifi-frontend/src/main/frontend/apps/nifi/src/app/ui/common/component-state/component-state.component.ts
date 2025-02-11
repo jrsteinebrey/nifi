@@ -15,15 +15,13 @@
  * limitations under the License.
  */
 
-import { AfterViewInit, Component, DestroyRef, inject, Input, OnDestroy } from '@angular/core';
+import { AfterViewInit, Component, DestroyRef, inject, Input } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
-import { NiFiCommon } from '../../../service/nifi-common.service';
 import { MatSortModule, Sort } from '@angular/material/sort';
 import { AsyncPipe } from '@angular/common';
-import { NifiTooltipDirective } from '../tooltips/nifi-tooltip.directive';
-import { NifiSpinnerDirective } from '../spinner/nifi-spinner.directive';
+import { isDefinedAndNotNull, CloseOnEscapeDialog, NiFiCommon } from '@nifi/shared';
 import { ComponentStateState, StateEntry, StateItem, StateMap } from '../../../state/component-state';
 import { Store } from '@ngrx/store';
 import { clearComponentState } from '../../../state/component-state/component-state.actions';
@@ -32,37 +30,32 @@ import {
     selectComponentName,
     selectComponentState
 } from '../../../state/component-state/component-state.selectors';
-import { isDefinedAndNotNull } from '../../../state/shared';
 import { debounceTime, Observable } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { selectClusterSummary } from '../../../state/cluster-summary/cluster-summary.selectors';
-import { ErrorBanner } from '../error-banner/error-banner.component';
-import { clearBannerErrors } from '../../../state/error/error.actions';
-import { CloseOnEscapeDialog } from '../close-on-escape-dialog/close-on-escape-dialog.component';
+import { ErrorContextKey } from '../../../state/error';
+import { ContextErrorBanner } from '../context-error-banner/context-error-banner.component';
 
 @Component({
     selector: 'component-state',
-    standalone: true,
     templateUrl: './component-state.component.html',
     imports: [
         MatButtonModule,
         MatDialogModule,
         MatTableModule,
         MatSortModule,
-        NifiTooltipDirective,
-        NifiSpinnerDirective,
         AsyncPipe,
         ReactiveFormsModule,
         MatFormFieldModule,
         MatInputModule,
-        ErrorBanner
+        ContextErrorBanner
     ],
     styleUrls: ['./component-state.component.scss']
 })
-export class ComponentStateDialog extends CloseOnEscapeDialog implements AfterViewInit, OnDestroy {
+export class ComponentStateDialog extends CloseOnEscapeDialog implements AfterViewInit {
     @Input() initialSortColumn: 'key' | 'value' = 'key';
     @Input() initialSortDirection: 'asc' | 'desc' = 'asc';
 
@@ -145,10 +138,6 @@ export class ComponentStateDialog extends CloseOnEscapeDialog implements AfterVi
             });
     }
 
-    ngOnDestroy(): void {
-        this.store.dispatch(clearBannerErrors());
-    }
-
     processStateMap(stateMap: StateMap, clusterState: boolean): StateItem[] {
         const stateEntries: StateEntry[] = stateMap.state ? stateMap.state : [];
 
@@ -204,4 +193,6 @@ export class ComponentStateDialog extends CloseOnEscapeDialog implements AfterVi
     clearState(): void {
         this.store.dispatch(clearComponentState());
     }
+
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

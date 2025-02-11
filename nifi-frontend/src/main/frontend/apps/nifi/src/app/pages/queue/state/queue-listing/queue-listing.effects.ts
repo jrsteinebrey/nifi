@@ -29,13 +29,12 @@ import { CancelDialog } from '../../../../ui/common/cancel-dialog/cancel-dialog.
 import { MatDialog } from '@angular/material/dialog';
 import { selectAbout } from '../../../../state/about/about.selectors';
 import { FlowFileDialog } from '../../ui/queue-listing/flowfile-dialog/flowfile-dialog.component';
-import { NiFiCommon } from '../../../../service/nifi-common.service';
-import { isDefinedAndNotNull } from '../../../../state/shared';
+import { isDefinedAndNotNull, NiFiCommon, LARGE_DIALOG } from '@nifi/shared';
 import { HttpErrorResponse } from '@angular/common/http';
 import * as ErrorActions from '../../../../state/error/error.actions';
 import { ErrorHelper } from '../../../../service/error-helper.service';
 import { stopPollingQueueListingRequest } from './queue-listing.actions';
-import { LARGE_DIALOG } from '../../../../index';
+import { ErrorContextKey } from '../../../../state/error';
 
 @Injectable()
 export class QueueListingEffects {
@@ -99,7 +98,7 @@ export class QueueListingEffects {
                     disableClose: true
                 });
 
-                dialogReference.componentInstance.cancel.pipe(take(1)).subscribe(() => {
+                dialogReference.componentInstance.close.pipe(take(1)).subscribe(() => {
                     this.store.dispatch(QueueListingActions.stopPollingQueueListingRequest());
                 });
 
@@ -296,6 +295,7 @@ export class QueueListingEffects {
                                     QueueListingActions.viewFlowFileContent({
                                         request: {
                                             uri: request.flowfile.uri,
+                                            mimeType: request.flowfile.mimeType,
                                             clusterNodeId: request.clusterNodeId
                                         }
                                     })
@@ -338,7 +338,9 @@ export class QueueListingEffects {
             tap(() => {
                 this.store.dispatch(QueueListingActions.stopPollingQueueListingRequest());
             }),
-            switchMap(({ error }) => of(ErrorActions.addBannerError({ error })))
+            switchMap(({ error }) =>
+                of(ErrorActions.addBannerError({ errorContext: { errors: [error], context: ErrorContextKey.QUEUE } }))
+            )
         )
     );
 }

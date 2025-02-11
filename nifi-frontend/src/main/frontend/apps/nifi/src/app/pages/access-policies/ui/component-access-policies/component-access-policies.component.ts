@@ -39,21 +39,20 @@ import {
 import { distinctUntilChanged } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, FormGroup, Validators } from '@angular/forms';
-import { NiFiCommon } from '../../../../service/nifi-common.service';
-import { ComponentType, isDefinedAndNotNull, SelectOption } from '../../../../state/shared';
-import { TextTip } from '../../../../ui/common/tooltips/text-tip/text-tip.component';
+import { ComponentType, isDefinedAndNotNull, NiFiCommon, SelectOption, TextTip } from '@nifi/shared';
 import { AccessPolicyEntity, Action, PolicyStatus, ResourceAction } from '../../state/shared';
 import { selectFlowConfiguration } from '../../../../state/flow-configuration/flow-configuration.selectors';
 import { loadTenants, resetTenantsState } from '../../state/tenants/tenants.actions';
 import { loadPolicyComponent, resetPolicyComponentState } from '../../state/policy-component/policy-component.actions';
 import { selectPolicyComponentState } from '../../state/policy-component/policy-component.selectors';
 import { PolicyComponentState } from '../../state/policy-component';
-import { clearBannerErrors } from '../../../../state/error/error.actions';
+import { ErrorContextKey } from '../../../../state/error';
 
 @Component({
     selector: 'global-access-policies',
     templateUrl: './component-access-policies.component.html',
-    styleUrls: ['./component-access-policies.component.scss']
+    styleUrls: ['./component-access-policies.component.scss'],
+    standalone: false
 })
 export class ComponentAccessPolicies implements OnInit, OnDestroy {
     flowConfiguration$ = this.store.select(selectFlowConfiguration);
@@ -465,9 +464,10 @@ export class ComponentAccessPolicies implements OnInit, OnDestroy {
     }
 
     ngOnDestroy(): void {
-        this.store.dispatch(clearBannerErrors());
         this.store.dispatch(resetAccessPolicyState());
         this.store.dispatch(resetTenantsState());
         this.store.dispatch(resetPolicyComponentState());
     }
+
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

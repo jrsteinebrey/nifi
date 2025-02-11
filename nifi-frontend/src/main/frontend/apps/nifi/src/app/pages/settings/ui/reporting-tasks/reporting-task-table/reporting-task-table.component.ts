@@ -19,10 +19,9 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { MatTableDataSource } from '@angular/material/table';
 import { Sort } from '@angular/material/sort';
 import { ReportingTaskEntity } from '../../../state/reporting-tasks';
-import { TextTip } from '../../../../../ui/common/tooltips/text-tip/text-tip.component';
+import { TextTip, NiFiCommon } from '@nifi/shared';
 import { BulletinsTip } from '../../../../../ui/common/tooltips/bulletins-tip/bulletins-tip.component';
 import { ValidationErrorsTip } from '../../../../../ui/common/tooltips/validation-errors-tip/validation-errors-tip.component';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
 import { BulletinsTipInput, ValidationErrorsTipInput } from '../../../../../state/shared';
 import { FlowConfiguration } from '../../../../../state/flow-configuration';
 import { CurrentUser } from '../../../../../state/current-user';
@@ -30,7 +29,8 @@ import { CurrentUser } from '../../../../../state/current-user';
 @Component({
     selector: 'reporting-task-table',
     templateUrl: './reporting-task-table.component.html',
-    styleUrls: ['./reporting-task-table.component.scss']
+    styleUrls: ['./reporting-task-table.component.scss'],
+    standalone: false
 })
 export class ReportingTaskTable {
     @Input() initialSortColumn: 'name' | 'type' | 'bundle' | 'state' = 'name';
@@ -115,16 +115,16 @@ export class ReportingTaskTable {
 
     getStateIcon(entity: ReportingTaskEntity): string {
         if (entity.status.validationStatus === 'VALIDATING') {
-            return 'validating surface-color fa fa-spin fa-circle-o-notch';
+            return 'validating neutral-color fa fa-spin fa-circle-o-notch';
         } else if (entity.status.validationStatus === 'INVALID') {
             return 'invalid fa fa-warning caution-color';
         } else {
             if (entity.status.runStatus === 'STOPPED') {
-                return 'fa fa-stop warn-color-lighter stopped';
+                return 'fa fa-stop error-color-variant stopped';
             } else if (entity.status.runStatus === 'RUNNING') {
-                return 'fa fa-play success-color-lighter running';
+                return 'fa fa-play success-color-default running';
             } else {
-                return 'icon icon-enable-false surface-color disabled';
+                return 'icon icon-enable-false neutral-color disabled';
             }
         }
     }

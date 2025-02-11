@@ -19,16 +19,13 @@ import { Component, forwardRef, Input } from '@angular/core';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 
-import { TextTip } from '../../../../../../../../ui/common/tooltips/text-tip/text-tip.component';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatOptionModule } from '@angular/material/core';
 import { MatSelectModule } from '@angular/material/select';
-import { NifiTooltipDirective } from '../../../../../../../../ui/common/tooltips/nifi-tooltip.directive';
-import { SelectOption } from '../../../../../../../../state/shared';
+import { NifiTooltipDirective, TextTip, SelectOption } from '@nifi/shared';
 
 @Component({
     selector: 'destination-process-group',
-    standalone: true,
     templateUrl: './destination-process-group.component.html',
     styleUrls: ['./destination-process-group.component.scss'],
     imports: [

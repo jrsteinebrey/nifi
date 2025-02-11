@@ -130,6 +130,10 @@ public class PackageFlowFile extends AbstractProcessor {
             .addValidator(StandardValidators.createLongValidator(1, 10_000, true))
             .build();
 
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+            BATCH_SIZE
+    );
+
     static final Relationship REL_SUCCESS = new Relationship.Builder()
             .name("success")
             .description("The packaged FlowFile is sent to this relationship")
@@ -139,13 +143,9 @@ public class PackageFlowFile extends AbstractProcessor {
             .description("The FlowFiles that were used to create the package are sent to this relationship")
             .build();
 
-    private static final Set<Relationship> RELATIONSHIPS =  Set.of(
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
             REL_SUCCESS,
             REL_ORIGINAL
-    );
-
-    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
-            BATCH_SIZE
     );
 
     @Override

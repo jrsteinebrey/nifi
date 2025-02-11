@@ -39,7 +39,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.mockito.Mockito;
-import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -71,6 +70,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 public class TestThreadPoolRequestReplicator {
+
+    private static final String NODE_CONTINUE = "202-Accepted";
 
     @BeforeAll
     public static void setupClass() {
@@ -278,11 +279,11 @@ public class TestThreadPoolRequestReplicator {
             protected NodeResponse replicateRequest(final PreparedRequest request, final NodeIdentifier nodeId,
                 final URI uri, final String requestId, final StandardAsyncClusterResponse response) {
                 // the resource builder will not expose its headers to us, so we are using Mockito's Whitebox class to extract them.
-                final Object expectsHeader = request.getHeaders().get(ThreadPoolRequestReplicator.REQUEST_VALIDATION_HTTP_HEADER);
+                final Object expectsHeader = request.getHeaders().get(RequestReplicationHeader.VALIDATION_EXPECTS.getHeader());
 
                 final int statusCode;
                 if (requestCount.incrementAndGet() == 1) {
-                    assertEquals(ThreadPoolRequestReplicator.NODE_CONTINUE, expectsHeader);
+                    assertEquals(NODE_CONTINUE, expectsHeader);
                     statusCode = Status.ACCEPTED.getStatusCode();
                 } else {
                     assertNull(expectsHeader);
@@ -304,7 +305,7 @@ public class TestThreadPoolRequestReplicator {
                 new URI("http://localhost:80/processors/1"), new ProcessorEntity(), new HashMap<>(), true, true);
         clusterResponse.awaitMergedResponse();
 
-        // Ensure that we received two requests - the first should contain the X-NcmExpects header; the second should not.
+        // Ensure that we received two requests
         // These assertions are validated above, in the overridden replicateRequest method.
         assertEquals(2, requestCount.get());
 
@@ -313,12 +314,8 @@ public class TestThreadPoolRequestReplicator {
 
     private ClusterCoordinator createClusterCoordinator() {
         final ClusterCoordinator coordinator = mock(ClusterCoordinator.class);
-        when(coordinator.getConnectionStatus(Mockito.any(NodeIdentifier.class))).thenAnswer(new Answer<NodeConnectionStatus>() {
-            @Override
-            public NodeConnectionStatus answer(InvocationOnMock invocation) throws Throwable {
-                return new NodeConnectionStatus(invocation.getArgument(0), NodeConnectionState.CONNECTED);
-            }
-        });
+        when(coordinator.getConnectionStatus(Mockito.any(NodeIdentifier.class))).thenAnswer((Answer<NodeConnectionStatus>) invocation ->
+                new NodeConnectionStatus(invocation.getArgument(0), NodeConnectionState.CONNECTED));
 
         return coordinator;
     }
@@ -343,10 +340,10 @@ public class TestThreadPoolRequestReplicator {
             protected NodeResponse replicateRequest(final PreparedRequest request, final NodeIdentifier nodeId,
                 final URI uri, final String requestId, final StandardAsyncClusterResponse response) {
                 // the resource builder will not expose its headers to us, so we are using Mockito's Whitebox class to extract them.
-                final Object expectsHeader = request.getHeaders().get(ThreadPoolRequestReplicator.REQUEST_VALIDATION_HTTP_HEADER);
+                final Object expectsHeader = request.getHeaders().get(RequestReplicationHeader.VALIDATION_EXPECTS.getHeader());
 
                 final int requestIndex = requestCount.incrementAndGet();
-                assertEquals(ThreadPoolRequestReplicator.NODE_CONTINUE, expectsHeader);
+                assertEquals(NODE_CONTINUE, expectsHeader);
 
                 if (requestIndex == 1) {
                     final Response clientResponse = mock(Response.class);
@@ -359,7 +356,7 @@ public class TestThreadPoolRequestReplicator {
             }
         };
 
-        final IllegalClusterStateException exception = assertThrows(IllegalClusterStateException.class, () -> {
+        assertThrows(IllegalClusterStateException.class, () -> {
             final Authentication authentication = new NiFiAuthenticationToken(new NiFiUserDetails(StandardNiFiUser.ANONYMOUS));
             SecurityContextHolder.getContext().setAuthentication(authentication);
 
@@ -379,23 +376,19 @@ public class TestThreadPoolRequestReplicator {
             final CountDownLatch preNotifyLatch = new CountDownLatch(1);
             final CountDownLatch postNotifyLatch = new CountDownLatch(1);
 
-            new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    synchronized (monitor) {
-                        while (true) {
-                            // If monitor is not notified, this will block indefinitely, and the test will timeout
-                            try {
-                                preNotifyLatch.countDown();
-                                monitor.wait();
-                                break;
-                            } catch (InterruptedException e) {
-                                continue;
-                            }
+            new Thread(() -> {
+                synchronized (monitor) {
+                    while (true) {
+                        // If monitor is not notified, this will block indefinitely, and the test will timeout
+                        try {
+                            preNotifyLatch.countDown();
+                            monitor.wait();
+                            break;
+                        } catch (InterruptedException ignored) {
                         }
-
-                        postNotifyLatch.countDown();
                     }
+
+                    postNotifyLatch.countDown();
                 }
             }).start();
 
@@ -429,23 +422,19 @@ public class TestThreadPoolRequestReplicator {
             final CountDownLatch preNotifyLatch = new CountDownLatch(1);
             final CountDownLatch postNotifyLatch = new CountDownLatch(1);
 
-            new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    synchronized (monitor) {
-                        while (true) {
-                            // If monitor is not notified, this will block indefinitely, and the test will timeout
-                            try {
-                                preNotifyLatch.countDown();
-                                monitor.wait();
-                                break;
-                            } catch (InterruptedException e) {
-                                continue;
-                            }
+            new Thread(() -> {
+                synchronized (monitor) {
+                    while (true) {
+                        // If monitor is not notified, this will block indefinitely, and the test will timeout
+                        try {
+                            preNotifyLatch.countDown();
+                            monitor.wait();
+                            break;
+                        } catch (InterruptedException ignored) {
                         }
-
-                        postNotifyLatch.countDown();
                     }
+
+                    postNotifyLatch.countDown();
                 }
             }).start();
 
@@ -483,23 +472,19 @@ public class TestThreadPoolRequestReplicator {
             final CountDownLatch preNotifyLatch = new CountDownLatch(1);
             final CountDownLatch postNotifyLatch = new CountDownLatch(1);
 
-            new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    synchronized (monitor) {
-                        while (true) {
-                            // If monitor is not notified, this will block indefinitely, and the test will timeout
-                            try {
-                                preNotifyLatch.countDown();
-                                monitor.wait();
-                                break;
-                            } catch (InterruptedException e) {
-                                continue;
-                            }
+            new Thread(() -> {
+                synchronized (monitor) {
+                    while (true) {
+                        // If monitor is not notified, this will block indefinitely, and the test will timeout
+                        try {
+                            preNotifyLatch.countDown();
+                            monitor.wait();
+                            break;
+                        } catch (InterruptedException ignored) {
                         }
-
-                        postNotifyLatch.countDown();
                     }
+
+                    postNotifyLatch.countDown();
                 }
             }).start();
 
@@ -555,9 +540,7 @@ public class TestThreadPoolRequestReplicator {
                     final StandardAsyncClusterResponse response) {
 
                 if (delayMillis > 0L) {
-                    assertDoesNotThrow(() -> {
-                        Thread.sleep(delayMillis);
-                    }, "Thread Interrupted during test");
+                    assertDoesNotThrow(() -> Thread.sleep(delayMillis), "Thread Interrupted during test");
                 }
 
                 if (failure != null) {
@@ -579,9 +562,7 @@ public class TestThreadPoolRequestReplicator {
             }
         };
 
-        assertDoesNotThrow(() -> {
-            function.withReplicator(replicator);
-        });
+        assertDoesNotThrow(() -> function.withReplicator(replicator));
         replicator.shutdown();
     }
 

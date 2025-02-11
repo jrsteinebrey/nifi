@@ -16,19 +16,18 @@
  */
 package org.apache.nifi.processors.standard.db.impl;
 
-import java.sql.JDBCType;
-import java.sql.Types;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
-
 import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.processors.standard.db.ColumnDescription;
 import org.apache.nifi.processors.standard.db.DatabaseAdapter;
 import org.apache.nifi.processors.standard.db.TableSchema;
+
+import java.sql.JDBCType;
+import java.sql.Types;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static java.sql.Types.CHAR;
 import static java.sql.Types.CLOB;
@@ -201,7 +200,7 @@ public class Oracle12DatabaseAdapter implements DatabaseAdapter {
     }
 
     @Override
-    public List<String> getAlterTableStatements(String tableName, List<ColumnDescription> columnsToAdd, final boolean quoteTableName, final boolean quoteColumnNames) {
+    public String getAlterTableStatement(String tableName, List<ColumnDescription> columnsToAdd, final boolean quoteTableName, final boolean quoteColumnNames) {
         StringBuilder createTableStatement = new StringBuilder();
 
         List<String> columnsAndDatatypes = new ArrayList<>(columnsToAdd.size());
@@ -224,7 +223,7 @@ public class Oracle12DatabaseAdapter implements DatabaseAdapter {
                 .append(String.join(", ", columnsAndDatatypes))
                 .append(") ");
 
-        return Collections.singletonList(createTableStatement.toString());
+        return createTableStatement.toString();
     }
 
     @Override

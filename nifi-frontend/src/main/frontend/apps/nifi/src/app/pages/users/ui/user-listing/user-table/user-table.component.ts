@@ -20,7 +20,7 @@ import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatSortModule, Sort } from '@angular/material/sort';
 import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { debounceTime } from 'rxjs';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
+import { NiFiCommon } from '@nifi/shared';
 import { CurrentUser } from '../../../../../state/current-user';
 import { AccessPolicySummaryEntity, UserEntity, UserGroupEntity } from '../../../../../state/shared';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -46,7 +46,6 @@ export interface Tenants {
 
 @Component({
     selector: 'user-table',
-    standalone: true,
     templateUrl: './user-table.component.html',
     imports: [
         ReactiveFormsModule,

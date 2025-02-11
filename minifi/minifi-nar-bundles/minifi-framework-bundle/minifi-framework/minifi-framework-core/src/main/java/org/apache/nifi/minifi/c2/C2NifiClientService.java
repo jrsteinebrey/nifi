@@ -25,12 +25,15 @@ import static java.util.concurrent.Executors.newScheduledThreadPool;
 import static java.util.concurrent.Executors.newSingleThreadExecutor;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.stream.Collectors.toMap;
+import static org.apache.nifi.c2.protocol.api.RunStatus.RUNNING;
+import static org.apache.nifi.c2.protocol.api.RunStatus.STOPPED;
 import static org.apache.nifi.minifi.commons.api.MiNiFiProperties.C2_AGENT_CLASS;
 import static org.apache.nifi.minifi.commons.api.MiNiFiProperties.C2_AGENT_HEARTBEAT_PERIOD;
 import static org.apache.nifi.minifi.commons.api.MiNiFiProperties.C2_AGENT_IDENTIFIER;
 import static org.apache.nifi.minifi.commons.api.MiNiFiProperties.C2_ASSET_DIRECTORY;
 import static org.apache.nifi.minifi.commons.api.MiNiFiProperties.C2_BOOTSTRAP_ACKNOWLEDGE_TIMEOUT;
 import static org.apache.nifi.minifi.commons.api.MiNiFiProperties.C2_CONFIG_DIRECTORY;
+import static org.apache.nifi.minifi.commons.api.MiNiFiProperties.C2_FLOW_INFO_PROCESSOR_STATUS_ENABLED;
 import static org.apache.nifi.minifi.commons.api.MiNiFiProperties.C2_FULL_HEARTBEAT;
 import static org.apache.nifi.minifi.commons.api.MiNiFiProperties.C2_KEEP_ALIVE_DURATION;
 import static org.apache.nifi.minifi.commons.api.MiNiFiProperties.C2_MAX_IDLE_CONNECTIONS;
@@ -44,6 +47,7 @@ import static org.apache.nifi.minifi.commons.api.MiNiFiProperties.C2_REST_PATH_H
 import static org.apache.nifi.minifi.commons.api.MiNiFiProperties.C2_REST_READ_TIMEOUT;
 import static org.apache.nifi.minifi.commons.api.MiNiFiProperties.C2_REST_URL;
 import static org.apache.nifi.minifi.commons.api.MiNiFiProperties.C2_REST_URL_ACK;
+import static org.apache.nifi.minifi.commons.api.MiNiFiProperties.C2_FLOW_INFO_PROCESSOR_BULLETIN_LIMIT;
 import static org.apache.nifi.minifi.commons.api.MiNiFiProperties.C2_RUNTIME_MANIFEST_IDENTIFIER;
 import static org.apache.nifi.minifi.commons.api.MiNiFiProperties.C2_RUNTIME_TYPE;
 import static org.apache.nifi.minifi.commons.api.MiNiFiProperties.C2_SECURITY_KEYSTORE_LOCATION;
@@ -59,11 +63,14 @@ import static org.apache.nifi.util.NiFiProperties.SENSITIVE_PROPS_KEY;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
+
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.nifi.bootstrap.BootstrapCommunicator;
 import org.apache.nifi.c2.client.C2ClientConfig;
@@ -77,8 +84,11 @@ import org.apache.nifi.c2.client.service.model.RuntimeInfoWrapper;
 import org.apache.nifi.c2.client.service.operation.C2OperationHandlerProvider;
 import org.apache.nifi.c2.client.service.operation.DescribeManifestOperationHandler;
 import org.apache.nifi.c2.client.service.operation.EmptyOperandPropertiesProvider;
+import org.apache.nifi.c2.client.service.operation.FlowStateStrategy;
 import org.apache.nifi.c2.client.service.operation.OperandPropertiesProvider;
 import org.apache.nifi.c2.client.service.operation.OperationQueueDAO;
+import org.apache.nifi.c2.client.service.operation.StartFlowOperationHandler;
+import org.apache.nifi.c2.client.service.operation.StopFlowOperationHandler;
 import org.apache.nifi.c2.client.service.operation.SupportedOperationsProvider;
 import org.apache.nifi.c2.client.service.operation.SyncResourceOperationHandler;
 import org.apache.nifi.c2.client.service.operation.TransferDebugOperationHandler;
@@ -90,15 +100,21 @@ import org.apache.nifi.c2.protocol.api.AgentManifest;
 import org.apache.nifi.c2.protocol.api.AgentRepositories;
 import org.apache.nifi.c2.protocol.api.AgentRepositoryStatus;
 import org.apache.nifi.c2.protocol.api.FlowQueueStatus;
+import org.apache.nifi.c2.protocol.api.ProcessorBulletin;
+import org.apache.nifi.c2.protocol.api.ProcessorStatus;
+import org.apache.nifi.c2.protocol.api.RunStatus;
 import org.apache.nifi.c2.serializer.C2JacksonSerializer;
 import org.apache.nifi.c2.serializer.C2Serializer;
 import org.apache.nifi.controller.FlowController;
+import org.apache.nifi.controller.Triggerable;
 import org.apache.nifi.diagnostics.SystemDiagnostics;
 import org.apache.nifi.encrypt.PropertyEncryptorBuilder;
-import org.apache.nifi.extension.manifest.parser.ExtensionManifestParser;
 import org.apache.nifi.extension.manifest.parser.jaxb.JAXBExtensionManifestParser;
+import org.apache.nifi.groups.ProcessGroup;
+import org.apache.nifi.groups.RemoteProcessGroup;
 import org.apache.nifi.manifest.RuntimeManifestService;
 import org.apache.nifi.manifest.StandardRuntimeManifestService;
+import org.apache.nifi.minifi.c2.command.DefaultFlowStateStrategy;
 import org.apache.nifi.minifi.c2.command.DefaultUpdateConfigurationStrategy;
 import org.apache.nifi.minifi.c2.command.PropertiesPersister;
 import org.apache.nifi.minifi.c2.command.TransferDebugCommandHelper;
@@ -113,6 +129,8 @@ import org.apache.nifi.minifi.commons.service.StandardFlowEnrichService;
 import org.apache.nifi.minifi.commons.service.StandardFlowPropertyEncryptor;
 import org.apache.nifi.minifi.commons.service.StandardFlowSerDeService;
 import org.apache.nifi.nar.ExtensionManagerHolder;
+import org.apache.nifi.reporting.BulletinQuery;
+import org.apache.nifi.reporting.ComponentType;
 import org.apache.nifi.services.FlowService;
 import org.apache.nifi.util.NiFiProperties;
 import org.slf4j.Logger;
@@ -129,7 +147,6 @@ public class C2NifiClientService {
     private final ExecutorService operationManagerExecutorService;
 
     private final FlowController flowController;
-    private final ExtensionManifestParser extensionManifestParser;
     private final RuntimeManifestService runtimeManifestService;
     private final SupportedOperationsProvider supportedOperationsProvider;
     private final C2HeartbeatManager c2HeartbeatManager;
@@ -141,13 +158,11 @@ public class C2NifiClientService {
         this.heartbeatManagerExecutorService = newScheduledThreadPool(1);
         this.operationManagerExecutorService = newSingleThreadExecutor();
 
-        this.extensionManifestParser = new JAXBExtensionManifestParser();
-
         C2ClientConfig clientConfig = generateClientConfig(niFiProperties);
 
         this.runtimeManifestService = new StandardRuntimeManifestService(
             ExtensionManagerHolder.getExtensionManager(),
-            extensionManifestParser,
+            new JAXBExtensionManifestParser(),
             clientConfig.getRuntimeManifestIdentifier(),
             clientConfig.getRuntimeType()
         );
@@ -173,8 +188,11 @@ public class C2NifiClientService {
 
         this.c2OperationManager = new C2OperationManager(
             client, c2OperationHandlerProvider, heartbeatLock, operationQueueDAO, c2OperationRestartHandler);
+        Supplier<RuntimeInfoWrapper> runtimeInfoWrapperSupplier = () -> generateRuntimeInfo(
+                clientConfig.getC2FlowInfoProcessorBulletinLimit(),
+                clientConfig.isC2FlowInfoProcessorStatusEnabled());
         this.c2HeartbeatManager = new C2HeartbeatManager(
-            client, heartbeatFactory, heartbeatLock, generateRuntimeInfo(), c2OperationManager);
+            client, heartbeatFactory, heartbeatLock, runtimeInfoWrapperSupplier, c2OperationManager);
     }
 
     private C2ClientConfig generateClientConfig(NiFiProperties properties) {
@@ -206,6 +224,10 @@ public class C2NifiClientService {
             .c2RestPathHeartbeat(properties.getProperty(C2_REST_PATH_HEARTBEAT.getKey(), C2_REST_PATH_HEARTBEAT.getDefaultValue()))
             .c2RestPathAcknowledge(properties.getProperty(C2_REST_PATH_ACKNOWLEDGE.getKey(), C2_REST_PATH_ACKNOWLEDGE.getDefaultValue()))
             .bootstrapAcknowledgeTimeout(durationPropertyInMilliSecs(properties, C2_BOOTSTRAP_ACKNOWLEDGE_TIMEOUT))
+            .c2FlowInfoProcessorBulletinLimit(parseInt(properties
+                    .getProperty(C2_FLOW_INFO_PROCESSOR_BULLETIN_LIMIT.getKey(), C2_FLOW_INFO_PROCESSOR_BULLETIN_LIMIT.getDefaultValue())))
+            .c2FlowInfoProcessorStatusEnabled(parseBoolean(properties
+                    .getProperty(C2_FLOW_INFO_PROCESSOR_STATUS_ENABLED.getKey(), C2_FLOW_INFO_PROCESSOR_STATUS_ENABLED.getDefaultValue())))
             .build();
     }
 
@@ -223,6 +245,7 @@ public class C2NifiClientService {
         updateAssetCommandHelper.createAssetDirectory();
         UpdatePropertiesPropertyProvider updatePropertiesPropertyProvider = new UpdatePropertiesPropertyProvider(bootstrapConfigFileLocation);
         PropertiesPersister propertiesPersister = new PropertiesPersister(updatePropertiesPropertyProvider, bootstrapConfigFileLocation);
+        FlowStateStrategy defaultFlowStateStrategy = new DefaultFlowStateStrategy(flowController);
 
         FlowPropertyEncryptor flowPropertyEncryptor = new StandardFlowPropertyEncryptor(
             new PropertyEncryptorBuilder(niFiProperties.getProperty(SENSITIVE_PROPS_KEY))
@@ -231,16 +254,20 @@ public class C2NifiClientService {
         UpdateConfigurationStrategy updateConfigurationStrategy = new DefaultUpdateConfigurationStrategy(flowController, flowService,
             new StandardFlowEnrichService(niFiProperties), flowPropertyEncryptor,
             StandardFlowSerDeService.defaultInstance(), niFiProperties.getProperty(FLOW_CONFIGURATION_FILE));
+        Supplier<RuntimeInfoWrapper> runtimeInfoWrapperSupplier = () -> generateRuntimeInfo(
+                parseInt(niFiProperties.getProperty(C2_FLOW_INFO_PROCESSOR_BULLETIN_LIMIT.getKey(), C2_FLOW_INFO_PROCESSOR_BULLETIN_LIMIT.getDefaultValue())),
+                parseBoolean(niFiProperties.getProperty(C2_FLOW_INFO_PROCESSOR_STATUS_ENABLED.getKey(), C2_FLOW_INFO_PROCESSOR_STATUS_ENABLED.getDefaultValue())));
 
         return new C2OperationHandlerProvider(List.of(
             new UpdateConfigurationOperationHandler(client, flowIdHolder, updateConfigurationStrategy, emptyOperandPropertiesProvider),
-            new DescribeManifestOperationHandler(heartbeatFactory, this::generateRuntimeInfo, emptyOperandPropertiesProvider),
+            new DescribeManifestOperationHandler(heartbeatFactory, runtimeInfoWrapperSupplier, emptyOperandPropertiesProvider),
             TransferDebugOperationHandler.create(client, emptyOperandPropertiesProvider,
                 transferDebugCommandHelper.debugBundleFiles(), transferDebugCommandHelper::excludeSensitiveText),
             UpdateAssetOperationHandler.create(client, emptyOperandPropertiesProvider,
                 updateAssetCommandHelper::assetUpdatePrecondition, updateAssetCommandHelper::assetPersistFunction),
             new UpdatePropertiesOperationHandler(updatePropertiesPropertyProvider, propertiesPersister::persistProperties),
-            SyncResourceOperationHandler.create(client, emptyOperandPropertiesProvider, new DefaultSyncResourceStrategy(resourceRepository), c2Serializer)
+            SyncResourceOperationHandler.create(client, emptyOperandPropertiesProvider, new DefaultSyncResourceStrategy(resourceRepository), c2Serializer),
+            new StartFlowOperationHandler(defaultFlowStateStrategy), new StopFlowOperationHandler(defaultFlowStateStrategy)
         ));
     }
 
@@ -271,10 +298,17 @@ public class C2NifiClientService {
         }
     }
 
-    private RuntimeInfoWrapper generateRuntimeInfo() {
+    private synchronized RuntimeInfoWrapper generateRuntimeInfo(int processorBulletinLimit, boolean processorStatusEnabled) {
         AgentManifest agentManifest = new AgentManifest(runtimeManifestService.getManifest());
         agentManifest.setSupportedOperations(supportedOperationsProvider.getSupportedOperations());
-        return new RuntimeInfoWrapper(getAgentRepositories(), agentManifest, getQueueStatus());
+        return new RuntimeInfoWrapper(
+                getAgentRepositories(),
+                agentManifest,
+                getQueueStatus(),
+                getBulletins(processorBulletinLimit),
+                getProcessorStatus(processorStatusEnabled),
+                getRunStatus()
+        );
     }
 
     private AgentRepositories getAgentRepositories() {
@@ -320,5 +354,86 @@ public class C2NifiClientService {
                 return Pair.of(connectionStatus.getId(), flowQueueStatus);
             })
             .collect(toMap(Pair::getKey, Pair::getValue));
+    }
+
+    private List<ProcessorBulletin> getBulletins(int processorBulletinLimit) {
+        if (processorBulletinLimit > 0) {
+            String groupId = flowController.getEventAccess()
+                    .getGroupStatus(ROOT_GROUP_ID)
+                    .getId();
+            BulletinQuery query = new BulletinQuery.Builder()
+                    .sourceType(ComponentType.PROCESSOR)
+                    .groupIdMatches(groupId)
+                    .limit(processorBulletinLimit)
+                    .build();
+
+            return flowController.getBulletinRepository()
+                    .findBulletins(query)
+                    .stream()
+                    .map(bulletin -> {
+                        ProcessorBulletin processorBulletin = new ProcessorBulletin();
+                        processorBulletin.setCategory(bulletin.getCategory());
+                        processorBulletin.setFlowFileUuid(bulletin.getFlowFileUuid());
+                        processorBulletin.setGroupId(bulletin.getGroupId());
+                        processorBulletin.setGroupName(bulletin.getGroupName());
+                        processorBulletin.setGroupPath(bulletin.getGroupPath());
+                        processorBulletin.setId(bulletin.getId());
+                        processorBulletin.setLevel(bulletin.getLevel());
+                        processorBulletin.setMessage(bulletin.getMessage());
+                        processorBulletin.setNodeAddress(bulletin.getNodeAddress());
+                        processorBulletin.setSourceId(bulletin.getSourceId());
+                        processorBulletin.setSourceName(bulletin.getSourceName());
+                        processorBulletin.setTimestamp(bulletin.getTimestamp());
+                        return processorBulletin;
+                    }).toList();
+        }
+        return new ArrayList<>();
+    }
+
+    private List<ProcessorStatus> getProcessorStatus(boolean processorStatusEnabled) {
+        if (processorStatusEnabled) {
+            return flowController.getEventAccess()
+                    .getGroupStatus(ROOT_GROUP_ID)
+                    .getProcessorStatus()
+                    .stream()
+                    .map(this::convertProcessorStatus)
+                    .toList();
+        }
+        return null;
+    }
+
+    private ProcessorStatus convertProcessorStatus(org.apache.nifi.controller.status.ProcessorStatus processorStatus) {
+        ProcessorStatus result = new ProcessorStatus();
+        result.setId(processorStatus.getId());
+        result.setGroupId(processorStatus.getGroupId());
+        result.setBytesRead(processorStatus.getBytesRead());
+        result.setBytesWritten(processorStatus.getBytesWritten());
+        result.setFlowFilesIn(processorStatus.getInputCount());
+        result.setFlowFilesOut(processorStatus.getOutputCount());
+        result.setBytesIn(processorStatus.getInputBytes());
+        result.setBytesOut(processorStatus.getOutputBytes());
+        result.setInvocations(processorStatus.getInvocations());
+        result.setProcessingNanos(processorStatus.getProcessingNanos());
+        result.setActiveThreadCount(processorStatus.getActiveThreadCount());
+        result.setTerminatedThreadCount(processorStatus.getTerminatedThreadCount());
+        return result;
+    }
+
+    private RunStatus getRunStatus() {
+        ProcessGroup processGroup = flowController.getFlowManager().getRootGroup();
+        return isProcessGroupRunning(processGroup)
+                || processGroup.getProcessGroups().stream().anyMatch(this::isProcessGroupRunning) ? RUNNING : STOPPED;
+    }
+
+    private boolean isProcessGroupRunning(ProcessGroup processGroup) {
+        return anyProcessorRunning(processGroup) || anyRemoteProcessGroupTransmitting(processGroup);
+    }
+
+    private boolean anyProcessorRunning(ProcessGroup processGroup) {
+        return processGroup.getProcessors().stream().anyMatch(Triggerable::isRunning);
+    }
+
+    private boolean anyRemoteProcessGroupTransmitting(ProcessGroup processGroup) {
+        return processGroup.getRemoteProcessGroups().stream().anyMatch(RemoteProcessGroup::isTransmitting);
     }
 }

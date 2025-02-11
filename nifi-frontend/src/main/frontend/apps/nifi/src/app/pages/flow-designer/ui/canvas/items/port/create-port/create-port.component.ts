@@ -24,32 +24,27 @@ import { selectParentProcessGroupId, selectSaving } from '../../../../../state/f
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { createPort } from '../../../../../state/flow/flow.actions';
 import { CreateComponentRequest } from '../../../../../state/flow';
-import { ComponentType, SelectOption } from '../../../../../../../state/shared';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
-import { MatTooltipModule } from '@angular/material/tooltip';
-import { ErrorBanner } from '../../../../../../../ui/common/error-banner/error-banner.component';
 import { AsyncPipe } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { NifiSpinnerDirective } from '../../../../../../../ui/common/spinner/nifi-spinner.directive';
-import { TextTip } from '../../../../../../../ui/common/tooltips/text-tip/text-tip.component';
-import { NifiTooltipDirective } from '../../../../../../../ui/common/tooltips/nifi-tooltip.directive';
-import { CloseOnEscapeDialog } from '../../../../../../../ui/common/close-on-escape-dialog/close-on-escape-dialog.component';
+import { ComponentType, SelectOption, NifiTooltipDirective, TextTip, CloseOnEscapeDialog } from '@nifi/shared';
+import { ErrorContextKey } from '../../../../../../../state/error';
+import { ContextErrorBanner } from '../../../../../../../ui/common/context-error-banner/context-error-banner.component';
 
 @Component({
     selector: 'create-port',
-    standalone: true,
     imports: [
         ReactiveFormsModule,
         MatDialogModule,
         MatInputModule,
         MatSelectModule,
-        MatTooltipModule,
-        ErrorBanner,
         MatButtonModule,
         AsyncPipe,
         NifiSpinnerDirective,
-        NifiTooltipDirective
+        NifiTooltipDirective,
+        ContextErrorBanner
     ],
     templateUrl: './create-port.component.html',
     styleUrls: ['./create-port.component.scss']
@@ -117,4 +112,5 @@ export class CreatePort extends CloseOnEscapeDialog {
     }
 
     protected readonly ComponentType = ComponentType;
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

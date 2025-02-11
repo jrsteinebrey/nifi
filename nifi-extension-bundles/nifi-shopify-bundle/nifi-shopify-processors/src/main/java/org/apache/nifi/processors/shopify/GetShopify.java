@@ -197,15 +197,15 @@ public class GetShopify extends AbstractProcessor {
                     propertyMap.put(resourceType, resourceDescriptor);
                     return resourceDescriptor;
                 })
-                .collect(Collectors.toList());
-        final List<PropertyDescriptor> propertyDescriptors = new ArrayList<>(Arrays.asList(
+                .toList();
+        final List<PropertyDescriptor> propertyDescriptors = new ArrayList<>(List.of(
                 STORE_DOMAIN,
                 ACCESS_TOKEN,
                 API_VERSION,
                 OBJECT_CATEGORY
         ));
         propertyDescriptors.addAll(resourceDescriptors);
-        propertyDescriptors.addAll(Arrays.asList(
+        propertyDescriptors.addAll(List.of(
                 RESULT_LIMIT,
                 IS_INCREMENTAL,
                 INCREMENTAL_DELAY,
@@ -220,7 +220,6 @@ public class GetShopify extends AbstractProcessor {
     private static final int TOO_MANY_REQUESTS = 429;
     private static final Pattern CURSOR_PATTERN = Pattern.compile("<([^<]*)>; rel=\"next\"");
     private static final String LAST_EXECUTION_TIME_KEY = "last_execution_time";
-    private static final int EXCLUSIVE_TIME_WINDOW_ADJUSTMENT = 1;
     private static final List<String> RESET_STATE_PROPERTY_NAMES;
 
     static {

@@ -19,22 +19,21 @@ import { Component, ElementRef, EventEmitter, Input, Output, ViewChild } from '@
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
-import { NiFiCommon } from '../../../service/nifi-common.service';
 import { MatSortModule, Sort } from '@angular/material/sort';
 
 import { ControllerServiceApiTipInput, DocumentedType, RestrictionsTipInput } from '../../../state/shared';
-import { NifiTooltipDirective } from '../tooltips/nifi-tooltip.directive';
+import { CloseOnEscapeDialog, NiFiCommon, NifiTooltipDirective } from '@nifi/shared';
 import { RestrictionsTip } from '../tooltips/restrictions-tip/restrictions-tip.component';
 import { ControllerServiceApiTip } from '../tooltips/controller-service-api-tip/controller-service-api-tip.component';
 import { NifiSpinnerDirective } from '../spinner/nifi-spinner.directive';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { ReactiveFormsModule } from '@angular/forms';
-import { CloseOnEscapeDialog } from '../close-on-escape-dialog/close-on-escape-dialog.component';
+import { anyOf, onLowerCaseFilter } from './filter-predicate/extensions';
+import { matchesCamelCaseSearch } from './filter-predicate/camel-case.search';
 
 @Component({
     selector: 'extension-creation',
-    standalone: true,
     templateUrl: './extension-creation.component.html',
     imports: [
         MatButtonModule,
@@ -80,11 +79,17 @@ export class ExtensionCreation extends CloseOnEscapeDialog {
 
     constructor(private nifiCommon: NiFiCommon) {
         super();
+
+        const defaultPredicate = this.dataSource.filterPredicate;
+        this.dataSource.filterPredicate = anyOf(
+            (data: DocumentedType, filter: string) => matchesCamelCaseSearch(data.type, filter),
+            onLowerCaseFilter(defaultPredicate)
+        );
     }
 
     formatType(documentedType: DocumentedType): string {
         if (documentedType) {
-            return this.nifiCommon.substringAfterLast(documentedType.type, '.');
+            return this.nifiCommon.getComponentTypeLabel(documentedType.type);
         }
         return '';
     }
@@ -148,7 +153,7 @@ export class ExtensionCreation extends CloseOnEscapeDialog {
         }
 
         const filterText: string = (event.target as HTMLInputElement).value;
-        this.dataSource.filter = filterText.trim().toLowerCase();
+        this.dataSource.filter = filterText.trim();
 
         if (this.dataSource.filteredData.length > 0) {
             this.selectType(this.dataSource.filteredData[0]);

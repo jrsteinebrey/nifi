@@ -17,6 +17,7 @@
 
 import { Component, EventEmitter, Inject, Input, Output } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
+import { MatMenuModule } from '@angular/material/menu';
 import {
     AbstractControl,
     FormBuilder,
@@ -30,32 +31,44 @@ import {
 import { MatInputModule } from '@angular/material/input';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatButtonModule } from '@angular/material/button';
-import { AsyncPipe } from '@angular/common';
+import { AsyncPipe, NgClass } from '@angular/common';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatOptionModule } from '@angular/material/core';
 import { MatSelectModule } from '@angular/material/select';
 import { Observable, of } from 'rxjs';
 import {
-    ComponentType,
+    BulletinsTipInput,
     InlineServiceCreationRequest,
     InlineServiceCreationResponse,
     ParameterContextEntity,
-    Property,
-    SelectOption
+    Property
 } from '../../../../../../../state/shared';
 import { Client } from '../../../../../../../service/client.service';
-import { NiFiCommon } from '../../../../../../../service/nifi-common.service';
-import { EditComponentDialogRequest, UpdateProcessorRequest } from '../../../../../state/flow';
+import {
+    DisableComponentRequest,
+    EditComponentDialogRequest,
+    EnableComponentRequest,
+    StartComponentRequest,
+    StopComponentRequest,
+    UpdateProcessorRequest
+} from '../../../../../state/flow';
 import { PropertyTable } from '../../../../../../../ui/common/property-table/property-table.component';
 import { NifiSpinnerDirective } from '../../../../../../../ui/common/spinner/nifi-spinner.directive';
-import { NifiTooltipDirective } from '../../../../../../../ui/common/tooltips/nifi-tooltip.directive';
-import { TextTip } from '../../../../../../../ui/common/tooltips/text-tip/text-tip.component';
+import {
+    ComponentType,
+    SelectOption,
+    NifiTooltipDirective,
+    NiFiCommon,
+    TextTip,
+    CopyDirective,
+    Revision,
+    BulletinEntity
+} from '@nifi/shared';
 import { RunDurationSlider } from './run-duration-slider/run-duration-slider.component';
 import {
     RelationshipConfiguration,
     RelationshipSettings
 } from './relationship-settings/relationship-settings.component';
-import { ErrorBanner } from '../../../../../../../ui/common/error-banner/error-banner.component';
 import { ClusterConnectionService } from '../../../../../../../service/cluster-connection.service';
 import { CanvasUtils } from '../../../../../service/canvas-utils.service';
 import { ConvertToParameterResponse } from '../../../../../service/parameter-helper.service';
@@ -66,10 +79,13 @@ import {
     VerifyPropertiesRequestContext
 } from '../../../../../../../state/property-verification';
 import { TabbedDialog } from '../../../../../../../ui/common/tabbed-dialog/tabbed-dialog.component';
+import { ErrorContextKey } from '../../../../../../../state/error';
+import { ContextErrorBanner } from '../../../../../../../ui/common/context-error-banner/context-error-banner.component';
+import { BulletinsTip } from '../../../../../../../ui/common/tooltips/bulletins-tip/bulletins-tip.component';
+import { ConnectedPosition } from '@angular/cdk/overlay';
 
 @Component({
     selector: 'edit-processor',
-    standalone: true,
     templateUrl: './edit-processor.component.html',
     imports: [
         ReactiveFormsModule,
@@ -80,18 +96,24 @@ import { TabbedDialog } from '../../../../../../../ui/common/tabbed-dialog/tabbe
         MatTabsModule,
         MatOptionModule,
         MatSelectModule,
+        MatMenuModule,
         AsyncPipe,
         PropertyTable,
         NifiSpinnerDirective,
         NifiTooltipDirective,
         RunDurationSlider,
         RelationshipSettings,
-        ErrorBanner,
-        PropertyVerification
+        PropertyVerification,
+        ContextErrorBanner,
+        CopyDirective,
+        NgClass
     ],
     styleUrls: ['./edit-processor.component.scss']
 })
 export class EditProcessor extends TabbedDialog {
+    @Input() set processorUpdates(processorUpdates: any | undefined) {
+        this.processRunStateUpdates(processorUpdates);
+    }
     @Input() createNewProperty!: (existingProperties: string[], allowsSensitive: boolean) => Observable<Property>;
     @Input() createNewService!: (request: InlineServiceCreationRequest) => Observable<InlineServiceCreationResponse>;
     @Input() parameterContext: ParameterContextEntity | undefined;
@@ -109,11 +131,20 @@ export class EditProcessor extends TabbedDialog {
 
     @Output() verify: EventEmitter<VerifyPropertiesRequestContext> = new EventEmitter<VerifyPropertiesRequestContext>();
     @Output() editProcessor: EventEmitter<UpdateProcessorRequest> = new EventEmitter<UpdateProcessorRequest>();
+    @Output() stopComponentRequest: EventEmitter<StopComponentRequest> = new EventEmitter<StopComponentRequest>();
+    @Output() startComponentRequest: EventEmitter<StartComponentRequest> = new EventEmitter<StartComponentRequest>();
+    @Output() disableComponentRequest: EventEmitter<DisableComponentRequest> =
+        new EventEmitter<DisableComponentRequest>();
+    @Output() enableComponentRequest: EventEmitter<EnableComponentRequest> = new EventEmitter<EnableComponentRequest>();
 
     protected readonly TextTip = TextTip;
+    protected readonly BulletinsTip = BulletinsTip;
 
     editProcessorForm: FormGroup;
-    readonly: boolean;
+    readonly: boolean = true;
+    status: any;
+    revision!: Revision;
+    bulletins!: BulletinEntity[];
 
     bulletinLevels = [
         {
@@ -180,9 +211,6 @@ export class EditProcessor extends TabbedDialog {
         private nifiCommon: NiFiCommon
     ) {
         super('edit-processor-selected-index');
-
-        this.readonly =
-            !request.entity.permissions.canWrite || !this.canvasUtils.runnableSupportsModification(request.entity);
 
         const processorProperties: any = request.entity.component.config.properties;
         const properties: Property[] = Object.entries(processorProperties).map((entry: any) => {
@@ -252,6 +280,32 @@ export class EditProcessor extends TabbedDialog {
                 new FormControl({ value: this.runDurationMillis, disabled: this.readonly }, Validators.required)
             );
         }
+
+        this.processRunStateUpdates(request.entity);
+    }
+
+    private processRunStateUpdates(entity: any) {
+        this.status = entity.status;
+        this.revision = entity.revision;
+        this.bulletins = entity.bulletins;
+
+        this.readonly = !entity.permissions.canWrite || !this.canvasUtils.runnableSupportsModification(entity);
+
+        if (this.readonly) {
+            this.editProcessorForm.get('properties')?.disable();
+            this.editProcessorForm.get('relationshipConfiguration')?.disable();
+
+            if (this.supportsBatching()) {
+                this.editProcessorForm.get('runDuration')?.disable();
+            }
+        } else {
+            this.editProcessorForm.get('properties')?.enable();
+            this.editProcessorForm.get('relationshipConfiguration')?.enable();
+
+            if (this.supportsBatching()) {
+                this.editProcessorForm.get('runDuration')?.enable();
+            }
+        }
     }
 
     private relationshipConfigurationValidator(): ValidatorFn {
@@ -287,12 +341,12 @@ export class EditProcessor extends TabbedDialog {
         return this.request.entity.component.supportsBatching == true;
     }
 
-    formatType(entity: any): string {
-        return this.nifiCommon.formatType(entity.component);
+    formatType(): string {
+        return this.nifiCommon.formatType(this.request.entity.component);
     }
 
-    formatBundle(entity: any): string {
-        return this.nifiCommon.formatBundle(entity.component.bundle);
+    formatBundle(): string {
+        return this.nifiCommon.formatBundle(this.request.entity.component.bundle);
     }
 
     concurrentTasksChanged(): void {
@@ -350,7 +404,10 @@ export class EditProcessor extends TabbedDialog {
             .map((relationship) => relationship.name);
 
         const payload: any = {
-            revision: this.client.getRevision(this.request.entity),
+            revision: this.client.getRevision({
+                ...this.request.entity,
+                revision: this.revision
+            }),
             disconnectedNodeAcknowledged: this.clusterConnectionService.isDisconnectionAcknowledged(),
             component: {
                 id: this.request.entity.id,
@@ -400,6 +457,140 @@ export class EditProcessor extends TabbedDialog {
         });
     }
 
+    hasBulletins(): boolean {
+        return this.request.entity.permissions.canRead && !this.nifiCommon.isEmpty(this.bulletins);
+    }
+
+    getBulletinsTipData(): BulletinsTipInput {
+        return {
+            bulletins: this.bulletins
+        };
+    }
+
+    getBulletinTooltipPosition(): ConnectedPosition {
+        return {
+            originX: 'end',
+            originY: 'bottom',
+            overlayX: 'end',
+            overlayY: 'top',
+            offsetX: -8,
+            offsetY: 8
+        };
+    }
+
+    getMostSevereBulletinLevel(): string | null {
+        // determine the most severe of the bulletins
+        const mostSevere = this.canvasUtils.getMostSevereBulletin(this.bulletins);
+        return mostSevere ? mostSevere.bulletin.level.toLowerCase() : null;
+    }
+
+    isStoppable(): boolean {
+        return this.status.aggregateSnapshot.runStatus === 'Running';
+    }
+
+    isStopping(): boolean {
+        return (
+            this.status.aggregateSnapshot.runStatus === 'Stopped' && this.status.aggregateSnapshot.activeThreadCount > 0
+        );
+    }
+
+    isValidating(): boolean {
+        return this.status.aggregateSnapshot.runStatus === 'Validating';
+    }
+
+    isInvalid(): boolean {
+        return this.status.aggregateSnapshot.runStatus === 'Invalid';
+    }
+
+    isDisabled(): boolean {
+        return this.status.aggregateSnapshot.runStatus === 'Disabled';
+    }
+
+    isRunnable(): boolean {
+        return (
+            !(
+                this.status.aggregateSnapshot.runStatus === 'Running' ||
+                this.status.aggregateSnapshot.activeThreadCount > 0
+            ) && this.status.aggregateSnapshot.runStatus === 'Stopped'
+        );
+    }
+
+    isDisableable(): boolean {
+        return (
+            !(
+                this.status.aggregateSnapshot.runStatus === 'Running' ||
+                this.status.aggregateSnapshot.activeThreadCount > 0
+            ) &&
+            (this.status.aggregateSnapshot.runStatus === 'Stopped' ||
+                this.status.aggregateSnapshot.runStatus === 'Invalid')
+        );
+    }
+
+    isEnableable(): boolean {
+        return (
+            !(
+                this.status.aggregateSnapshot.runStatus === 'Running' ||
+                this.status.aggregateSnapshot.activeThreadCount > 0
+            ) && this.status.aggregateSnapshot.runStatus === 'Disabled'
+        );
+    }
+
+    canOperate(): boolean {
+        return this.request.entity.permissions.canWrite || this.request.entity.operatePermissions?.canWrite;
+    }
+
+    stop() {
+        this.stopComponentRequest.next({
+            id: this.request.entity.id,
+            uri: this.request.entity.uri,
+            type: ComponentType.Processor,
+            revision: this.client.getRevision({
+                ...this.request.entity,
+                revision: this.revision
+            }),
+            errorStrategy: 'snackbar'
+        });
+    }
+
+    start() {
+        this.startComponentRequest.next({
+            id: this.request.entity.id,
+            uri: this.request.entity.uri,
+            type: ComponentType.Processor,
+            revision: this.client.getRevision({
+                ...this.request.entity,
+                revision: this.revision
+            }),
+            errorStrategy: 'snackbar'
+        });
+    }
+
+    disable() {
+        this.disableComponentRequest.next({
+            id: this.request.entity.id,
+            uri: this.request.entity.uri,
+            type: ComponentType.Processor,
+            revision: this.client.getRevision({
+                ...this.request.entity,
+                revision: this.revision
+            }),
+            errorStrategy: 'snackbar'
+        });
+    }
+
+    enable() {
+        this.enableComponentRequest.next({
+            id: this.request.entity.id,
+            uri: this.request.entity.uri,
+            type: ComponentType.Processor,
+            revision: this.client.getRevision({
+                ...this.request.entity,
+                revision: this.revision
+            }),
+            errorStrategy: 'snackbar'
+        });
+    }
+
     private getModifiedProperties(): ModifiedProperties {
         const propertyControl: AbstractControl | null = this.editProcessorForm.get('properties');
         if (propertyControl && propertyControl.dirty) {
@@ -421,4 +612,6 @@ export class EditProcessor extends TabbedDialog {
             properties: this.getModifiedProperties()
         });
     }
+
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

@@ -22,6 +22,7 @@ import com.google.api.core.ApiFutures;
 import com.google.api.gax.batching.BatchingSettings;
 import com.google.api.gax.core.FixedCredentialsProvider;
 import com.google.api.gax.rpc.ApiException;
+import com.google.api.gax.core.FixedExecutorProvider;
 import com.google.cloud.pubsub.v1.Publisher;
 import com.google.cloud.pubsub.v1.stub.GrpcPublisherStub;
 import com.google.cloud.pubsub.v1.stub.PublisherStubSettings;
@@ -82,6 +83,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 
 import static org.apache.nifi.processors.gcp.pubsub.PubSubAttributes.MESSAGE_ID_ATTRIBUTE;
 import static org.apache.nifi.processors.gcp.pubsub.PubSubAttributes.MESSAGE_ID_DESCRIPTION;
@@ -171,7 +173,7 @@ public class PublishGCPubSub extends AbstractGCPubSubWithProxyProcessor {
             .description("FlowFiles are routed to this relationship if the Google Cloud Pub/Sub operation fails but attempting the operation again may succeed.")
             .build();
 
-    private static final List<PropertyDescriptor> DESCRIPTORS = List.of(
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
             GCP_CREDENTIALS_PROVIDER_SERVICE,
             PROJECT_ID,
             TOPIC_NAME,
@@ -187,13 +189,17 @@ public class PublishGCPubSub extends AbstractGCPubSubWithProxyProcessor {
             PROXY_CONFIGURATION_SERVICE
     );
 
-    public static final Set<Relationship> RELATIONSHIPS = Set.of(REL_SUCCESS, REL_FAILURE, REL_RETRY);
+    public static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_SUCCESS,
+            REL_FAILURE,
+            REL_RETRY
+    );
 
     protected Publisher publisher = null;
 
     @Override
     public List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return DESCRIPTORS;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -321,8 +327,8 @@ public class PublishGCPubSub extends AbstractGCPubSubWithProxyProcessor {
 
         for (final FlowFile flowFile : flowFileBatch) {
             final List<ApiFuture<String>> futures = new ArrayList<>();
-            final List<String> successes = new ArrayList<>();
-            final List<Throwable> failures = new ArrayList<>();
+            final List<String> successes = Collections.synchronizedList(new ArrayList<>());
+            final List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
 
             if (flowFile.getSize() > maxMessageSize) {
                 final String message = String.format("FlowFile size %d exceeds MAX_MESSAGE_SIZE", flowFile.getSize());
@@ -368,8 +374,8 @@ public class PublishGCPubSub extends AbstractGCPubSubWithProxyProcessor {
 
         for (final FlowFile flowFile : flowFileBatch) {
             final List<ApiFuture<String>> futures = new ArrayList<>();
-            final List<String> successes = new ArrayList<>();
-            final List<Throwable> failures = new ArrayList<>();
+            final List<String> successes = Collections.synchronizedList(new ArrayList<>());
+            final List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
 
             final Map<String, String> attributes = flowFile.getAttributes();
             try (final RecordReader reader = readerFactory.createRecordReader(
@@ -488,6 +494,10 @@ public class PublishGCPubSub extends AbstractGCPubSubWithProxyProcessor {
                 .setDelayThreshold(Duration.ofMillis(batchDelayThreshold))
                 .setIsEnabled(true)
                 .build());
+
+        // Set fixed thread pool executor to number of concurrent tasks
+        publisherBuilder.setExecutorProvider(FixedExecutorProvider.create(new ScheduledThreadPoolExecutor(context.getMaxConcurrentTasks())));
+
         return publisherBuilder;
     }
 }

@@ -48,10 +48,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -151,18 +148,35 @@ public class GeoEnrichIPRecord extends AbstractEnrichIP {
             .description("The original input flowfile goes to this relationship regardless of whether the content was enriched or not.")
             .build();
 
-    public static final Set<Relationship> RELATIONSHIPS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            REL_ORIGINAL, REL_FOUND, REL_NOT_FOUND
-    )));
+    public static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_ORIGINAL,
+            REL_FOUND,
+            REL_NOT_FOUND
+    );
 
-    public static final List<PropertyDescriptor> GEO_PROPERTIES = Collections.unmodifiableList(Arrays.asList(
-            GEO_CITY, GEO_LATITUDE, GEO_LONGITUDE, GEO_COUNTRY, GEO_COUNTRY_ISO, GEO_POSTAL_CODE
-    ));
+    public static final List<PropertyDescriptor> GEO_PROPERTY_DESCRIPTORS = List.of(
+            GEO_CITY,
+            GEO_LATITUDE,
+            GEO_LONGITUDE,
+            GEO_COUNTRY,
+            GEO_COUNTRY_ISO,
+            GEO_POSTAL_CODE
+    );
 
-    private static final List<PropertyDescriptor> DESCRIPTORS = Collections.unmodifiableList(Arrays.asList(
-            GEO_DATABASE_FILE, READER, WRITER, SPLIT_FOUND_NOT_FOUND, IP_RECORD_PATH, GEO_CITY, GEO_LATITUDE,
-            GEO_LONGITUDE, GEO_COUNTRY, GEO_COUNTRY_ISO, GEO_POSTAL_CODE, LOG_LEVEL
-    ));
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+            GEO_DATABASE_FILE,
+            READER,
+            WRITER,
+            SPLIT_FOUND_NOT_FOUND,
+            IP_RECORD_PATH,
+            GEO_CITY,
+            GEO_LATITUDE,
+            GEO_LONGITUDE,
+            GEO_COUNTRY,
+            GEO_COUNTRY_ISO,
+            GEO_POSTAL_CODE,
+            LOG_LEVEL
+    );
 
     @Override
     public Set<Relationship> getRelationships() {
@@ -171,7 +185,7 @@ public class GeoEnrichIPRecord extends AbstractEnrichIP {
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return DESCRIPTORS;
+        return PROPERTY_DESCRIPTORS;
     }
 
     protected volatile RecordReaderFactory readerFactory;
@@ -220,9 +234,9 @@ public class GeoEnrichIPRecord extends AbstractEnrichIP {
         try (InputStream is = session.read(input);
              OutputStream os = session.write(output);
              OutputStream osNotFound = splitOutput ? session.write(notFound) : null) {
-            RecordPathCache cache = new RecordPathCache(GEO_PROPERTIES.size() + 1);
+            RecordPathCache cache = new RecordPathCache(GEO_PROPERTY_DESCRIPTORS.size() + 1);
             Map<PropertyDescriptor, RecordPath> paths = new HashMap<>();
-            for (PropertyDescriptor descriptor : GEO_PROPERTIES) {
+            for (PropertyDescriptor descriptor : GEO_PROPERTY_DESCRIPTORS) {
                 if (!context.getProperty(descriptor).isSet()) {
                     continue;
                 }

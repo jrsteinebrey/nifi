@@ -24,7 +24,6 @@ import { NgClass } from '@angular/common';
 
 @Component({
     selector: 'remote-process-group-cluster-table',
-    standalone: true,
     imports: [MatTableModule, MatSortModule, NgClass],
     templateUrl: './remote-process-group-cluster-table.component.html',
     styleUrl: './remote-process-group-cluster-table.component.scss'
@@ -112,9 +111,9 @@ export class RemoteProcessGroupClusterTable extends ComponentClusterTable<NodeRe
 
     getTransmissionStatusIcon(rpg: NodeRemoteProcessGroupStatusSnapshot): string {
         if (rpg.statusSnapshot.transmissionStatus === 'Transmitting') {
-            return 'transmitting success-color fa fa-bullseye';
+            return 'transmitting success-color-variant fa fa-bullseye';
         } else {
-            return 'not-transmitting icon icon-transmit-false surface-color';
+            return 'not-transmitting icon icon-transmit-false neutral-color';
         }
     }
 }

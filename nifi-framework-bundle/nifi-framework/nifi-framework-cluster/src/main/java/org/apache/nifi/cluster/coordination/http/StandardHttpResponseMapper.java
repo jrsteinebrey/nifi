@@ -16,7 +16,9 @@
  */
 package org.apache.nifi.cluster.coordination.http;
 
+import jakarta.ws.rs.core.StreamingOutput;
 import org.apache.nifi.cluster.coordination.http.endpoints.AccessPolicyEndpointMerger;
+import org.apache.nifi.cluster.coordination.http.endpoints.AssetsEndpointMerger;
 import org.apache.nifi.cluster.coordination.http.endpoints.BulletinBoardEndpointMerger;
 import org.apache.nifi.cluster.coordination.http.endpoints.ComponentStateEndpointMerger;
 import org.apache.nifi.cluster.coordination.http.endpoints.ConnectionEndpointMerger;
@@ -50,7 +52,11 @@ import org.apache.nifi.cluster.coordination.http.endpoints.GroupStatusEndpointMe
 import org.apache.nifi.cluster.coordination.http.endpoints.InputPortsEndpointMerger;
 import org.apache.nifi.cluster.coordination.http.endpoints.LabelEndpointMerger;
 import org.apache.nifi.cluster.coordination.http.endpoints.LabelsEndpointMerger;
+import org.apache.nifi.cluster.coordination.http.endpoints.LatestProvenanceEventsMerger;
 import org.apache.nifi.cluster.coordination.http.endpoints.ListFlowFilesEndpointMerger;
+import org.apache.nifi.cluster.coordination.http.endpoints.NarDetailsEndpointMerger;
+import org.apache.nifi.cluster.coordination.http.endpoints.NarSummariesEndpointMerger;
+import org.apache.nifi.cluster.coordination.http.endpoints.NarSummaryEndpointMerger;
 import org.apache.nifi.cluster.coordination.http.endpoints.OutputPortsEndpointMerger;
 import org.apache.nifi.cluster.coordination.http.endpoints.ParameterContextEndpointMerger;
 import org.apache.nifi.cluster.coordination.http.endpoints.ParameterContextUpdateEndpointMerger;
@@ -59,6 +65,7 @@ import org.apache.nifi.cluster.coordination.http.endpoints.ParameterContextsEndp
 import org.apache.nifi.cluster.coordination.http.endpoints.ParameterProviderEndpointMerger;
 import org.apache.nifi.cluster.coordination.http.endpoints.ParameterProviderFetchRequestsEndpointMerger;
 import org.apache.nifi.cluster.coordination.http.endpoints.ParameterProvidersEndpointMerger;
+import org.apache.nifi.cluster.coordination.http.endpoints.PasteEndpointMerger;
 import org.apache.nifi.cluster.coordination.http.endpoints.PortEndpointMerger;
 import org.apache.nifi.cluster.coordination.http.endpoints.PortStatusEndpointMerger;
 import org.apache.nifi.cluster.coordination.http.endpoints.PrioritizerTypesEndpointMerger;
@@ -89,7 +96,6 @@ import org.apache.nifi.cluster.coordination.http.endpoints.UserGroupEndpointMerg
 import org.apache.nifi.cluster.coordination.http.endpoints.UserGroupsEndpointMerger;
 import org.apache.nifi.cluster.coordination.http.endpoints.UsersEndpointMerger;
 import org.apache.nifi.cluster.coordination.http.endpoints.VerifyConfigEndpointMerger;
-import org.apache.nifi.cluster.coordination.http.replication.RequestReplicator;
 import org.apache.nifi.cluster.manager.NodeResponse;
 import org.apache.nifi.stream.io.NullOutputStream;
 import org.apache.nifi.util.FormatUtils;
@@ -97,8 +103,8 @@ import org.apache.nifi.util.NiFiProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import jakarta.ws.rs.core.StreamingOutput;
 import java.io.IOException;
+import java.net.HttpURLConnection;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
@@ -108,7 +114,7 @@ import java.util.stream.Collectors;
 
 public class StandardHttpResponseMapper implements HttpResponseMapper {
 
-    private Logger logger = LoggerFactory.getLogger(StandardHttpResponseMapper.class);
+    private final Logger logger = LoggerFactory.getLogger(StandardHttpResponseMapper.class);
 
     private final List<EndpointResponseMerger> endpointMergers = new ArrayList<>();
 
@@ -140,8 +146,10 @@ public class StandardHttpResponseMapper implements HttpResponseMapper {
         endpointMergers.add(new ProcessGroupEndpointMerger());
         endpointMergers.add(new ProcessGroupsEndpointMerger());
         endpointMergers.add(new FlowSnippetEndpointMerger());
+        endpointMergers.add(new PasteEndpointMerger());
         endpointMergers.add(new ProvenanceQueryEndpointMerger());
         endpointMergers.add(new ProvenanceEventEndpointMerger());
+        endpointMergers.add(new LatestProvenanceEventsMerger());
         endpointMergers.add(new ControllerServiceEndpointMerger());
         endpointMergers.add(new ControllerServicesEndpointMerger());
         endpointMergers.add(new ControllerServiceReferenceEndpointMerger());
@@ -193,7 +201,10 @@ public class StandardHttpResponseMapper implements HttpResponseMapper {
         endpointMergers.add(new FlowRegistryClientEndpointMerger());
         endpointMergers.add(new FlowRegistryClientsEndpointMerger());
         endpointMergers.add(new FlowRepositoryClientTypesEndpointMerger());
-
+        endpointMergers.add(new NarSummaryEndpointMerger());
+        endpointMergers.add(new NarSummariesEndpointMerger());
+        endpointMergers.add(new NarDetailsEndpointMerger());
+        endpointMergers.add(new AssetsEndpointMerger());
     }
 
     @Override
@@ -273,7 +284,7 @@ public class StandardHttpResponseMapper implements HttpResponseMapper {
         responses.stream()
                 .parallel() // "parallelize" the draining of the responses, since we have multiple streams to consume
                 .filter(response -> response != exclude) // don't include the explicitly excluded node
-                .filter(response -> response.getStatus() != RequestReplicator.NODE_CONTINUE_STATUS_CODE) // don't include any continue responses because they contain no content
+                .filter(response -> response.getStatus() != HttpURLConnection.HTTP_ACCEPTED) // don't include any continue responses because they contain no content
                 .forEach(this::drainResponse); // drain all node responses that didn't get filtered out
     }
 

@@ -27,12 +27,10 @@ import { QueueService } from '../../service/queue.service';
 import { DropRequest } from './index';
 import { CancelDialog } from '../../../../ui/common/cancel-dialog/cancel-dialog.component';
 import { MatDialog } from '@angular/material/dialog';
-import { isDefinedAndNotNull } from '../../../../state/shared';
-import { YesNoDialog } from '../../../../ui/common/yes-no-dialog/yes-no-dialog.component';
+import { isDefinedAndNotNull, SMALL_DIALOG, YesNoDialog } from '@nifi/shared';
 import { OkDialog } from '../../../../ui/common/ok-dialog/ok-dialog.component';
 import { loadChildProcessGroup, loadConnection, loadProcessGroup } from '../flow/flow.actions';
 import { resetQueueState } from './queue.actions';
-import { SMALL_DIALOG } from '../../../../index';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ErrorHelper } from '../../../../service/error-helper.service';
 import { selectCurrentProcessGroupId } from '../flow/flow.selectors';
@@ -87,7 +85,7 @@ export class QueueEffects {
                     disableClose: true
                 });
 
-                dialogReference.componentInstance.cancel.pipe(take(1)).subscribe(() => {
+                dialogReference.componentInstance.close.pipe(take(1)).subscribe(() => {
                     this.store.dispatch(QueueActions.stopPollingEmptyQueueRequest());
                 });
 
@@ -151,7 +149,7 @@ export class QueueEffects {
                     disableClose: true
                 });
 
-                dialogReference.componentInstance.cancel.pipe(take(1)).subscribe(() => {
+                dialogReference.componentInstance.close.pipe(take(1)).subscribe(() => {
                     this.store.dispatch(QueueActions.stopPollingEmptyQueueRequest());
                 });
 

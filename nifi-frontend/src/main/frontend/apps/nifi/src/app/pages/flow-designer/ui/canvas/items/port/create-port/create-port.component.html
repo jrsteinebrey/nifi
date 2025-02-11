@@ -17,7 +17,7 @@
 
 <h2 mat-dialog-title>Create New {{ portTypeLabel }}</h2>
 <form class="create-port-form" [formGroup]="createPortForm">
-    <error-banner></error-banner>
+    <context-error-banner [context]="ErrorContextKey.PORT"></context-error-banner>
     <mat-dialog-content>
         <mat-form-field>
             <mat-label>{{ portTypeLabel }} Name</mat-label>
@@ -61,10 +61,9 @@
             <button mat-button mat-dialog-close>Cancel</button>
             <button
                 [disabled]="!createPortForm.dirty || createPortForm.invalid || saving.value"
-                type="button"
-                color="primary"
+                type="submit"
                 (click)="createPort()"
-                mat-button>
+                mat-flat-button>
                 <span *nifiSpinner="saving.value">Add</span>
             </button>
         </mat-dialog-actions>

@@ -61,7 +61,7 @@ public class TestQueryAirtableTable {
         runner.addControllerService("webClientService", webClientServiceProvider);
         runner.enableControllerService(webClientServiceProvider);
 
-        runner.setProperty(QueryAirtableTable.API_KEY, "???");
+        runner.setProperty(QueryAirtableTable.PAT, "???");
         runner.setProperty(QueryAirtableTable.BASE_ID, "baseid");
         runner.setProperty(QueryAirtableTable.TABLE_ID, "tableid");
         runner.setProperty(QueryAirtableTable.WEB_CLIENT_SERVICE_PROVIDER, webClientServiceProvider.getIdentifier());
@@ -85,7 +85,7 @@ public class TestQueryAirtableTable {
 
             final List<MockFlowFile> results = runner.getFlowFilesForRelationship(QueryAirtableTable.REL_SUCCESS);
             assertEquals(1, results.size());
-            final MockFlowFile flowFile = results.get(0);
+            final MockFlowFile flowFile = results.getFirst();
             assertEquals("1", flowFile.getAttribute("record.count"));
             final String content = flowFile.getContent();
             assertEquals("[" + EXPECTED_RECORD_CONTENT + "]", content);
@@ -106,7 +106,7 @@ public class TestQueryAirtableTable {
 
             final List<MockFlowFile> results = runner.getFlowFilesForRelationship(QueryAirtableTable.REL_SUCCESS);
             assertEquals(1, results.size());
-            final MockFlowFile flowFile = results.get(0);
+            final MockFlowFile flowFile = results.getFirst();
             assertEquals("2", flowFile.getAttribute("record.count"));
             final String content = flowFile.getContent();
             assertEquals("[" + EXPECTED_RECORD_CONTENT + "," + EXPECTED_RECORD_CONTENT + "]", content);
@@ -128,7 +128,7 @@ public class TestQueryAirtableTable {
 
             final List<MockFlowFile> results = runner.getFlowFilesForRelationship(QueryAirtableTable.REL_SUCCESS);
             assertEquals(2, results.size());
-            final MockFlowFile firstFlowFile = results.get(0);
+            final MockFlowFile firstFlowFile = results.getFirst();
             assertEquals("1", firstFlowFile.getAttribute("record.count"));
             final String firstContent = firstFlowFile.getContent();
             assertEquals("[" + EXPECTED_RECORD_CONTENT + "]", firstContent);

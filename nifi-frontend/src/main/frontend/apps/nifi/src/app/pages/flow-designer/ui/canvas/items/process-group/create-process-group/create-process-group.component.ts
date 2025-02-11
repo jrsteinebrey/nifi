@@ -15,16 +15,14 @@
  * limitations under the License.
  */
 
-import { Component, ElementRef, Inject, ViewChild } from '@angular/core';
+import { Component, ElementRef, Inject, Input, ViewChild } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
 import { CreateProcessGroupDialogRequest } from '../../../../../state/flow';
 import { Store } from '@ngrx/store';
 import { CanvasState } from '../../../../../state';
 import { createProcessGroup, uploadProcessGroup } from '../../../../../state/flow/flow.actions';
-import { SelectOption } from '../../../../../../../state/shared';
 import { selectSaving } from '../../../../../state/flow/flow.selectors';
 import { AsyncPipe } from '@angular/common';
-import { ErrorBanner } from '../../../../../../../ui/common/error-banner/error-banner.component';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -32,18 +30,25 @@ import { MatOptionModule } from '@angular/material/core';
 import { MatSelectModule } from '@angular/material/select';
 import { NifiSpinnerDirective } from '../../../../../../../ui/common/spinner/nifi-spinner.directive';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { TextTip } from '../../../../../../../ui/common/tooltips/text-tip/text-tip.component';
-import { NifiTooltipDirective } from '../../../../../../../ui/common/tooltips/nifi-tooltip.directive';
 import { MatIconModule } from '@angular/material/icon';
-import { NiFiCommon } from '../../../../../../../service/nifi-common.service';
-import { CloseOnEscapeDialog } from '../../../../../../../ui/common/close-on-escape-dialog/close-on-escape-dialog.component';
+import { ErrorContextKey } from '../../../../../../../state/error';
+import { ContextErrorBanner } from '../../../../../../../ui/common/context-error-banner/context-error-banner.component';
+import { openNewParameterContextDialog } from '../../../../../state/parameter/parameter.actions';
+import {
+    CloseOnEscapeDialog,
+    NiFiCommon,
+    NifiTooltipDirective,
+    SelectOption,
+    SortObjectByPropertyPipe,
+    TextTip
+} from '@nifi/shared';
+import { ParameterContextEntity } from '../../../../../../../state/shared';
+import { selectCurrentUser } from '../../../../../../../state/current-user/current-user.selectors';
 
 @Component({
     selector: 'create-process-group',
-    standalone: true,
     imports: [
         AsyncPipe,
-        ErrorBanner,
         MatButtonModule,
         MatDialogModule,
         MatFormFieldModule,
@@ -53,15 +58,58 @@ import { CloseOnEscapeDialog } from '../../../../../../../ui/common/close-on-esc
         MatOptionModule,
         MatSelectModule,
         NifiTooltipDirective,
-        MatIconModule
+        MatIconModule,
+        ContextErrorBanner,
+        SortObjectByPropertyPipe
     ],
     templateUrl: './create-process-group.component.html',
     styleUrls: ['./create-process-group.component.scss']
 })
 export class CreateProcessGroup extends CloseOnEscapeDialog {
+    @Input() set parameterContexts(parameterContexts: ParameterContextEntity[]) {
+        this.parameterContextsOptions = [];
+        this._parameterContexts = parameterContexts;
+        let currentParameterContextIdEnabled: boolean = false;
+
+        if (parameterContexts.length === 0) {
+            this.parameterContextsOptions = [];
+        } else {
+            parameterContexts.forEach((parameterContext) => {
+                if (parameterContext.permissions.canRead && parameterContext.component) {
+                    this.parameterContextsOptions.push({
+                        text: parameterContext.component.name,
+                        value: parameterContext.id,
+                        description: parameterContext.component.description
+                    });
+
+                    if (this.dialogRequest.currentParameterContextId === parameterContext.id) {
+                        currentParameterContextIdEnabled = true;
+                    }
+                } else {
+                    this.parameterContextsOptions.push({
+                        text: parameterContext.id,
+                        value: parameterContext.id,
+                        disabled: true
+                    });
+                }
+            });
+        }
+
+        if (currentParameterContextIdEnabled) {
+            this.createProcessGroupForm
+                .get('newProcessGroupParameterContext')
+                ?.setValue(this.dialogRequest.currentParameterContextId);
+        }
+    }
+
+    get parameterContexts() {
+        return this._parameterContexts;
+    }
+
     saving$ = this.store.select(selectSaving);
 
     protected readonly TextTip = TextTip;
+    private _parameterContexts: ParameterContextEntity[] = [];
 
     @ViewChild('flowUploadControl') flowUploadControl!: ElementRef;
 
@@ -70,6 +118,7 @@ export class CreateProcessGroup extends CloseOnEscapeDialog {
 
     flowNameAttached: string | null = null;
     flowDefinition: File | null = null;
+    currentUser$ = this.store.select(selectCurrentUser);
 
     constructor(
         @Inject(MAT_DIALOG_DATA) private dialogRequest: CreateProcessGroupDialogRequest,
@@ -78,24 +127,10 @@ export class CreateProcessGroup extends CloseOnEscapeDialog {
         private nifiCommon: NiFiCommon
     ) {
         super();
-        this.parameterContextsOptions.push({
-            text: 'No parameter context',
-            value: null
-        });
-
-        dialogRequest.parameterContexts.forEach((parameterContext) => {
-            if (parameterContext.permissions.canRead) {
-                this.parameterContextsOptions.push({
-                    text: parameterContext.component.name,
-                    value: parameterContext.id,
-                    description: parameterContext.component.description
-                });
-            }
-        });
 
         this.createProcessGroupForm = this.formBuilder.group({
             newProcessGroupName: new FormControl('', Validators.required),
-            newProcessGroupParameterContext: new FormControl(dialogRequest.currentParameterContextId)
+            newProcessGroupParameterContext: new FormControl(null)
         });
     }
 
@@ -144,4 +179,12 @@ export class CreateProcessGroup extends CloseOnEscapeDialog {
             );
         }
     }
+
+    openNewParameterContextDialog(): void {
+        this.store.dispatch(
+            openNewParameterContextDialog({ request: { parameterContexts: this.dialogRequest.parameterContexts } })
+        );
+    }
+
+    protected readonly ErrorContextKey = ErrorContextKey;
 }

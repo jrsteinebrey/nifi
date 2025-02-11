@@ -26,12 +26,8 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.util.JsonFormat;
 import com.google.rpc.Status;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.flowfile.FlowFile;
@@ -61,23 +57,26 @@ abstract public class AbstractGetGcpVisionAnnotateOperationStatus extends Abstra
             .description("Upon successful completion, the original FlowFile will be routed to this relationship.")
             .autoTerminateDefault(true)
             .build();
-    private static final List<PropertyDescriptor> PROPERTIES =
-            Collections.unmodifiableList(Stream.concat(properties.stream(), Stream.of(OPERATION_KEY)).collect(Collectors.toList()));
-    private static final Set<Relationship> relationships = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = Stream.concat(
+            getCommonPropertyDescriptors().stream(),
+            Stream.of(OPERATION_KEY)
+    ).toList();
+
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
             REL_ORIGINAL,
             REL_SUCCESS,
             REL_FAILURE,
             REL_RUNNING
-    )));
+    );
 
     @Override
     public List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return PROPERTIES;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
     public Set<Relationship> getRelationships() {
-        return relationships;
+        return RELATIONSHIPS;
     }
 
     @Override
@@ -87,9 +86,9 @@ abstract public class AbstractGetGcpVisionAnnotateOperationStatus extends Abstra
             return;
         }
         try {
-            String operationKey = context.getProperty(OPERATION_KEY).evaluateAttributeExpressions(flowFile).getValue();;
+            String operationKey = context.getProperty(OPERATION_KEY).evaluateAttributeExpressions(flowFile).getValue();
             Operation operation = getVisionClient().getOperationsClient().getOperation(operationKey);
-            getLogger().info(operation.toString());
+            getLogger().info("{}", operation);
             if (operation.getDone() && !operation.hasError()) {
                 GeneratedMessageV3 response = deserializeResponse(operation.getResponse().getValue());
                 FlowFile childFlowFile = session.create(flowFile);

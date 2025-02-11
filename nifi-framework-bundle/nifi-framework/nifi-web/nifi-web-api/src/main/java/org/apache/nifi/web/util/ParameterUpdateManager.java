@@ -16,6 +16,8 @@
  */
 package org.apache.nifi.web.util;
 
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import org.apache.nifi.authorization.AuthorizableLookup;
 import org.apache.nifi.authorization.Authorizer;
 import org.apache.nifi.authorization.RequestAction;
@@ -37,8 +39,6 @@ import org.apache.nifi.web.api.entity.ParameterContextEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.Response;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -329,7 +329,7 @@ public class ParameterUpdateManager {
                 if (updatedEntity != null) {
                     entities.add(updatedEntity);
                 }
-            } catch (final ResourceNotFoundException rnfe) {
+            } catch (final ResourceNotFoundException ignored) {
                 // Component was removed. Just continue on without adding anything to the entities.
                 // We do this because the intent is to get updated versions of the entities with current
                 // Revisions so that we can change the states of the components. If the component was removed,

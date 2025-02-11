@@ -24,7 +24,7 @@
     </div>
 </h2>
 <form class="parameter-provider-edit-form" [formGroup]="editParameterProviderForm">
-    <error-banner></error-banner>
+    <context-error-banner [context]="ErrorContextKey.PARAMETER_PROVIDERS"></context-error-banner>
     <mat-tab-group [(selectedIndex)]="selectedIndex" (selectedIndexChange)="tabChanged($event)">
         <mat-tab label="Settings">
             <mat-dialog-content>
@@ -38,19 +38,19 @@
                         </div>
                         <div class="flex flex-col mb-5">
                             <div>Id</div>
-                            <div class="accent-color font-medium">
+                            <div [copy]="request.parameterProvider.id" class="tertiary-color font-medium">
                                 {{ request.parameterProvider.id }}
                             </div>
                         </div>
                         <div class="flex flex-col mb-5">
                             <div>Type</div>
-                            <div class="accent-color font-medium">
+                            <div class="tertiary-color font-medium">
                                 {{ formatType(request.parameterProvider) }}
                             </div>
                         </div>
                         <div class="flex flex-col mb-5">
                             <div>Bundle</div>
-                            <div class="accent-color font-medium">
+                            <div class="tertiary-color font-medium">
                                 {{ formatBundle(request.parameterProvider) }}
                             </div>
                         </div>
@@ -59,7 +59,7 @@
                         <div>
                             Referencing Components
                             <i
-                                class="fa fa-info-circle"
+                                class="fa fa-info-circle primary-color"
                                 nifiTooltip
                                 [tooltipComponentType]="TextTip"
                                 tooltipInputData="Other components referencing this parameter provider."></i>
@@ -118,15 +118,14 @@
     @if ({ value: (saving$ | async)! }; as saving) {
         <mat-dialog-actions align="end">
             @if (readonly) {
-                <button mat-button mat-dialog-close color="primary">Close</button>
+                <button mat-flat-button mat-dialog-close>Close</button>
             } @else {
                 <button mat-button mat-dialog-close>Cancel</button>
                 <button
                     [disabled]="!editParameterProviderForm.dirty || editParameterProviderForm.invalid || saving.value"
                     type="button"
-                    color="primary"
                     (click)="submitForm()"
-                    mat-button>
+                    mat-flat-button>
                     <span *nifiSpinner="saving.value">Apply</span>
                 </button>
             }

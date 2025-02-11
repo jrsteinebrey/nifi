@@ -22,12 +22,13 @@ import { selectCurrentUserState } from '../../../state/current-user/current-user
 import { take } from 'rxjs';
 import { selectLoginConfiguration } from '../../../state/login-configuration/login-configuration.selectors';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { isDefinedAndNotNull } from '../../../state/shared';
+import { isDefinedAndNotNull } from '@nifi/shared';
 
 @Component({
     selector: 'login',
     templateUrl: './login.component.html',
-    styleUrls: ['./login.component.scss']
+    styleUrls: ['./login.component.scss'],
+    standalone: false
 })
 export class Login {
     currentUserState$ = this.store.select(selectCurrentUserState).pipe(take(1));

@@ -45,7 +45,7 @@ import org.apache.nifi.graph.gremlin.SimpleEntry;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.reporting.InitializationException;
-import org.apache.nifi.ssl.SSLContextService;
+import org.apache.nifi.ssl.SSLContextProvider;
 import org.apache.nifi.util.StringUtils;
 import org.apache.nifi.util.file.classloader.ClassLoaderUtils;
 import org.apache.tinkerpop.gremlin.driver.Client;
@@ -57,9 +57,7 @@ import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSo
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -216,10 +214,10 @@ public class TinkerpopClientService extends AbstractControllerService implements
             .description("The SSL Context Service used to provide client certificate information for TLS/SSL "
                     + "connections.")
             .required(false)
-            .identifiesControllerService(SSLContextService.class)
+            .identifiesControllerService(SSLContextProvider.class)
             .build();
 
-    public static final List<PropertyDescriptor> DESCRIPTORS = Collections.unmodifiableList(Arrays.asList(
+    public static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
             SUBMISSION_TYPE,
             CONNECTION_SETTINGS,
             REMOTE_OBJECTS_FILE,
@@ -232,7 +230,7 @@ public class TinkerpopClientService extends AbstractControllerService implements
             USER_NAME,
             PASSWORD,
             SSL_CONTEXT_SERVICE
-    ));
+    );
 
     private GroovyShell groovyShell;
     private Map<String, Script> compiledCode;
@@ -298,7 +296,7 @@ public class TinkerpopClientService extends AbstractControllerService implements
 
     @Override
     public List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return DESCRIPTORS;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -335,10 +333,10 @@ public class TinkerpopClientService extends AbstractControllerService implements
 
     protected Cluster.Builder setupSSL(ConfigurationContext context, Cluster.Builder builder) {
         if (context.getProperty(SSL_CONTEXT_SERVICE).isSet()) {
-            SSLContextService service = context.getProperty(SSL_CONTEXT_SERVICE).asControllerService(SSLContextService.class);
+            final SSLContextProvider sslContextProvider = context.getProperty(SSL_CONTEXT_SERVICE).asControllerService(SSLContextProvider.class);
             ApplicationProtocolConfig applicationProtocolConfig = new ApplicationProtocolConfig(ApplicationProtocolConfig.Protocol.NONE,
                     ApplicationProtocolConfig.SelectorFailureBehavior.FATAL_ALERT, ApplicationProtocolConfig.SelectedListenerFailureBehavior.FATAL_ALERT);
-            JdkSslContext jdkSslContext = new JdkSslContext(service.createContext(), true, null,
+            JdkSslContext jdkSslContext = new JdkSslContext(sslContextProvider.createContext(), true, null,
                     IdentityCipherSuiteFilter.INSTANCE, applicationProtocolConfig, ClientAuth.NONE, null, false);
 
             builder
@@ -466,7 +464,7 @@ public class TinkerpopClientService extends AbstractControllerService implements
         }
 
         if (getLogger().isDebugEnabled()) {
-            getLogger().debug(map.toString());
+            getLogger().debug("{}", map);
         }
 
         Binding bindings = new Binding();
@@ -488,11 +486,11 @@ public class TinkerpopClientService extends AbstractControllerService implements
                                 Map.Entry<String, Object> tempResult = (Map.Entry<String, Object>) resultSet.next();
                                 Map<String, Object> tempRetObject = new HashMap<>();
                                 tempRetObject.put(tempResult.getKey(), tempResult.getValue());
-                                SimpleEntry returnObject = new SimpleEntry<String, Object>(tempResult.getKey(), tempRetObject);
+                                SimpleEntry<String, Object> returnObject = new SimpleEntry<>(tempResult.getKey(), tempRetObject);
                                 Map<String, Object> resultReturnMap = new HashMap<>();
                                 resultReturnMap.put(innerResultSet.getKey(), returnObject);
                                 if (getLogger().isDebugEnabled()) {
-                                    getLogger().debug(resultReturnMap.toString());
+                                    getLogger().debug("{}", resultReturnMap);
                                 }
                                 graphQueryResultCallback.process(resultReturnMap, resultSet.hasNext());
                             }

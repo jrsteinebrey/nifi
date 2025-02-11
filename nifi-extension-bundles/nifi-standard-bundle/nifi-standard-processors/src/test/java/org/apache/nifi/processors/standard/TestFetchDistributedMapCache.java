@@ -28,6 +28,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -44,13 +45,13 @@ public class TestFetchDistributedMapCache {
         service = new MockCacheClient();
         runner.addControllerService("service", service);
         runner.enableControllerService(service);
-        runner.setProperty(FetchDistributedMapCache.PROP_DISTRIBUTED_CACHE_SERVICE, "service");
+        runner.setProperty(FetchDistributedMapCache.DISTRIBUTED_CACHE_SERVICE, "service");
     }
 
     @Test
     public void testNoCacheKey() {
 
-        runner.setProperty(FetchDistributedMapCache.PROP_CACHE_ENTRY_IDENTIFIER, "${cacheKeyAttribute}");
+        runner.setProperty(FetchDistributedMapCache.CACHE_ENTRY_IDENTIFIER, "${cacheKeyAttribute}");
 
         final Map<String, String> props = new HashMap<>();
         props.put("cacheKeyAttribute", "1");
@@ -66,7 +67,7 @@ public class TestFetchDistributedMapCache {
 
     @Test
     public void testNoCacheKeyValue() {
-        runner.setProperty(FetchDistributedMapCache.PROP_CACHE_ENTRY_IDENTIFIER, "${cacheKeyAttribute}");
+        runner.setProperty(FetchDistributedMapCache.CACHE_ENTRY_IDENTIFIER, "${cacheKeyAttribute}");
         runner.enqueue(new byte[] {});
         runner.run();
 
@@ -79,7 +80,7 @@ public class TestFetchDistributedMapCache {
     @Test
     public void testFailingCacheService() {
         service.setFailOnCalls(true);
-        runner.setProperty(FetchDistributedMapCache.PROP_CACHE_ENTRY_IDENTIFIER, "${cacheKeyAttribute}");
+        runner.setProperty(FetchDistributedMapCache.CACHE_ENTRY_IDENTIFIER, "${cacheKeyAttribute}");
 
         final Map<String, String> props = new HashMap<>();
         props.put("cacheKeyAttribute", "2");
@@ -96,12 +97,12 @@ public class TestFetchDistributedMapCache {
     @Test
     public void testSingleFlowFile() throws IOException {
         service.put("key", "value", new FetchDistributedMapCache.StringSerializer(), new FetchDistributedMapCache.StringSerializer());
-        runner.setProperty(FetchDistributedMapCache.PROP_CACHE_ENTRY_IDENTIFIER, "${cacheKeyAttribute}");
+        runner.setProperty(FetchDistributedMapCache.CACHE_ENTRY_IDENTIFIER, "${cacheKeyAttribute}");
 
         final Map<String, String> props = new HashMap<>();
         props.put("cacheKeyAttribute", "key");
         String flowFileContent = "content";
-        runner.enqueue(flowFileContent.getBytes("UTF-8"), props);
+        runner.enqueue(flowFileContent.getBytes(StandardCharsets.UTF_8), props);
 
         runner.run();
 
@@ -117,13 +118,13 @@ public class TestFetchDistributedMapCache {
     @Test
     public void testSingleFlowFileToAttribute() throws IOException {
         service.put("key", "value", new FetchDistributedMapCache.StringSerializer(), new FetchDistributedMapCache.StringSerializer());
-        runner.setProperty(FetchDistributedMapCache.PROP_CACHE_ENTRY_IDENTIFIER, "${cacheKeyAttribute}");
-        runner.setProperty(FetchDistributedMapCache.PROP_PUT_CACHE_VALUE_IN_ATTRIBUTE, "test");
+        runner.setProperty(FetchDistributedMapCache.CACHE_ENTRY_IDENTIFIER, "${cacheKeyAttribute}");
+        runner.setProperty(FetchDistributedMapCache.PUT_CACHE_VALUE_IN_ATTRIBUTE, "test");
 
         final Map<String, String> props = new HashMap<>();
         props.put("cacheKeyAttribute", "key");
         String flowFileContent = "content";
-        runner.enqueue(flowFileContent.getBytes("UTF-8"), props);
+        runner.enqueue(flowFileContent.getBytes(StandardCharsets.UTF_8), props);
 
         runner.run();
 
@@ -139,14 +140,14 @@ public class TestFetchDistributedMapCache {
     @Test
     public void testToAttributeTooLong() throws IOException {
         service.put("key", "value", new FetchDistributedMapCache.StringSerializer(), new FetchDistributedMapCache.StringSerializer());
-        runner.setProperty(FetchDistributedMapCache.PROP_CACHE_ENTRY_IDENTIFIER, "${cacheKeyAttribute}");
-        runner.setProperty(FetchDistributedMapCache.PROP_PUT_CACHE_VALUE_IN_ATTRIBUTE, "test");
-        runner.setProperty(FetchDistributedMapCache.PROP_PUT_ATTRIBUTE_MAX_LENGTH, "3");
+        runner.setProperty(FetchDistributedMapCache.CACHE_ENTRY_IDENTIFIER, "${cacheKeyAttribute}");
+        runner.setProperty(FetchDistributedMapCache.PUT_CACHE_VALUE_IN_ATTRIBUTE, "test");
+        runner.setProperty(FetchDistributedMapCache.PUT_ATTRIBUTE_MAX_LENGTH, "3");
 
         final Map<String, String> props = new HashMap<>();
         props.put("cacheKeyAttribute", "key");
         String flowFileContent = "content";
-        runner.enqueue(flowFileContent.getBytes("UTF-8"), props);
+        runner.enqueue(flowFileContent.getBytes(StandardCharsets.UTF_8), props);
 
         runner.run();
 
@@ -162,10 +163,10 @@ public class TestFetchDistributedMapCache {
     public void testMultipleKeysToAttributes() throws IOException {
         service.put("key1", "value1", new FetchDistributedMapCache.StringSerializer(), new FetchDistributedMapCache.StringSerializer());
         service.put("key2", "value2", new FetchDistributedMapCache.StringSerializer(), new FetchDistributedMapCache.StringSerializer());
-        runner.setProperty(FetchDistributedMapCache.PROP_CACHE_ENTRY_IDENTIFIER, "key1, key2");
+        runner.setProperty(FetchDistributedMapCache.CACHE_ENTRY_IDENTIFIER, "key1, key2");
         // Not valid to set multiple keys without Put Cache Value In Attribute set
         runner.assertNotValid();
-        runner.setProperty(FetchDistributedMapCache.PROP_PUT_CACHE_VALUE_IN_ATTRIBUTE, "test");
+        runner.setProperty(FetchDistributedMapCache.PUT_CACHE_VALUE_IN_ATTRIBUTE, "test");
         runner.assertValid();
 
         final Map<String, String> props = new HashMap<>();
@@ -184,10 +185,10 @@ public class TestFetchDistributedMapCache {
     @Test
     public void testMultipleKeysOneNotFound() throws IOException {
         service.put("key1", "value1", new FetchDistributedMapCache.StringSerializer(), new FetchDistributedMapCache.StringSerializer());
-        runner.setProperty(FetchDistributedMapCache.PROP_CACHE_ENTRY_IDENTIFIER, "key1, key2");
+        runner.setProperty(FetchDistributedMapCache.CACHE_ENTRY_IDENTIFIER, "key1, key2");
         // Not valid to set multiple keys without Put Cache Value In Attribute set
         runner.assertNotValid();
-        runner.setProperty(FetchDistributedMapCache.PROP_PUT_CACHE_VALUE_IN_ATTRIBUTE, "test");
+        runner.setProperty(FetchDistributedMapCache.PUT_CACHE_VALUE_IN_ATTRIBUTE, "test");
         runner.assertValid();
 
         final Map<String, String> props = new HashMap<>();

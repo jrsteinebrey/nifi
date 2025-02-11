@@ -21,24 +21,52 @@ import com.fasterxml.jackson.core.StreamReadConstraints;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import org.apache.nifi.json.TokenParserFactory;
+import org.yaml.snakeyaml.LoaderOptions;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Objects;
 
 public class YamlParserFactory implements TokenParserFactory {
-    private static final YAMLFactory YAML_FACTORY = new YAMLFactory(new YAMLMapper());
+
+    private static final YAMLMapper yamlMapper = new YAMLMapper();
+
+    private final YAMLFactory yamlFactory;
+
+    /**
+     * YAML Parser Factory constructor with default configuration for YAML Mapper
+     */
+    public YamlParserFactory() {
+        yamlFactory = YAMLFactory.builder().build();
+        yamlFactory.setCodec(yamlMapper);
+    }
+
+    /**
+     * YAML Parser Factory constructor with configurable parsing constraints
+     *
+     * @param streamReadConstraints Stream Read Constraints required
+     * @param allowComments Allow Comments during parsing
+     */
+    public YamlParserFactory(final StreamReadConstraints streamReadConstraints, final boolean allowComments) {
+        Objects.requireNonNull(streamReadConstraints, "Stream Read Constraints required");
+
+        final LoaderOptions loaderOptions = new LoaderOptions();
+        loaderOptions.setCodePointLimit(streamReadConstraints.getMaxStringLength());
+        loaderOptions.setProcessComments(allowComments);
+
+        yamlFactory = YAMLFactory.builder().loaderOptions(loaderOptions).build();
+        yamlFactory.setCodec(yamlMapper);
+    }
 
     /**
      * Get Parser implementation for YAML
      *
      * @param in Input Stream to be parsed
-     * @param streamReadConstraints Stream Read Constraints are not supported in YAML
-     * @param allowComments Whether to allow comments when parsing does not apply to YAML
      * @return YAML Parser
      * @throws IOException Thrown on parser creation failures
      */
     @Override
-    public JsonParser getJsonParser(final InputStream in, final StreamReadConstraints streamReadConstraints, final boolean allowComments) throws IOException {
-        return YAML_FACTORY.createParser(in);
+    public JsonParser getJsonParser(final InputStream in) throws IOException {
+        return yamlFactory.createParser(in);
     }
 }

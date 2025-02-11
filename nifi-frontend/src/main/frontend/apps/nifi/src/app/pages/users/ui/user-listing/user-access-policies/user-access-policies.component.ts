@@ -21,21 +21,14 @@ import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatSortModule, Sort } from '@angular/material/sort';
 
-import {
-    AccessPolicySummaryEntity,
-    ComponentReferenceEntity,
-    ComponentType,
-    SelectOption
-} from '../../../../../state/shared';
-import { NiFiCommon } from '../../../../../service/nifi-common.service';
+import { AccessPolicySummaryEntity, ComponentReferenceEntity } from '../../../../../state/shared';
 import { RouterLink } from '@angular/router';
 import { UserAccessPoliciesDialogRequest } from '../../../state/user-listing';
 import { MatMenu, MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
-import { CloseOnEscapeDialog } from '../../../../../ui/common/close-on-escape-dialog/close-on-escape-dialog.component';
+import { ComponentType, SelectOption, CloseOnEscapeDialog, NiFiCommon } from '@nifi/shared';
 
 @Component({
     selector: 'user-access-policies',
-    standalone: true,
     templateUrl: './user-access-policies.component.html',
     imports: [
         MatButtonModule,

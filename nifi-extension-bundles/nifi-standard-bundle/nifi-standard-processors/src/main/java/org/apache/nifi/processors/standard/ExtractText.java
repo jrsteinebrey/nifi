@@ -38,12 +38,10 @@ import org.apache.nifi.processor.DataUnit;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
 import org.apache.nifi.processor.Relationship;
-import org.apache.nifi.processor.io.InputStreamCallback;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.stream.io.StreamUtils;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -231,6 +229,24 @@ public class ExtractText extends AbstractProcessor {
         .defaultValue("false")
         .build();
 
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = List.of(
+            CHARACTER_SET,
+            MAX_BUFFER_SIZE,
+            MAX_CAPTURE_GROUP_LENGTH,
+            CANON_EQ,
+            CASE_INSENSITIVE,
+            COMMENTS,
+            DOTALL,
+            LITERAL,
+            MULTILINE,
+            UNICODE_CASE,
+            UNICODE_CHARACTER_CLASS,
+            UNIX_LINES,
+            INCLUDE_CAPTURE_GROUP_ZERO,
+            ENABLE_REPEATING_CAPTURE_GROUP,
+            ENABLE_NAMED_GROUPS
+    );
+
     public static final Relationship REL_MATCH = new Relationship.Builder()
             .name("matched")
             .description("FlowFiles are routed to this relationship when the Regular Expression is successfully evaluated and the FlowFile is modified as a result")
@@ -241,24 +257,10 @@ public class ExtractText extends AbstractProcessor {
             .description("FlowFiles are routed to this relationship when no provided Regular Expression matches the content of the FlowFile")
             .build();
 
-    private final Set<Relationship> relationships = Set.of(REL_MATCH,
-        REL_NO_MATCH);
-
-    private final List<PropertyDescriptor> properties = List.of(CHARACTER_SET,
-        MAX_BUFFER_SIZE,
-        MAX_CAPTURE_GROUP_LENGTH,
-        CANON_EQ,
-        CASE_INSENSITIVE,
-        COMMENTS,
-        DOTALL,
-        LITERAL,
-        MULTILINE,
-        UNICODE_CASE,
-        UNICODE_CHARACTER_CLASS,
-        UNIX_LINES,
-        INCLUDE_CAPTURE_GROUP_ZERO,
-        ENABLE_REPEATING_CAPTURE_GROUP,
-        ENABLE_NAMED_GROUPS);
+    private static final Set<Relationship> RELATIONSHIPS = Set.of(
+            REL_MATCH,
+            REL_NO_MATCH
+    );
 
     private final BlockingQueue<byte[]> bufferQueue = new LinkedBlockingQueue<>();
     private final AtomicReference<Map<String, Pattern>> compiledPattersMapRef = new AtomicReference<>();
@@ -266,12 +268,12 @@ public class ExtractText extends AbstractProcessor {
 
     @Override
     public Set<Relationship> getRelationships() {
-        return relationships;
+        return RELATIONSHIPS;
     }
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return properties;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @Override
@@ -395,12 +397,7 @@ public class ExtractText extends AbstractProcessor {
 
         try {
             final byte[] byteBuffer = buffer;
-            session.read(flowFile, new InputStreamCallback() {
-                @Override
-                public void process(InputStream in) throws IOException {
-                    StreamUtils.fillBuffer(in, byteBuffer, false);
-                }
-            });
+            session.read(flowFile, in -> StreamUtils.fillBuffer(in, byteBuffer, false));
 
             final long len = Math.min(byteBuffer.length, flowFile.getSize());
             contentString = new String(byteBuffer, 0, (int) len, charset);
@@ -481,7 +478,7 @@ public class ExtractText extends AbstractProcessor {
     }
 
     int getCompileFlags(ProcessContext context) {
-        int flags = (context.getProperty(UNIX_LINES).asBoolean() ? Pattern.UNIX_LINES : 0)
+        return (context.getProperty(UNIX_LINES).asBoolean() ? Pattern.UNIX_LINES : 0)
                 | (context.getProperty(CASE_INSENSITIVE).asBoolean() ? Pattern.CASE_INSENSITIVE : 0)
                 | (context.getProperty(COMMENTS).asBoolean() ? Pattern.COMMENTS : 0)
                 | (context.getProperty(MULTILINE).asBoolean() ? Pattern.MULTILINE : 0)
@@ -490,6 +487,5 @@ public class ExtractText extends AbstractProcessor {
                 | (context.getProperty(UNICODE_CASE).asBoolean() ? Pattern.UNICODE_CASE : 0)
                 | (context.getProperty(CANON_EQ).asBoolean() ? Pattern.CANON_EQ : 0)
                 | (context.getProperty(UNICODE_CHARACTER_CLASS).asBoolean() ? Pattern.UNICODE_CHARACTER_CLASS : 0);
-        return flags;
     }
 }

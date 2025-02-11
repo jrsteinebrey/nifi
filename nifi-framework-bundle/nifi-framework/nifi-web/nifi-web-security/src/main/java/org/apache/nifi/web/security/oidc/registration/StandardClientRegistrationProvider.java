@@ -31,8 +31,12 @@ import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.core.oidc.IdTokenClaimNames;
 import org.springframework.security.oauth2.core.oidc.OidcScopes;
-import org.springframework.web.client.RestOperations;
+import org.springframework.web.client.RestClient;
 
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -51,16 +55,18 @@ public class StandardClientRegistrationProvider implements ClientRegistrationPro
 
     private static final Set<String> STANDARD_SCOPES = Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(OidcScopes.OPENID, OidcScopes.EMAIL)));
 
+    private static final String FILE_URI_SCHEME = "file";
+
     private final NiFiProperties properties;
 
-    private final RestOperations restOperations;
+    private final RestClient restClient;
 
     public StandardClientRegistrationProvider(
             final NiFiProperties properties,
-            final RestOperations restOperations
+            final RestClient restClient
     ) {
         this.properties = Objects.requireNonNull(properties, "Properties required");
-        this.restOperations = Objects.requireNonNull(restOperations, "REST Operations required");
+        this.restClient = Objects.requireNonNull(restClient, "REST Client required");
     }
 
     /**
@@ -107,13 +113,26 @@ public class StandardClientRegistrationProvider implements ClientRegistrationPro
 
     private OIDCProviderMetadata getProviderMetadata() {
         final String discoveryUrl = properties.getOidcDiscoveryUrl();
+        final URI discoveryUri = URI.create(discoveryUrl);
+        final String discoveryUriScheme = discoveryUri.getScheme();
 
         final String metadataObject;
-        try {
-            metadataObject = restOperations.getForObject(discoveryUrl, String.class);
-        } catch (final RuntimeException e) {
-            final String message = String.format("OpenID Connect Metadata URL [%s] retrieval failed", discoveryUrl);
-            throw new OidcConfigurationException(message, e);
+
+        if (FILE_URI_SCHEME.equals(discoveryUriScheme)) {
+            try {
+                final Path discoveryPath = Paths.get(discoveryUri);
+                metadataObject = Files.readString(discoveryPath);
+            } catch (final Exception e) {
+                final String message = String.format("OpenID Connect Metadata File URI [%s] read failed", discoveryUrl);
+                throw new OidcConfigurationException(message, e);
+            }
+        } else {
+            try {
+                metadataObject = restClient.get().uri(discoveryUrl).retrieve().body(String.class);
+            } catch (final RuntimeException e) {
+                final String message = String.format("OpenID Connect Metadata URL [%s] retrieval failed", discoveryUrl);
+                throw new OidcConfigurationException(message, e);
+            }
         }
 
         try {
